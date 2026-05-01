@@ -5,6 +5,7 @@ import com.jongbeom.server.user.User;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -19,6 +20,7 @@ public class JwtTokenProvider {
     private final JwtProperties jwtProperties;
     private final Clock clock;
 
+    @Autowired
     public JwtTokenProvider(JwtEncoder jwtEncoder, JwtProperties jwtProperties) {
         this(jwtEncoder, jwtProperties, Clock.systemUTC());
     }
