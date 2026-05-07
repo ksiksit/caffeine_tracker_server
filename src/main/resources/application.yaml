@@ -21,3 +21,19 @@ app:
   jwt:
     issuer: caffeine-tracker
     expires-in-seconds: 3600
+    refresh-expires-in-seconds: 1209600
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+    try-it-out-enabled: true
+    persist-authorization: true
+    disable-swagger-default-url: true
+  default-produces-media-type: application/json
+  default-consumes-media-type: application/json
+  packages-to-scan: com.jongbeom.server

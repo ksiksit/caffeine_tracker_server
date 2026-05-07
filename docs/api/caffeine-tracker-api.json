@@ -1,0 +1,528 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Caffeine Tracker API",
+        "description": "## \uac1c\uc694\n\uce74\ud398\uc778 \uc12d\ucde8\ub7c9 \ucd94\uc801 \uc11c\ube44\uc2a4 \ubc31\uc5d4\ub4dc API. \uc778\uc99d\u00b7\uc0ac\uc6a9\uc790 \uad00\ub9ac \uc5d4\ub4dc\ud3ec\uc778\ud2b8\ub97c \uc81c\uacf5\ud569\ub2c8\ub2e4.\n\n## JWT \uc778\uc99d \ud750\ub984 (iOS)\n1. `POST /api/auth/signup` \uc73c\ub85c \ud68c\uc6d0\uac00\uc785\n2. `POST /api/auth/login` \uc73c\ub85c \ub85c\uadf8\uc778 \u2192 `accessToken`, `refreshToken` \uc218\uc2e0\n3. \uc778\uc99d\uc774 \ud544\uc694\ud55c \ubaa8\ub4e0 \uc694\uccad \ud5e4\ub354\uc5d0 `Authorization: Bearer {accessToken}` \ubd80\ucc29\n4. 401 \uc751\ub2f5 \uc2dc `POST /api/auth/refresh` \ub85c \ud1a0\ud070 \uc7ac\ubc1c\uae09 \ud6c4 \uc6d0 \uc694\uccad \uc7ac\uc2dc\ub3c4\n5. `POST /api/auth/logout` \uc73c\ub85c \uc11c\ubc84\uce21 RefreshToken \ud3d0\uae30 + \ud074\ub77c\uc774\uc5b8\ud2b8 \uc800\uc7a5\uc18c \uc0ad\uc81c\n\n## \ud1a0\ud070 \ub9cc\ub8cc\n- **Access Token**: 3600\ucd08 (1\uc2dc\uac04)\n- **Refresh Token**: 1209600\ucd08 (14\uc77c)\n\nRefresh \ud638\ucd9c \uc2dc \uc0c8 accessToken/refreshToken\uc774 \ud568\uaed8 \ubc18\ud658\ub429\ub2c8\ub2e4 (\ub85c\ud14c\uc774\uc158). \ub450 \ud1a0\ud070 \ubaa8\ub450 \uac31\uc2e0\ud574 \uc800\uc7a5\ud558\uc138\uc694.\n\n## iOS \uad6c\ud604 \uac00\uc774\ub4dc\n- **\ud1a0\ud070 \uc800\uc7a5**: Keychain \uc0ac\uc6a9 \uad8c\uc7a5 (UserDefaults\ub294 \ud3c9\ubb38 \uc800\uc7a5\uc774\ub77c \ubd80\uc801\ud569)\n- **\uc790\ub3d9 \uac31\uc2e0**: URLSession \uc778\ud130\uc149\ud130(\ub610\ub294 URLProtocol)\ub85c 401 \uc751\ub2f5\uc744 \uac00\ub85c\ucc44 refresh \ud6c4 \uc7ac\uc2dc\ub3c4\ud558\ub294 \ud328\ud134 \uad8c\uc7a5\n- **Authorize \ubaa8\ub2ec \uc0ac\uc6a9\ubc95**: \uc6b0\uc0c1\ub2e8 Authorize \ubc84\ud2bc \ud074\ub9ad \ud6c4 \uc785\ub825\ub780\uc5d0 **\ud1a0\ud070 \uac12\ub9cc** \uc785\ub825 (`Bearer ` \uc811\ub450\uc0ac\ub294 \uc790\ub3d9 \ubd80\uc5ec)\n\n## \uc5d0\ub7ec \uc751\ub2f5 \ud3ec\ub9f7\n\ubaa8\ub4e0 \uc5d0\ub7ec\ub294 \ub2e4\uc74c \uad6c\uc870\ub97c \ub530\ub985\ub2c8\ub2e4:\n```\n{\n  \"code\": \"EMAIL_ALREADY_EXISTS\",\n  \"message\": \"\uc774\ubbf8 \uc0ac\uc6a9 \uc911\uc778 \uc774\uba54\uc77c\uc785\ub2c8\ub2e4.\",\n  \"fieldErrors\": null,\n  \"timestamp\": \"2026-05-02T10:30:00+00:00\"\n}\n```\n\ud544\ub4dc \uac80\uc99d \uc2e4\ud328(`VALIDATION_FAILED`) \uc2dc `fieldErrors` \ubc30\uc5f4\uc5d0 \ud544\ub4dc\ubcc4 \uc624\ub958\uac00 \ud3ec\ud568\ub429\ub2c8\ub2e4.\n\n## OpenAPI \uc2a4\ud399 \ub2e4\uc6b4\ub85c\ub4dc\n`/v3/api-docs` (JSON) \ub610\ub294 `/v3/api-docs.yaml` \ub85c OpenAPI \uc2a4\ud399\uc744 \ubc1b\uc544 [openapi-generator](https://openapi-generator.tech/) \ub85c Swift \ubaa8\ub378/\ud074\ub77c\uc774\uc5b8\ud2b8 \ucf54\ub4dc\ub97c \uc790\ub3d9 \uc0dd\uc131\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.\n",
+        "version": "0.0.1"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8080",
+            "description": "Local"
+        }
+    ],
+    "tags": [
+        {
+            "name": "Auth",
+            "description": "\ud68c\uc6d0\uac00\uc785 \u00b7 \ub85c\uadf8\uc778 \u00b7 \ud1a0\ud070 \uad00\ub9ac"
+        },
+        {
+            "name": "User",
+            "description": "\uc0ac\uc6a9\uc790 \uc815\ubcf4"
+        }
+    ],
+    "paths": {
+        "/api/auth/signup": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "\ud68c\uc6d0\uac00\uc785",
+                "description": "\uc774\uba54\uc77c\u00b7\ube44\ubc00\ubc88\ud638\u00b7\ub2c9\ub124\uc784\uc73c\ub85c \uc2e0\uaddc \uc0ac\uc6a9\uc790\ub97c \uc0dd\uc131\ud569\ub2c8\ub2e4. \uc131\uacf5 \uc2dc \uc0dd\uc131\ub41c \uc0ac\uc6a9\uc790 \uc815\ubcf4\ub97c \ubc18\ud658\ud569\ub2c8\ub2e4.",
+                "operationId": "signup",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SignupRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "\ud68c\uc6d0\uac00\uc785 \uc131\uacf5",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SignupResponse"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "\uc774\ubbf8 \uc0ac\uc6a9 \uc911\uc778 \uc774\uba54\uc77c (code: EMAIL_ALREADY_EXISTS)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/refresh": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "\ud1a0\ud070 \uac31\uc2e0",
+                "description": "Refresh Token\uc73c\ub85c \uc0c8 Access Token / Refresh Token \uc30d\uc744 \ubc1c\uae09\ud569\ub2c8\ub2e4 (\ub85c\ud14c\uc774\uc158). \uae30\uc874 Refresh Token\uc740 \ubb34\ud6a8\ud654\ub429\ub2c8\ub2e4.",
+                "operationId": "refresh",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RefreshTokenRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "\ud1a0\ud070 \uac31\uc2e0 \uc131\uacf5",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TokenResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "\uc720\ud6a8\ud558\uc9c0 \uc54a\uac70\ub098 \ub9cc\ub8cc\ub41c Refresh Token (code: INVALID_REFRESH_TOKEN)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/logout": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "\ub85c\uadf8\uc544\uc6c3",
+                "description": "\uc11c\ubc84\uc5d0 \uc800\uc7a5\ub41c \uc0ac\uc6a9\uc790\uc758 \ubaa8\ub4e0 Refresh Token\uc744 \ud3d0\uae30\ud569\ub2c8\ub2e4. \ud074\ub77c\uc774\uc5b8\ud2b8\ub294 \ud638\ucd9c \ud6c4 \uc800\uc7a5\ub41c \ud1a0\ud070\uc744 \ubaa8\ub450 \uc0ad\uc81c\ud574\uc57c \ud569\ub2c8\ub2e4.",
+                "operationId": "logout",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LogoutRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "204": {
+                        "description": "\ub85c\uadf8\uc544\uc6c3 \uc131\uacf5"
+                    },
+                    "401": {
+                        "description": "\uc778\uc99d\ub418\uc9c0 \uc54a\uc74c (Access Token \ub204\ub77d \ub610\ub294 \ub9cc\ub8cc)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/auth/login": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "\ub85c\uadf8\uc778",
+                "description": "\uc774\uba54\uc77c\u00b7\ube44\ubc00\ubc88\ud638\ub85c \uc778\uc99d\ud558\uace0 Access Token / Refresh Token \ud55c \uc30d\uc744 \ubc1c\uae09\ud569\ub2c8\ub2e4.",
+                "operationId": "login",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LoginRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "\ub85c\uadf8\uc778 \uc131\uacf5",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TokenResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "\uc774\uba54\uc77c \ub610\ub294 \ube44\ubc00\ubc88\ud638 \ubd88\uc77c\uce58 (code: INVALID_CREDENTIALS)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/me": {
+            "get": {
+                "tags": [
+                    "User"
+                ],
+                "summary": "\ud604\uc7ac \uc0ac\uc6a9\uc790 \uc815\ubcf4 \uc870\ud68c",
+                "description": "Access Token\uc5d0 \ub2f4\uae34 \uc0ac\uc6a9\uc790 \uc2dd\ubcc4\uc790\ub85c \ubcf8\uc778 \uc815\ubcf4\ub97c \ubc18\ud658\ud569\ub2c8\ub2e4.",
+                "operationId": "me",
+                "responses": {
+                    "200": {
+                        "description": "\uc870\ud68c \uc131\uacf5",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MeResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "\uc778\uc99d\ub418\uc9c0 \uc54a\uc74c (Access Token \ub204\ub77d \ub610\ub294 \ub9cc\ub8cc)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "SignupRequest": {
+                "type": "object",
+                "description": "\ud68c\uc6d0\uac00\uc785 \uc694\uccad",
+                "properties": {
+                    "email": {
+                        "type": "string",
+                        "description": "\uac00\uc785\ud560 \uc774\uba54\uc77c \uc8fc\uc18c",
+                        "example": "user@example.com",
+                        "maxLength": 255,
+                        "minLength": 0
+                    },
+                    "password": {
+                        "type": "string",
+                        "format": "password",
+                        "description": "\ube44\ubc00\ubc88\ud638 (8~72\uc790)",
+                        "example": "P@ssw0rd123",
+                        "maxLength": 72,
+                        "minLength": 8
+                    },
+                    "nickname": {
+                        "type": "string",
+                        "description": "\ub2c9\ub124\uc784 (2~20\uc790)",
+                        "example": "\uce74\ud398\uc778\ub7ec\ubc84",
+                        "maxLength": 20,
+                        "minLength": 2
+                    }
+                }
+            },
+            "ErrorResponse": {
+                "type": "object",
+                "description": "\uc5d0\ub7ec \uc751\ub2f5 \uacf5\ud1b5 \ud3ec\ub9f7",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "\uc5d0\ub7ec \ucf54\ub4dc (EMAIL_ALREADY_EXISTS, INVALID_CREDENTIALS, INVALID_REFRESH_TOKEN, VALIDATION_FAILED, MALFORMED_JSON, INTERNAL_ERROR \uc911 \ud558\ub098)",
+                        "example": "INVALID_CREDENTIALS"
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "\uc0ac\ub78c\uc774 \uc77d\uc744 \uc218 \uc788\ub294 \uc5d0\ub7ec \uba54\uc2dc\uc9c0",
+                        "example": "\uc774\uba54\uc77c \ub610\ub294 \ube44\ubc00\ubc88\ud638\uac00 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4."
+                    },
+                    "fieldErrors": {
+                        "type": "array",
+                        "description": "\ud544\ub4dc\ubcc4 \uac80\uc99d \uc624\ub958 \ubaa9\ub85d (VALIDATION_FAILED \uc77c \ub54c\ub9cc \ucc44\uc6cc\uc9d0)",
+                        "items": {
+                            "$ref": "#/components/schemas/FieldError"
+                        }
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\uc5d0\ub7ec \ubc1c\uc0dd \uc2dc\uac01 (ISO-8601 with offset)",
+                        "example": "2026-05-02T10:30:00+09:00"
+                    }
+                }
+            },
+            "FieldError": {
+                "type": "object",
+                "description": "\ud544\ub4dc\ubcc4 \uac80\uc99d \uc624\ub958",
+                "properties": {
+                    "field": {
+                        "type": "string",
+                        "description": "\uc624\ub958 \ubc1c\uc0dd \ud544\ub4dc\uba85",
+                        "example": "password"
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "\ud544\ub4dc\ubcc4 \uc624\ub958 \uba54\uc2dc\uc9c0",
+                        "example": "8\uc790 \uc774\uc0c1 \uc785\ub825\ud574\uc8fc\uc138\uc694"
+                    }
+                }
+            },
+            "SignupResponse": {
+                "type": "object",
+                "description": "\ud68c\uc6d0\uac00\uc785 \uc751\ub2f5",
+                "properties": {
+                    "userId": {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "\uc0dd\uc131\ub41c \uc0ac\uc6a9\uc790 ID",
+                        "example": 1
+                    },
+                    "email": {
+                        "type": "string",
+                        "description": "\uc0ac\uc6a9\uc790 \uc774\uba54\uc77c",
+                        "example": "user@example.com"
+                    },
+                    "nickname": {
+                        "type": "string",
+                        "description": "\uc0ac\uc6a9\uc790 \ub2c9\ub124\uc784",
+                        "example": "\uce74\ud398\uc778\ub7ec\ubc84"
+                    }
+                }
+            },
+            "RefreshTokenRequest": {
+                "type": "object",
+                "description": "\ud1a0\ud070 \uac31\uc2e0 \uc694\uccad",
+                "properties": {
+                    "refreshToken": {
+                        "type": "string",
+                        "description": "\ubc1c\uae09\ubc1b\uc740 Refresh Token",
+                        "example": "eyJhbGciOiJIUzI1NiJ9...",
+                        "minLength": 1
+                    }
+                }
+            },
+            "TokenResponse": {
+                "type": "object",
+                "description": "\ud1a0\ud070 \ubc1c\uae09 \uc751\ub2f5",
+                "properties": {
+                    "accessToken": {
+                        "type": "string",
+                        "description": "Access Token (JWT). \uc778\uc99d\uc774 \ud544\uc694\ud55c \uc694\uccad\uc5d0 `Authorization: Bearer {accessToken}` \ud5e4\ub354\ub85c \uc804\ub2ec.",
+                        "example": "eyJhbGciOiJIUzI1NiJ9..."
+                    },
+                    "refreshToken": {
+                        "type": "string",
+                        "description": "Refresh Token. Access Token \ub9cc\ub8cc \uc2dc /api/auth/refresh \ud638\ucd9c\uc5d0 \uc0ac\uc6a9.",
+                        "example": "eyJhbGciOiJIUzI1NiJ9..."
+                    },
+                    "tokenType": {
+                        "type": "string",
+                        "description": "\ud1a0\ud070 \ud0c0\uc785 (\ud56d\uc0c1 \"Bearer\")",
+                        "example": "Bearer"
+                    },
+                    "expiresIn": {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Access Token \uc720\ud6a8 \uc2dc\uac04 (\ucd08)",
+                        "example": 3600
+                    },
+                    "refreshExpiresIn": {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Refresh Token \uc720\ud6a8 \uc2dc\uac04 (\ucd08)",
+                        "example": 1209600
+                    }
+                }
+            },
+            "LogoutRequest": {
+                "type": "object",
+                "description": "\ub85c\uadf8\uc544\uc6c3 \uc694\uccad",
+                "properties": {
+                    "refreshToken": {
+                        "type": "string",
+                        "description": "\ud604\uc7ac \ubcf4\uc720\ud55c Refresh Token",
+                        "example": "eyJhbGciOiJIUzI1NiJ9...",
+                        "minLength": 1
+                    }
+                }
+            },
+            "LoginRequest": {
+                "type": "object",
+                "description": "\ub85c\uadf8\uc778 \uc694\uccad",
+                "properties": {
+                    "email": {
+                        "type": "string",
+                        "description": "\uc774\uba54\uc77c",
+                        "example": "user@example.com",
+                        "minLength": 1
+                    },
+                    "password": {
+                        "type": "string",
+                        "format": "password",
+                        "description": "\ube44\ubc00\ubc88\ud638",
+                        "example": "P@ssw0rd123",
+                        "minLength": 1
+                    }
+                }
+            },
+            "MeResponse": {
+                "type": "object",
+                "description": "\ud604\uc7ac \uc0ac\uc6a9\uc790 \uc815\ubcf4",
+                "properties": {
+                    "userId": {
+                        "type": "string",
+                        "description": "\uc0ac\uc6a9\uc790 ID",
+                        "example": 1
+                    },
+                    "email": {
+                        "type": "string",
+                        "description": "\uc0ac\uc6a9\uc790 \uc774\uba54\uc77c",
+                        "example": "user@example.com"
+                    }
+                }
+            }
+        },
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "description": "JWT Access Token",
+                "scheme": "bearer",
+                "bearerFormat": "JWT"
+            }
+        }
+    }
+}

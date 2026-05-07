@@ -1,0 +1,390 @@
+openapi: 3.1.0
+info:
+  title: Caffeine Tracker API
+  description: |
+    ## 개요
+    카페인 섭취량 추적 서비스 백엔드 API. 인증·사용자 관리 엔드포인트를 제공합니다.
+
+    ## JWT 인증 흐름 (iOS)
+    1. `POST /api/auth/signup` 으로 회원가입
+    2. `POST /api/auth/login` 으로 로그인 → `accessToken`, `refreshToken` 수신
+    3. 인증이 필요한 모든 요청 헤더에 `Authorization: Bearer {accessToken}` 부착
+    4. 401 응답 시 `POST /api/auth/refresh` 로 토큰 재발급 후 원 요청 재시도
+    5. `POST /api/auth/logout` 으로 서버측 RefreshToken 폐기 + 클라이언트 저장소 삭제
+
+    ## 토큰 만료
+    - **Access Token**: 3600초 (1시간)
+    - **Refresh Token**: 1209600초 (14일)
+
+    Refresh 호출 시 새 accessToken/refreshToken이 함께 반환됩니다 (로테이션). 두 토큰 모두 갱신해 저장하세요.
+
+    ## iOS 구현 가이드
+    - **토큰 저장**: Keychain 사용 권장 (UserDefaults는 평문 저장이라 부적합)
+    - **자동 갱신**: URLSession 인터셉터(또는 URLProtocol)로 401 응답을 가로채 refresh 후 재시도하는 패턴 권장
+    - **Authorize 모달 사용법**: 우상단 Authorize 버튼 클릭 후 입력란에 **토큰 값만** 입력 (`Bearer ` 접두사는 자동 부여)
+
+    ## 에러 응답 포맷
+    모든 에러는 다음 구조를 따릅니다:
+    ```
+    {
+      "code": "EMAIL_ALREADY_EXISTS",
+      "message": "이미 사용 중인 이메일입니다.",
+      "fieldErrors": null,
+      "timestamp": "2026-05-02T10:30:00+00:00"
+    }
+    ```
+    필드 검증 실패(`VALIDATION_FAILED`) 시 `fieldErrors` 배열에 필드별 오류가 포함됩니다.
+
+    ## OpenAPI 스펙 다운로드
+    `/v3/api-docs` (JSON) 또는 `/v3/api-docs.yaml` 로 OpenAPI 스펙을 받아 [openapi-generator](https://openapi-generator.tech/) 로 Swift 모델/클라이언트 코드를 자동 생성할 수 있습니다.
+  version: 0.0.1
+servers:
+- url: http://localhost:8080
+  description: Local
+tags:
+- name: Auth
+  description: 회원가입 · 로그인 · 토큰 관리
+- name: User
+  description: 사용자 정보
+paths:
+  /api/auth/signup:
+    post:
+      tags:
+      - Auth
+      summary: 회원가입
+      description: 이메일·비밀번호·닉네임으로 신규 사용자를 생성합니다. 성공 시 생성된 사용자 정보를 반환합니다.
+      operationId: signup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignupRequest"
+        required: true
+      responses:
+        "201":
+          description: 회원가입 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignupResponse"
+        "409":
+          description: "이미 사용 중인 이메일 (code: EMAIL_ALREADY_EXISTS)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: "잘못된 요청 형식 또는 입력값 검증 실패 (code: MALFORMED_JSON, VALIDATION_FAILED)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "서버 내부 오류 (code: INTERNAL_ERROR)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/refresh:
+    post:
+      tags:
+      - Auth
+      summary: 토큰 갱신
+      description: Refresh Token으로 새 Access Token / Refresh Token 쌍을 발급합니다 (로테이션).
+        기존 Refresh Token은 무효화됩니다.
+      operationId: refresh
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+        required: true
+      responses:
+        "200":
+          description: 토큰 갱신 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: "유효하지 않거나 만료된 Refresh Token (code: INVALID_REFRESH_TOKEN)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: "잘못된 요청 형식 또는 입력값 검증 실패 (code: MALFORMED_JSON, VALIDATION_FAILED)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "서버 내부 오류 (code: INTERNAL_ERROR)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/logout:
+    post:
+      tags:
+      - Auth
+      summary: 로그아웃
+      description: 서버에 저장된 사용자의 모든 Refresh Token을 폐기합니다. 클라이언트는 호출 후 저장된 토큰을 모두 삭제해야
+        합니다.
+      operationId: logout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
+        required: true
+      responses:
+        "204":
+          description: 로그아웃 성공
+        "401":
+          description: 인증되지 않음 (Access Token 누락 또는 만료)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: "잘못된 요청 형식 또는 입력값 검증 실패 (code: MALFORMED_JSON, VALIDATION_FAILED)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "서버 내부 오류 (code: INTERNAL_ERROR)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
+  /api/auth/login:
+    post:
+      tags:
+      - Auth
+      summary: 로그인
+      description: 이메일·비밀번호로 인증하고 Access Token / Refresh Token 한 쌍을 발급합니다.
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+        required: true
+      responses:
+        "200":
+          description: 로그인 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: "이메일 또는 비밀번호 불일치 (code: INVALID_CREDENTIALS)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: "잘못된 요청 형식 또는 입력값 검증 실패 (code: MALFORMED_JSON, VALIDATION_FAILED)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "서버 내부 오류 (code: INTERNAL_ERROR)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/me:
+    get:
+      tags:
+      - User
+      summary: 현재 사용자 정보 조회
+      description: Access Token에 담긴 사용자 식별자로 본인 정보를 반환합니다.
+      operationId: me
+      responses:
+        "200":
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: 인증되지 않음 (Access Token 누락 또는 만료)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: "잘못된 요청 형식 또는 입력값 검증 실패 (code: MALFORMED_JSON, VALIDATION_FAILED)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "서버 내부 오류 (code: INTERNAL_ERROR)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
+components:
+  schemas:
+    SignupRequest:
+      type: object
+      description: 회원가입 요청
+      properties:
+        email:
+          type: string
+          description: 가입할 이메일 주소
+          example: user@example.com
+          maxLength: 255
+          minLength: 0
+        password:
+          type: string
+          format: password
+          description: 비밀번호 (8~72자)
+          example: P@ssw0rd123
+          maxLength: 72
+          minLength: 8
+        nickname:
+          type: string
+          description: 닉네임 (2~20자)
+          example: 카페인러버
+          maxLength: 20
+          minLength: 2
+    ErrorResponse:
+      type: object
+      description: 에러 응답 공통 포맷
+      properties:
+        code:
+          type: string
+          description: "에러 코드 (EMAIL_ALREADY_EXISTS, INVALID_CREDENTIALS, INVALID_REFRESH_TOKEN,\
+            \ VALIDATION_FAILED, MALFORMED_JSON, INTERNAL_ERROR 중 하나)"
+          example: INVALID_CREDENTIALS
+        message:
+          type: string
+          description: 사람이 읽을 수 있는 에러 메시지
+          example: 이메일 또는 비밀번호가 올바르지 않습니다.
+        fieldErrors:
+          type: array
+          description: 필드별 검증 오류 목록 (VALIDATION_FAILED 일 때만 채워짐)
+          items:
+            $ref: "#/components/schemas/FieldError"
+        timestamp:
+          type: string
+          format: date-time
+          description: 에러 발생 시각 (ISO-8601 with offset)
+          example: 2026-05-02T10:30:00+09:00
+    FieldError:
+      type: object
+      description: 필드별 검증 오류
+      properties:
+        field:
+          type: string
+          description: 오류 발생 필드명
+          example: password
+        message:
+          type: string
+          description: 필드별 오류 메시지
+          example: 8자 이상 입력해주세요
+    SignupResponse:
+      type: object
+      description: 회원가입 응답
+      properties:
+        userId:
+          type: integer
+          format: int64
+          description: 생성된 사용자 ID
+          example: 1
+        email:
+          type: string
+          description: 사용자 이메일
+          example: user@example.com
+        nickname:
+          type: string
+          description: 사용자 닉네임
+          example: 카페인러버
+    RefreshTokenRequest:
+      type: object
+      description: 토큰 갱신 요청
+      properties:
+        refreshToken:
+          type: string
+          description: 발급받은 Refresh Token
+          example: eyJhbGciOiJIUzI1NiJ9...
+          minLength: 1
+    TokenResponse:
+      type: object
+      description: 토큰 발급 응답
+      properties:
+        accessToken:
+          type: string
+          description: "Access Token (JWT). 인증이 필요한 요청에 `Authorization: Bearer {accessToken}`\
+            \ 헤더로 전달."
+          example: eyJhbGciOiJIUzI1NiJ9...
+        refreshToken:
+          type: string
+          description: Refresh Token. Access Token 만료 시 /api/auth/refresh 호출에 사용.
+          example: eyJhbGciOiJIUzI1NiJ9...
+        tokenType:
+          type: string
+          description: 토큰 타입 (항상 "Bearer")
+          example: Bearer
+        expiresIn:
+          type: integer
+          format: int64
+          description: Access Token 유효 시간 (초)
+          example: 3600
+        refreshExpiresIn:
+          type: integer
+          format: int64
+          description: Refresh Token 유효 시간 (초)
+          example: 1209600
+    LogoutRequest:
+      type: object
+      description: 로그아웃 요청
+      properties:
+        refreshToken:
+          type: string
+          description: 현재 보유한 Refresh Token
+          example: eyJhbGciOiJIUzI1NiJ9...
+          minLength: 1
+    LoginRequest:
+      type: object
+      description: 로그인 요청
+      properties:
+        email:
+          type: string
+          description: 이메일
+          example: user@example.com
+          minLength: 1
+        password:
+          type: string
+          format: password
+          description: 비밀번호
+          example: P@ssw0rd123
+          minLength: 1
+    MeResponse:
+      type: object
+      description: 현재 사용자 정보
+      properties:
+        userId:
+          type: string
+          description: 사용자 ID
+          example: 1
+        email:
+          type: string
+          description: 사용자 이메일
+          example: user@example.com
+  securitySchemes:
+    bearerAuth:
+      type: http
+      description: JWT Access Token
+      scheme: bearer
+      bearerFormat: JWT

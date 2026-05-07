@@ -2,6 +2,7 @@ package com.jongbeom.server.common.error;
 
 import com.jongbeom.server.auth.exception.DuplicateEmailException;
 import com.jongbeom.server.auth.exception.InvalidCredentialsException;
+import com.jongbeom.server.auth.exception.InvalidRefreshTokenException;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
@@ -31,6 +32,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(InvalidCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleInvalidCredentials(InvalidCredentialsException e) {
         ErrorCode code = ErrorCode.INVALID_CREDENTIALS;
+        return ResponseEntity.status(code.status()).body(ErrorResponse.of(code));
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRefreshToken(InvalidRefreshTokenException e) {
+        ErrorCode code = ErrorCode.INVALID_REFRESH_TOKEN;
         return ResponseEntity.status(code.status()).body(ErrorResponse.of(code));
     }
 
