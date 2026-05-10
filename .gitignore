@@ -35,8 +35,3 @@ out/
 
 ### VS Code ###
 .vscode/
-
-### Local secrets (keep DB creds and JWT secret out of git) ###
-src/main/resources/application-local.yaml
-src/main/resources/application-local.yml
-src/main/resources/application-local.properties
