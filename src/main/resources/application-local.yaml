@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/caffeine_tracker?serverTimezone=UTC&characterEncoding=UTF-8&useUnicode=true&allowPublicKeyRetrieval=true&useSSL=false
+    username: caffeine
+    password: "dfg7xMJHNTph2D1Rnn0FDobJKD05+TJa"
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+app:
+  jwt:
+    secret: Tk+X8qoy1cp+K3DuPDFq4qOs/24orZsRAID8uA28JBDM9nWwryuyXdMKf7z4owj6
