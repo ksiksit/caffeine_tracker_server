@@ -1,3 +1,20 @@
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 30000
+  jpa:
+    properties:
+      hibernate:
+        format_sql: false
+
+logging:
+  level:
+    root: INFO
+    com.jongbeom.server: INFO
+    org.hibernate.SQL: WARN
+
 springdoc:
   api-docs:
     enabled: false

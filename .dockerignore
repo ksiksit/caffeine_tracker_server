@@ -1,0 +1,15 @@
+.git
+.gitignore
+.gitattributes
+.gradle
+build
+.idea
+.vscode
+*.iml
+HELP.md
+README.md
+docs
+.claude
+src/main/resources/application-local.yaml
+src/main/resources/application-local.yml
+src/main/resources/application-local.properties
