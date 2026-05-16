@@ -1,50 +1,24 @@
 services:
-  db:
-    image: mysql:8.0
-    container_name: caffeine-db
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: caffeine_tracker
-      MYSQL_USER: ${DB_USERNAME}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      TZ: Asia/Seoul
-    volumes:
-      - mysql_data:/var/lib/mysql
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$DB_ROOT_PASSWORD"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   app:
-    build: .
+    image: ghcr.io/ksiksit/caffeine_tracker_server:latest
     container_name: caffeine-app
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      DB_URL: jdbc:mysql://db:3306/caffeine_tracker?serverTimezone=UTC&characterEncoding=UTF-8&useUnicode=true&allowPublicKeyRetrieval=true&useSSL=false
+      DB_URL: ${DB_URL}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
     ports:
       - "8080:8080"
-    depends_on:
-      db:
-        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "5"
-
-volumes:
-  mysql_data:
