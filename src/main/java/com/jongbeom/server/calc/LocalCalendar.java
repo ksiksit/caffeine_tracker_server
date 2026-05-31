@@ -27,6 +27,20 @@ public final class LocalCalendar {
         return chartStart(now, zone).plus(java.time.Duration.ofHours(Pharmacokinetics.CHART_FORWARD_HOURS));
     }
 
+    /** 수면 조회 윈도우 시작/끝 (← iOS AppConstants.Sleep windowStartHour=18, windowEndHour=12). */
+    public static final int SLEEP_WINDOW_START_HOUR = 18;
+    public static final int SLEEP_WINDOW_END_HOUR = 12;
+
+    /** date 기준 수면 윈도우 시작 = 전날 18:00 로컬. (← SleepFetchService.fetchSleepSamples) */
+    public static Instant sleepWindowStart(LocalDate date, ZoneId zone) {
+        return date.minusDays(1).atStartOfDay(zone).withHour(SLEEP_WINDOW_START_HOUR).toInstant();
+    }
+
+    /** date 기준 수면 윈도우 끝 = 당일 12:00 로컬. */
+    public static Instant sleepWindowEnd(LocalDate date, ZoneId zone) {
+        return date.atStartOfDay(zone).withHour(SLEEP_WINDOW_END_HOUR).toInstant();
+    }
+
     /**
      * now 기준 "다음 취침시각". 오늘 날짜의 hour:minute, 이미 지났으면 다음날.
      * (← Swift HomeViewModel.nextBedtime)
