@@ -31,12 +31,12 @@ public class UserController {
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     public MeResponse me(@AuthenticationPrincipal Jwt jwt) {
-        return new MeResponse(jwt.getSubject(), jwt.getClaimAsString("email"));
+        return new MeResponse(Long.parseLong(jwt.getSubject()), jwt.getClaimAsString("email"));
     }
 
     @Schema(description = "현재 사용자 정보")
     public record MeResponse(
-            @Schema(description = "사용자 ID", example = "1") String userId,
+            @Schema(description = "사용자 ID", example = "1") Long userId,
             @Schema(description = "사용자 이메일", example = "user@example.com") String email
     ) {
     }

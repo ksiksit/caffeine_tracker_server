@@ -1,0 +1,63 @@
+# CLAUDE.md
+
+캡스톤 카페인 트래커 백엔드 REST API 서버. **Java 21 / Spring Boot 3.5 / MySQL 8**.
+
+> 이 파일은 코드 작업에 필요한 핵심만 담는다. 스택·환경변수·로컬 실행·API 예시 등
+> 사람용 온보딩 상세는 `README.md` 참조 (중복 회피).
+
+## 명령어
+
+- `./gradlew build` — 빌드 + 테스트 (테스트는 H2로 동작, 환경변수 불필요)
+- `./gradlew build -x test` — 빠른 컴파일 확인
+- `./gradlew test` — 테스트만
+- `./gradlew bootRun` — 로컬 실행 (환경변수 4개 필요, 상세는 README)
+
+## 구조
+
+`com.jongbeom.server` — 도메인(feature)별 구성, 각 도메인 내부는 Controller→Service→Repository 3계층.
+`auth/`(+`auth/refresh/`), `user/`, `config/`, `common/`(+`common/error/`). 상세 트리는 README 참조.
+
+## 코드 컨벤션 + 새 기능 추가
+
+현재 구현된 건 인증 시스템뿐 — 다음 작업은 대개 새 도메인 추가다.
+
+**새 도메인 추가 순서:**
+1. `com.jongbeom.server.<도메인>/` 패키지 생성 — Controller / Service / Repository / Entity /
+   `dto/` / `exception/` (기존 `auth/`, `user/` 패턴 그대로)
+2. 새 엔드포인트 경로를 `config/SecurityConfig.java`의 `authorizeHttpRequests`에 등록
+   (등록 안 하면 기본 `authenticated` 처리)
+3. DB 스키마는 `src/main/resources/db/migration/V{n}__{설명}.sql` Flyway 마이그레이션으로 추가
+   (`ddl-auto: validate`라 엔티티만 바꾸면 부팅 실패)
+4. 테스트 추가 — JUnit 5, 통합 테스트는 `*IT` 접미사 (테스트는 H2로 자동 실행)
+
+**코드 규칙:**
+- DTO는 Java `record`, `*Request` / `*Response` 네이밍
+- 엔티티: `BaseTimeEntity` 상속, `@NoArgsConstructor(access = PROTECTED)`, `@Data` 금지
+- 예외: 도메인별 커스텀 예외를 `*/exception/`에 두고 `GlobalExceptionHandler`가 일괄 처리
+  → `ErrorResponse` 응답. 컨트롤러/서비스에서 ad-hoc try/catch 지양
+- 검증: DTO에 Jakarta Validation 어노테이션 + 컨트롤러 인자 `@Valid`
+- Lombok: `@Getter`, `@RequiredArgsConstructor`, `@Slf4j`
+
+## 주의사항
+
+- 환경변수 `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` / `JWT_SECRET` 4개 없으면 부팅 즉시 실패.
+  `JWT_SECRET`은 32바이트 이상
+- `application-local.yaml`은 gitignore됨 (로컬 DB/JWT 시크릿 보관처)
+- 리프레시 토큰은 DB에 SHA-256 해시로만 저장 (평문 미저장)
+- "카페인 기록" 기능은 아직 미구현 — 코드가 있다고 가정 금지
+
+## 배포
+
+> 현재 방식: **수동 배포** (CI는 GHCR 이미지 push까지만 자동화). 마지막 갱신: 2026-05-22.
+> "배포 준비 됐냐"는 질문은 **이 저장소(레포)의 배포 준비 상태만** 확인해 답한다.
+> 운영 서버(EC2)·운영 DB(RDS)는 사용자가 직접 준비·관리하는 외부 인프라이므로
+> 준비된 것으로 간주하고, 상태를 다시 검증하려 하지 말 것. 진행되면 체크리스트/날짜를 갱신할 것.
+
+- **완료**: Dockerfile · docker-compose(.prod).yml · CI(빌드+테스트→GHCR push) · prod 프로파일 · Flyway
+- **인프라(사용자 관리, 준비 완료)**: 운영 서버(EC2) · 운영 DB(RDS)
+- **미완료**: HTTPS/리버스 프록시 · GHCR private 인증
+- **안 함(범위 외)**: CD 자동화 — 수동 배포 유지. 자동화 제안하지 말 것.
+
+수동 배포: 서버에서 `.env` 작성(`.env.example` 참고) →
+`docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d` →
+`curl localhost:8080/actuator/health` 로 `UP` 확인.
