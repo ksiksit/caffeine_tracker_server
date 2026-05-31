@@ -8,6 +8,7 @@ public enum ErrorCode {
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "RefreshToken 이 유효하지 않습니다."),
     VALIDATION_FAILED(HttpStatus.BAD_REQUEST, "입력값이 올바르지 않습니다."),
     MALFORMED_JSON(HttpStatus.BAD_REQUEST, "잘못된 요청 형식입니다."),
+    CAFFEINE_RECORD_NOT_FOUND(HttpStatus.NOT_FOUND, "카페인 기록을 찾을 수 없습니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다.");
 
     private final HttpStatus status;

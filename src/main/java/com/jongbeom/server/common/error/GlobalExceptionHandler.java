@@ -3,6 +3,7 @@ package com.jongbeom.server.common.error;
 import com.jongbeom.server.auth.exception.DuplicateEmailException;
 import com.jongbeom.server.auth.exception.InvalidCredentialsException;
 import com.jongbeom.server.auth.exception.InvalidRefreshTokenException;
+import com.jongbeom.server.caffeine.exception.CaffeineRecordNotFoundException;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
@@ -38,6 +39,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(InvalidRefreshTokenException.class)
     public ResponseEntity<ErrorResponse> handleInvalidRefreshToken(InvalidRefreshTokenException e) {
         ErrorCode code = ErrorCode.INVALID_REFRESH_TOKEN;
+        return ResponseEntity.status(code.status()).body(ErrorResponse.of(code));
+    }
+
+    @ExceptionHandler(CaffeineRecordNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleCaffeineRecordNotFound(CaffeineRecordNotFoundException e) {
+        ErrorCode code = ErrorCode.CAFFEINE_RECORD_NOT_FOUND;
         return ResponseEntity.status(code.status()).body(ErrorResponse.of(code));
     }
 

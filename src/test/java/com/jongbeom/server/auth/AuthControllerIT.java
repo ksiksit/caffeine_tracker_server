@@ -52,7 +52,9 @@ class AuthControllerIT {
 
     @Test
     void signup_201_login_200_그리고_me_조회_200() throws Exception {
-        signup("a@b.com", "password1!", "테스터");
+        MvcResult signupResult = signup("a@b.com", "password1!", "테스터");
+        JsonNode signupBody = objectMapper.readTree(signupResult.getResponse().getContentAsString());
+        long userId = signupBody.get("userId").asLong();
 
         JsonNode tokens = login("a@b.com", "password1!");
         String accessToken = tokens.get("accessToken").asText();
@@ -63,6 +65,8 @@ class AuthControllerIT {
         mockMvc.perform(get("/api/me")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").isNumber())
+                .andExpect(jsonPath("$.userId").value((int) userId))
                 .andExpect(jsonPath("$.email").value("a@b.com"));
     }
 
