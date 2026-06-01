@@ -51,16 +51,23 @@ public class SleepService {
         return new UploadSleepSamplesResponse(req.samples().size(), toInsert.size());
     }
 
-    /** date(아침 기준) 전날 18:00 ~ 당일 12:00 윈도우 샘플을 병합·계산한 요약. */
+    /** 병합된 한 night(intervals + 원시 inBed bedtimeStart). summary·learning 공유. */
+    public record NightData(List<Interval> intervals, Instant bedtimeStart) {
+        public boolean isEmpty() {
+            return intervals.isEmpty();
+        }
+    }
+
+    /** date(아침 기준) 전날 18:00 ~ 당일 12:00 윈도우 샘플을 병합. */
     @Transactional(readOnly = true)
-    public SleepSummaryResponse summary(Long userId, LocalDate date, ZoneId zone) {
+    public NightData mergedNight(Long userId, LocalDate date, ZoneId zone) {
         Instant start = LocalCalendar.sleepWindowStart(date, zone);
         Instant end = LocalCalendar.sleepWindowEnd(date, zone);
 
         List<SleepSample> samples = repository
                 .findByUserIdAndStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(userId, start, end);
         if (samples.isEmpty()) {
-            return SleepSummaryResponse.empty(date);
+            return new NightData(List.of(), null);
         }
 
         Instant bedtimeStart = samples.stream()
@@ -72,7 +79,18 @@ public class SleepService {
         List<SleepMerger.Sample> input = samples.stream()
                 .map(s -> new SleepMerger.Sample(s.getStartAt(), s.getEndAt(), s.getHkValue()))
                 .toList();
-        List<Interval> intervals = SleepMerger.merge(input);
+        return new NightData(SleepMerger.merge(input), bedtimeStart);
+    }
+
+    /** date(아침 기준) 윈도우 샘플을 병합·계산한 요약. */
+    @Transactional(readOnly = true)
+    public SleepSummaryResponse summary(Long userId, LocalDate date, ZoneId zone) {
+        NightData night = mergedNight(userId, date, zone);
+        if (night.isEmpty()) {
+            return SleepSummaryResponse.empty(date);
+        }
+        Instant bedtimeStart = night.bedtimeStart();
+        List<Interval> intervals = night.intervals();
         SleepSummaryCalc.Result res = SleepSummaryCalc.compute(intervals, bedtimeStart);
 
         List<RecordItem> records = intervals.stream()
