@@ -13,8 +13,24 @@
     ],
     "tags": [
         {
+            "name": "Settings",
+            "description": "\uc720\uc800 \uc124\uc815 \u00b7 \ud559\uc2b5 \uc0c1\ud0dc"
+        },
+        {
+            "name": "Caffeine",
+            "description": "\uce74\ud398\uc778 \uae30\ub85d \u00b7 \uc794\ub958\ub7c9/\ub9c8\uac10\uc2dc\uac01 \uacc4\uc0b0"
+        },
+        {
             "name": "Auth",
             "description": "\ud68c\uc6d0\uac00\uc785 \u00b7 \ub85c\uadf8\uc778 \u00b7 \ud1a0\ud070 \uad00\ub9ac"
+        },
+        {
+            "name": "Sleep",
+            "description": "\uc218\uba74 \uc6d0\uc2dc \uc0d8\ud50c \uc5c5\ub85c\ub4dc \u00b7 \ubcd1\ud569/\uc694\uc57d"
+        },
+        {
+            "name": "Learning",
+            "description": "\ubca0\uc774\uc9c0\uc548 \ubc18\uac10\uae30 \ud559\uc2b5 \u00b7 \ub300\uc2dc\ubcf4\ub4dc"
         },
         {
             "name": "User",
@@ -22,6 +38,466 @@
         }
     ],
     "paths": {
+        "/api/settings": {
+            "get": {
+                "tags": [
+                    "Settings"
+                ],
+                "summary": "\ub0b4 \uc124\uc815 \uc870\ud68c",
+                "description": "\uc5c6\uc73c\uba74 \uae30\ubcf8\uac12\uc73c\ub85c \uc0dd\uc131\ud574 \ubc18\ud658\ud569\ub2c8\ub2e4.",
+                "operationId": "get",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SettingsResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Settings"
+                ],
+                "summary": "\ub0b4 \uc124\uc815 \uac31\uc2e0",
+                "description": "\uc804\uccb4 \uad50\uccb4. \ubc18\uac10\uae30 \ubcc0\uacbd \uc2dc \ud559\uc2b5 prior \uac00 \ub9ac\uc14b\ub429\ub2c8\ub2e4.",
+                "operationId": "update",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateSettingsRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SettingsResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/caffeine-records/{id}": {
+            "put": {
+                "tags": [
+                    "Caffeine"
+                ],
+                "summary": "\uce74\ud398\uc778 \uae30\ub85d \uc218\uc815",
+                "operationId": "update_1",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateCaffeineRecordRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CaffeineRecordResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Caffeine"
+                ],
+                "summary": "\uce74\ud398\uc778 \uae30\ub85d \uc0ad\uc81c",
+                "operationId": "delete",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/sleep/samples": {
+            "post": {
+                "tags": [
+                    "Sleep"
+                ],
+                "summary": "\uc218\uba74 \uc6d0\uc2dc \uc0d8\ud50c \uc5c5\ub85c\ub4dc",
+                "description": "client_uuid \uba71\ub4f1. \uae30\uae30\uc5d0\uc11c \uc77d\uc740 HealthKit \uc0d8\ud50c\uc744 \ubc30\uce58 \uc5c5\ub85c\ub4dc\ud569\ub2c8\ub2e4.",
+                "operationId": "upload",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UploadSleepSamplesRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UploadSleepSamplesResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/learning/run": {
+            "post": {
+                "tags": [
+                    "Learning"
+                ],
+                "summary": "\ud559\uc2b5 \uc2e4\ud589",
+                "description": "\ucd5c\uadfc 7\uc77c \uc911 \ubbf8\ud559\uc2b5 night\ub97c \uc624\ub798\ub41c \uc21c\uc73c\ub85c \ubc30\uce58 \ud559\uc2b5\ud569\ub2c8\ub2e4(\uc21c\ucc28 prior).",
+                "operationId": "run",
+                "parameters": [
+                    {
+                        "name": "tz",
+                        "in": "query",
+                        "description": "IANA \ud0c0\uc784\uc874",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "Asia/Seoul"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LearningRunResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/caffeine-records": {
+            "get": {
+                "tags": [
+                    "Caffeine"
+                ],
+                "summary": "\uc624\ub298 \uce74\ud398\uc778 \uae30\ub85d \uc870\ud68c",
+                "description": "\ucc28\ud2b8 \uc2dc\uc791(\ub85c\uceec \uc0c8\ubcbd 5\uc2dc) \uc774\ud6c4 \uae30\ub85d\ub9cc \ubc18\ud658\ud569\ub2c8\ub2e4.",
+                "operationId": "listToday",
+                "parameters": [
+                    {
+                        "name": "now",
+                        "in": "query",
+                        "description": "\uae30\uc900 \uc2dc\uac01(ISO-8601+\uc624\ud504\uc14b)",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        },
+                        "example": "2026-06-01T14:30:00+09:00"
+                    },
+                    {
+                        "name": "tz",
+                        "in": "query",
+                        "description": "IANA \ud0c0\uc784\uc874",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "Asia/Seoul"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CaffeineRecordResponse"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Caffeine"
+                ],
+                "summary": "\uce74\ud398\uc778 \uae30\ub85d \ucd94\uac00",
+                "operationId": "create",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateCaffeineRecordRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CaffeineRecordResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/auth/signup": {
             "post": {
                 "tags": [
@@ -268,6 +744,76 @@
                 }
             }
         },
+        "/api/sleep/summary": {
+            "get": {
+                "tags": [
+                    "Sleep"
+                ],
+                "summary": "\uc218\uba74 \uc694\uc57d(\uc11c\ubc84 \ubcd1\ud569\u00b7\uacc4\uc0b0)",
+                "description": "date(\uc544\uce68 \uae30\uc900) \uc804\ub0a0 18:00~\ub2f9\uc77c 12:00 \uc708\ub3c4\uc6b0 \uc0d8\ud50c\uc744 \ubcd1\ud569\ud574 \ucd1d\uc218\uba74\u00b7\ud6a8\uc728\u00b7SOL\u00b7\ub2e8\uacc4\ubcc4 \uc2dc\uac04\uc744 \ubc18\ud658\ud569\ub2c8\ub2e4.",
+                "operationId": "summary",
+                "parameters": [
+                    {
+                        "name": "date",
+                        "in": "query",
+                        "description": "\ub300\uc0c1 \ub0a0\uc9dc(\uc544\uce68 \uae30\uc900)",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        },
+                        "example": "2026-06-01"
+                    },
+                    {
+                        "name": "tz",
+                        "in": "query",
+                        "description": "IANA \ud0c0\uc784\uc874",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "Asia/Seoul"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SleepSummaryResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/me": {
             "get": {
                 "tags": [
@@ -324,10 +870,506 @@
                     }
                 ]
             }
+        },
+        "/api/learning/observations": {
+            "get": {
+                "tags": [
+                    "Learning"
+                ],
+                "summary": "\ud559\uc2b5 \uad00\uce21 \uc774\ub825",
+                "description": "\ub0a0\uc9dc \uc624\ub984\ucc28\uc21c.",
+                "operationId": "observations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ObservationResponse"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/learning/dashboard": {
+            "get": {
+                "tags": [
+                    "Learning"
+                ],
+                "summary": "\ud559\uc2b5 \ub300\uc2dc\ubcf4\ub4dc(\uc11c\ubc84 \uacc4\uc0b0)",
+                "description": "\uad00\uce21 + \uc2e0\ub8b0\uad6c\uac04\u00b7\uc2e0\ub8b0\ub3c4\u00b7R\u00b2\u00b7RMSE\u00b7\ud788\uc2a4\ud1a0\uadf8\ub7a8.",
+                "operationId": "dashboard",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LearningDashboardResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/caffeine/today": {
+            "get": {
+                "tags": [
+                    "Caffeine"
+                ],
+                "summary": "\uc624\ub298\uc758 \uce74\ud398\uc778 \ud604\ud669(\uc11c\ubc84 \uacc4\uc0b0)",
+                "description": "settings \ub97c \uc77d\uc5b4 \uc794\ub958\ub7c9 \ucc28\ud2b8\u00b7\ud604\uc7ac/\ucde8\uce68 \uc794\ub7c9\u00b7\ub9c8\uac10\uc2dc\uac01\uc744 \ud55c \ubc88\uc5d0 \uacc4\uc0b0\ud574 \ubc18\ud658\ud569\ub2c8\ub2e4.",
+                "operationId": "today",
+                "parameters": [
+                    {
+                        "name": "now",
+                        "in": "query",
+                        "description": "\uae30\uc900 \uc2dc\uac01(ISO-8601+\uc624\ud504\uc14b)",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        },
+                        "example": "2026-06-01T14:30:00+09:00"
+                    },
+                    {
+                        "name": "tz",
+                        "in": "query",
+                        "description": "IANA \ud0c0\uc784\uc874",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "Asia/Seoul"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CaffeineTodayResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "\uc798\ubabb\ub41c \uc694\uccad \ud615\uc2dd \ub610\ub294 \uc785\ub825\uac12 \uac80\uc99d \uc2e4\ud328 (code: MALFORMED_JSON, VALIDATION_FAILED)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "\uc11c\ubc84 \ub0b4\ubd80 \uc624\ub958 (code: INTERNAL_ERROR)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
         }
     },
     "components": {
         "schemas": {
+            "UpdateSettingsRequest": {
+                "type": "object",
+                "description": "\uc124\uc815 \uac31\uc2e0 \uc694\uccad",
+                "properties": {
+                    "halfLife": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uc2ac\ub77c\uc774\ub354 \ubc18\uac10\uae30(h). \ubcc0\uacbd \uc2dc \ud559\uc2b5 prior \ub9ac\uc14b",
+                        "example": 5.0,
+                        "maximum": 7.0,
+                        "minimum": 3.0
+                    },
+                    "condition": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\uac74\uac15 \uc0c1\ud0dc rawValue(0~3)",
+                        "example": 0,
+                        "maximum": 3,
+                        "minimum": 0
+                    },
+                    "bedtimeHour": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\ucde8\uce68 \uc2dc(0~23)",
+                        "example": 23,
+                        "maximum": 23,
+                        "minimum": 0
+                    },
+                    "bedtimeMinute": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\ucde8\uce68 \ubd84(0~59)",
+                        "example": 0,
+                        "maximum": 59,
+                        "minimum": 0
+                    },
+                    "referenceDoseMg": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\ub9c8\uac10\uc2dc\uac01 \uae30\uc900 \uc6a9\ub7c9(mg)",
+                        "example": 75,
+                        "maximum": 1000,
+                        "minimum": 1
+                    },
+                    "isLearningEnabled": {
+                        "type": "boolean",
+                        "description": "\uc790\ub3d9 \ud559\uc2b5 ON/OFF",
+                        "example": true
+                    },
+                    "learnedMean": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "[\uc120\ud0dd] \ud559\uc2b5\uac12 \uc2dc\ub4dc \u2014 \uc0ac\ud6c4 \ud3c9\uade0(h)",
+                        "example": 5.2
+                    },
+                    "learnedVariance": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "[\uc120\ud0dd] \ud559\uc2b5\uac12 \uc2dc\ub4dc \u2014 \uc0ac\ud6c4 \ubd84\uc0b0(h\u00b2)",
+                        "example": 1.8
+                    },
+                    "lastLearnedDate": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "[\uc120\ud0dd] \ud559\uc2b5\uac12 \uc2dc\ub4dc \u2014 \ub9c8\uc9c0\ub9c9 \ud559\uc2b5 \ub0a0\uc9dc"
+                    }
+                },
+                "required": [
+                    "bedtimeHour",
+                    "bedtimeMinute",
+                    "condition",
+                    "halfLife",
+                    "isLearningEnabled",
+                    "referenceDoseMg"
+                ]
+            },
+            "SettingsResponse": {
+                "type": "object",
+                "description": "\uc720\uc800 \uc124\uc815 + \ud559\uc2b5 \uc0c1\ud0dc",
+                "properties": {
+                    "halfLife": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uc2ac\ub77c\uc774\ub354 \ubc18\uac10\uae30(h, base)",
+                        "example": 5.0
+                    },
+                    "condition": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\uac74\uac15 \uc0c1\ud0dc rawValue (0=\uc5c6\uc74c,1=\ud761\uc5f0,2=\uacbd\uad6c\ud53c\uc784\uc57d,3=\uc784\uc2e0)",
+                        "example": 0
+                    },
+                    "bedtimeHour": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\ucde8\uce68 \uc2dc(0~23)",
+                        "example": 23
+                    },
+                    "bedtimeMinute": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\ucde8\uce68 \ubd84(0~59)",
+                        "example": 0
+                    },
+                    "referenceDoseMg": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\ub9c8\uac10\uc2dc\uac01 \uacc4\uc0b0 \uae30\uc900 \uc6a9\ub7c9(mg)",
+                        "example": 75
+                    },
+                    "isLearningEnabled": {
+                        "type": "boolean",
+                        "description": "\uc790\ub3d9 \ud559\uc2b5 ON/OFF",
+                        "example": true
+                    },
+                    "learnedMean": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\ud559\uc2b5\ub41c \uc0ac\ud6c4 \ud3c9\uade0(h, base)",
+                        "example": 5.0
+                    },
+                    "learnedVariance": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\ud559\uc2b5\ub41c \uc0ac\ud6c4 \ubd84\uc0b0(h\u00b2)",
+                        "example": 2.25
+                    },
+                    "lastLearnedDate": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "\ub9c8\uc9c0\ub9c9 \ud559\uc2b5 \ub0a0\uc9dc(\uc5c6\uc73c\uba74 null)",
+                        "example": "2026-05-30"
+                    },
+                    "inferredBaseHalfLife": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "[\ud30c\uc0dd] \ud559\uc2b5/\uc2ac\ub77c\uc774\ub354\ub85c \uacb0\uc815\ub41c base \ubc18\uac10\uae30(h)",
+                        "example": 5.0
+                    },
+                    "effectiveHalfLifeHours": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "[\ud30c\uc0dd] condition \uc801\uc6a9\ub41c \uc2e4\uc81c \ubc18\uac10\uae30(h)",
+                        "example": 5.0
+                    }
+                }
+            },
+            "UpdateCaffeineRecordRequest": {
+                "type": "object",
+                "description": "\uce74\ud398\uc778 \uae30\ub85d \uc218\uc815 \uc694\uccad",
+                "properties": {
+                    "amount": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\uce74\ud398\uc778 \ud568\ub7c9(mg)",
+                        "example": 150,
+                        "maximum": 10000,
+                        "minimum": 1
+                    },
+                    "drinkName": {
+                        "type": "string",
+                        "description": "\uc74c\ub8cc\uba85",
+                        "example": "\uc544\uba54\ub9ac\uce74\ub178",
+                        "maxLength": 100,
+                        "minLength": 0
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\uc12d\ucde8 \uc2dc\uac01(ISO-8601 + \uc624\ud504\uc14b)",
+                        "example": "2026-06-01T14:30:00+09:00"
+                    }
+                },
+                "required": [
+                    "amount",
+                    "timestamp"
+                ]
+            },
+            "CaffeineRecordResponse": {
+                "type": "object",
+                "description": "\uce74\ud398\uc778 \uae30\ub85d",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "\uae30\ub85d ID",
+                        "example": 1
+                    },
+                    "amount": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\uce74\ud398\uc778 \ud568\ub7c9(mg)",
+                        "example": 150
+                    },
+                    "drinkName": {
+                        "type": "string",
+                        "description": "\uc74c\ub8cc\uba85",
+                        "example": "\uc544\uba54\ub9ac\uce74\ub178"
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\uc12d\ucde8 \uc2dc\uac01(UTC)",
+                        "example": "2026-06-01T05:30:00Z"
+                    }
+                }
+            },
+            "SampleItem": {
+                "type": "object",
+                "description": "\uc218\uba74 \uc0d8\ud50c \ud55c \uac74",
+                "properties": {
+                    "clientUuid": {
+                        "type": "string",
+                        "description": "\ud074\ub77c\uc774\uc5b8\ud2b8 \uc0dd\uc131 \uba71\ub4f1 \ud0a4",
+                        "example": "B1F1...",
+                        "maxLength": 64,
+                        "minLength": 0
+                    },
+                    "start": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\uc2dc\uc791 \uc2dc\uac01(ISO-8601+\uc624\ud504\uc14b)",
+                        "example": "2026-05-31T23:10:00+09:00"
+                    },
+                    "end": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\uc885\ub8cc \uc2dc\uac01(ISO-8601+\uc624\ud504\uc14b)",
+                        "example": "2026-05-31T23:40:00+09:00"
+                    },
+                    "hkValue": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "HK rawValue(0=inBed,1=unspecified,2=awake,3=core,4=deep,5=rem)",
+                        "example": 3,
+                        "maximum": 5,
+                        "minimum": 0
+                    }
+                },
+                "required": [
+                    "end",
+                    "hkValue",
+                    "start"
+                ]
+            },
+            "UploadSleepSamplesRequest": {
+                "type": "object",
+                "description": "HealthKit \uc6d0\uc2dc \uc218\uba74 \uc0d8\ud50c \uc5c5\ub85c\ub4dc(\ubc30\uce58, client_uuid \uba71\ub4f1)",
+                "properties": {
+                    "samples": {
+                        "type": "array",
+                        "description": "\uc218\uba74 \uc0d8\ud50c \ubaa9\ub85d",
+                        "items": {
+                            "$ref": "#/components/schemas/SampleItem"
+                        },
+                        "minItems": 1
+                    }
+                }
+            },
+            "UploadSleepSamplesResponse": {
+                "type": "object",
+                "description": "\uc218\uba74 \uc0d8\ud50c \uc5c5\ub85c\ub4dc \uacb0\uacfc",
+                "properties": {
+                    "received": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\uc218\uc2e0\ud55c \uc0d8\ud50c \uc218",
+                        "example": 120
+                    },
+                    "inserted": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\uc0c8\ub85c \uc800\uc7a5\ub41c \uc0d8\ud50c \uc218(\uba71\ub4f1 \uc911\ubcf5 \uc81c\uc678)",
+                        "example": 118
+                    }
+                }
+            },
+            "LearningRunResponse": {
+                "type": "object",
+                "description": "\ud559\uc2b5 \uc2e4\ud589 \uacb0\uacfc",
+                "properties": {
+                    "updatedCount": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\uc774\ubc88\uc5d0 \uc0c8\ub85c \ud559\uc2b5\ub41c \uad00\uce21 \uc218",
+                        "example": 1
+                    },
+                    "skipReason": {
+                        "type": "string",
+                        "description": "\uac74\ub108\ub6f4 \uc0ac\uc720 \ucf54\ub4dc(\uc5c6\uc73c\uba74 null)",
+                        "example": "ALREADY_LEARNED"
+                    },
+                    "skipMessage": {
+                        "type": "string",
+                        "description": "\uac74\ub108\ub6f4 \uc0ac\uc720 \uba54\uc2dc\uc9c0(\uc5c6\uc73c\uba74 null)"
+                    }
+                }
+            },
+            "CreateCaffeineRecordRequest": {
+                "type": "object",
+                "description": "\uce74\ud398\uc778 \uae30\ub85d \uc0dd\uc131 \uc694\uccad",
+                "properties": {
+                    "amount": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\uce74\ud398\uc778 \ud568\ub7c9(mg)",
+                        "example": 150,
+                        "maximum": 10000,
+                        "minimum": 1
+                    },
+                    "drinkName": {
+                        "type": "string",
+                        "description": "\uc74c\ub8cc\uba85",
+                        "example": "\uc544\uba54\ub9ac\uce74\ub178",
+                        "maxLength": 100,
+                        "minLength": 0
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\uc12d\ucde8 \uc2dc\uac01(ISO-8601 + \uc624\ud504\uc14b)",
+                        "example": "2026-06-01T14:30:00+09:00"
+                    }
+                },
+                "required": [
+                    "amount",
+                    "timestamp"
+                ]
+            },
             "SignupRequest": {
                 "type": "object",
                 "description": "\ud68c\uc6d0\uac00\uc785 \uc694\uccad",
@@ -499,12 +1541,104 @@
                     }
                 }
             },
+            "RecordItem": {
+                "type": "object",
+                "description": "\uc218\uba74 \uad6c\uac04",
+                "properties": {
+                    "start": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\uc2dc\uc791(UTC)"
+                    },
+                    "end": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\uc885\ub8cc(UTC)"
+                    },
+                    "hkValue": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "HK rawValue"
+                    }
+                }
+            },
+            "SleepSummaryResponse": {
+                "type": "object",
+                "description": "\uc218\uba74 \uc694\uc57d(\uc11c\ubc84 \ubcd1\ud569\u00b7\uacc4\uc0b0)",
+                "properties": {
+                    "date": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "\ub300\uc0c1 \ub0a0\uc9dc(\uc544\uce68 \uae30\uc900)"
+                    },
+                    "hasData": {
+                        "type": "boolean",
+                        "description": "\uc218\uba74 \ub370\uc774\ud130 \uc874\uc7ac \uc5ec\ubd80"
+                    },
+                    "bedtimeStart": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\ucde8\uce68 \uc2dc\uc791(\ucd5c\ucd08 inBed, UTC, \uc5c6\uc73c\uba74 null)"
+                    },
+                    "records": {
+                        "type": "array",
+                        "description": "\ubcd1\ud569\ub41c \uc218\uba74 \uad6c\uac04",
+                        "items": {
+                            "$ref": "#/components/schemas/RecordItem"
+                        }
+                    },
+                    "totalSleepSeconds": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\ucd1d \uc218\uba74 \uc2dc\uac04(\ucd08)"
+                    },
+                    "timeInBedSeconds": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uce68\ub300 \uc2dc\uac04(\ucd08)"
+                    },
+                    "sleepEfficiency": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uc218\uba74 \ud6a8\uc728(0~1)"
+                    },
+                    "sleepOnsetLatencySeconds": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uc218\uba74 \uc7a0\ubcf5\uae30(\ucd08, \uc5c6\uc73c\uba74 null)"
+                    },
+                    "stageBreakdown": {
+                        "type": "array",
+                        "description": "\ub2e8\uacc4\ubcc4 \uc2dc\uac04",
+                        "items": {
+                            "$ref": "#/components/schemas/StageItem"
+                        }
+                    }
+                }
+            },
+            "StageItem": {
+                "type": "object",
+                "description": "\ub2e8\uacc4\ubcc4 \uc2dc\uac04",
+                "properties": {
+                    "hkValue": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "HK rawValue"
+                    },
+                    "durationSeconds": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uc2dc\uac04(\ucd08)"
+                    }
+                }
+            },
             "MeResponse": {
                 "type": "object",
                 "description": "\ud604\uc7ac \uc0ac\uc6a9\uc790 \uc815\ubcf4",
                 "properties": {
                     "userId": {
-                        "type": "string",
+                        "type": "integer",
+                        "format": "int64",
                         "description": "\uc0ac\uc6a9\uc790 ID",
                         "example": 1
                     },
@@ -512,6 +1646,285 @@
                         "type": "string",
                         "description": "\uc0ac\uc6a9\uc790 \uc774\uba54\uc77c",
                         "example": "user@example.com"
+                    }
+                }
+            },
+            "ObservationResponse": {
+                "type": "object",
+                "description": "\ubca0\uc774\uc9c0\uc548 \ud559\uc2b5 \uad00\uce21 1\uac74",
+                "properties": {
+                    "date": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "\uad00\uce21 \ub0a0\uc9dc(\uc544\uce68 \uae30\uc900)"
+                    },
+                    "predictedResidualAtBedtime": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\ucde8\uce68 \uc2dc \uc608\uc0c1 \uce74\ud398\uc778 \uc794\ub7c9(mg)"
+                    },
+                    "observedSolMinutes": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uce21\uc815\ub41c \uc218\uba74 \uc7a0\ubcf5\uae30(\ubd84)"
+                    },
+                    "priorMean": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uac31\uc2e0 \uc804 prior \ud3c9\uade0(h)"
+                    },
+                    "posteriorMean": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uac31\uc2e0 \ud6c4 posterior \ud3c9\uade0(h)"
+                    },
+                    "posteriorVariance": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uac31\uc2e0 \ud6c4 posterior \ubd84\uc0b0(h\u00b2)"
+                    },
+                    "conditionMultiplier": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uac74\uac15\uc0c1\ud0dc multiplier"
+                    }
+                }
+            },
+            "Calibration": {
+                "type": "object",
+                "description": "calibration: \uc608\uce21 SOL vs \uad00\uce21 SOL",
+                "properties": {
+                    "points": {
+                        "type": "array",
+                        "description": "\uc0b0\uc810\ub3c4 \uc810",
+                        "items": {
+                            "$ref": "#/components/schemas/PointItem"
+                        }
+                    },
+                    "rSquared": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "R\u00b2(N<3 \ub610\ub294 \ubd84\uc0b00\uc774\uba74 null)"
+                    },
+                    "rmse": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "RMSE(\ubd84)"
+                    },
+                    "domainLower": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\ucd95 \ub3c4\uba54\uc778 \ud558\ud55c"
+                    },
+                    "domainUpper": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\ucd95 \ub3c4\uba54\uc778 \uc0c1\ud55c"
+                    }
+                }
+            },
+            "HistogramBinItem": {
+                "type": "object",
+                "properties": {
+                    "lower": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "upper": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "count": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            },
+            "LatestEstimate": {
+                "type": "object",
+                "description": "\ucd5c\uc2e0 \ucd94\uc815",
+                "properties": {
+                    "posteriorMean": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uc0ac\ud6c4 \ud3c9\uade0(h)"
+                    },
+                    "posteriorVariance": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uc0ac\ud6c4 \ubd84\uc0b0(h\u00b2)"
+                    },
+                    "ciLower": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "95% CI \ud558\ud55c(h)"
+                    },
+                    "ciUpper": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "95% CI \uc0c1\ud55c(h)"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uc2e0\ub8b0\ub3c4(0~1)"
+                    }
+                }
+            },
+            "LearningDashboardResponse": {
+                "type": "object",
+                "description": "\ud559\uc2b5 \ub300\uc2dc\ubcf4\ub4dc(\uc11c\ubc84 \uacc4\uc0b0)",
+                "properties": {
+                    "count": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\uad00\uce21 \uc218"
+                    },
+                    "latest": {
+                        "$ref": "#/components/schemas/LatestEstimate",
+                        "description": "\ucd5c\uc2e0 \ucd94\uc815(count=0\uc774\uba74 null)"
+                    },
+                    "observations": {
+                        "type": "array",
+                        "description": "\uad00\uce21 \uc774\ub825(\ub0a0\uc9dc \uc624\ub984\ucc28\uc21c)",
+                        "items": {
+                            "$ref": "#/components/schemas/ObservationResponse"
+                        }
+                    },
+                    "calibration": {
+                        "$ref": "#/components/schemas/Calibration",
+                        "description": "\ubaa8\ub378 \uc815\ud655\ub3c4(calibration)"
+                    },
+                    "residualHistogram": {
+                        "type": "array",
+                        "description": "\ucde8\uce68 \uc794\ub7c9 \ud788\uc2a4\ud1a0\uadf8\ub7a8",
+                        "items": {
+                            "$ref": "#/components/schemas/HistogramBinItem"
+                        }
+                    },
+                    "solHistogram": {
+                        "type": "array",
+                        "description": "\uce21\uc815 SOL \ud788\uc2a4\ud1a0\uadf8\ub7a8",
+                        "items": {
+                            "$ref": "#/components/schemas/HistogramBinItem"
+                        }
+                    }
+                }
+            },
+            "PointItem": {
+                "type": "object",
+                "properties": {
+                    "predicted": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "observed": {
+                        "type": "number",
+                        "format": "double"
+                    }
+                }
+            },
+            "CaffeineTodayResponse": {
+                "type": "object",
+                "description": "\uc624\ub298\uc758 \uce74\ud398\uc778 \ud604\ud669(\uc11c\ubc84 \uacc4\uc0b0)",
+                "properties": {
+                    "now": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\uacc4\uc0b0 \uae30\uc900 \uc2dc\uac01(\uc5d0\ucf54, UTC)"
+                    },
+                    "bedtime": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\ub2e4\uc74c \ucde8\uce68 \uc2dc\uac01(UTC)"
+                    },
+                    "records": {
+                        "type": "array",
+                        "description": "\uc624\ub298 \uae30\ub85d(\ucc28\ud2b8 \uc2dc\uc791 5\uc2dc \uc774\ud6c4)",
+                        "items": {
+                            "$ref": "#/components/schemas/CaffeineRecordResponse"
+                        }
+                    },
+                    "todayTotal": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\uc624\ub298 \ucd1d \uc12d\ucde8\ub7c9(mg)",
+                        "example": 300
+                    },
+                    "overDailyLimit": {
+                        "type": "boolean",
+                        "description": "\uc77c\uc77c \uad8c\uc7a5\ub7c9(400mg) \ucd08\uacfc \uc5ec\ubd80"
+                    },
+                    "chart": {
+                        "type": "array",
+                        "description": "15\ubd84 \uac04\uaca9 \uc794\ub958\ub7c9 \uc2dc\uacc4\uc5f4",
+                        "items": {
+                            "$ref": "#/components/schemas/DataPointResponse"
+                        }
+                    },
+                    "currentResidual": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\ud604\uc7ac \uc794\ub958\ub7c9(mg)",
+                        "example": 120.5
+                    },
+                    "predictedAtBedtime": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\ucde8\uce68 \uc2dc \uc608\uc0c1 \uc794\ub958\ub7c9(mg)",
+                        "example": 20.3
+                    },
+                    "cutoff": {
+                        "$ref": "#/components/schemas/CutoffResponse",
+                        "description": "\ub9c8\uac10\uc2dc\uac01 \uacc4\uc0b0 \uacb0\uacfc"
+                    },
+                    "effectiveHalfLifeHours": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uacc4\uc0b0\uc5d0 \uc0ac\uc6a9\ub41c \uc2e4\uc81c \ubc18\uac10\uae30(h)",
+                        "example": 5.0
+                    },
+                    "referenceDoseMg": {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "\ub9c8\uac10\uc2dc\uac01 \uae30\uc900 \uc6a9\ub7c9(mg)",
+                        "example": 75
+                    }
+                }
+            },
+            "CutoffResponse": {
+                "type": "object",
+                "description": "\ub9c8\uac10\uc2dc\uac01 \uacb0\uacfc. status: SAFE_ANYTIME(\uc5b8\uc81c\ub098 \uac00\ub2a5) / CUTOFF(cutoff \uae4c\uc9c0) / ALREADY_EXCEEDED(\uc774\ubbf8 \ucd08\uacfc)",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "SAFE_ANYTIME | CUTOFF | ALREADY_EXCEEDED"
+                    },
+                    "cutoff": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\ub9c8\uac10 \uc2dc\uac01(status=CUTOFF \uc77c \ub54c, UTC)"
+                    },
+                    "existingAtBedtime": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\ucde8\uce68 \uc2dc \uc794\ub7c9(status=ALREADY_EXCEEDED \uc77c \ub54c, mg)"
+                    }
+                }
+            },
+            "DataPointResponse": {
+                "type": "object",
+                "description": "\uc794\ub958\ub7c9 \uc2dc\uacc4\uc5f4 \uc810",
+                "properties": {
+                    "time": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "\uc2dc\uac01(UTC)"
+                    },
+                    "concentrationMg": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "\uc794\ub958\ub7c9(mg)"
                     }
                 }
             }

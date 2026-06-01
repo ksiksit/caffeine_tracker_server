@@ -1,6 +1,19 @@
 # Caffeine Tracker Server
 
-카페인 섭취량을 기록·조회하는 모바일/웹 애플리케이션의 백엔드 REST API 서버입니다. 졸업 작품(캡스톤 디자인) 프로젝트로 진행 중입니다.
+카페인 관리 앱의 백엔드 REST API 서버입니다. 졸업 작품(캡스톤 디자인) 프로젝트입니다.
+
+> **이 프로젝트는 iOS 앱 + Spring 서버로 구성된 풀스택입니다.**
+> - iOS 앱: [`../captest1`](../captest1) (SwiftUI · HealthKit)
+> - 서버: 이 레포 (Spring Boot · MySQL)
+>
+> **thin-client 구조** — 앱은 사용자 입력을 전송하고, **서버가 약동학·수면 병합·베이지안 학습을 연산·저장**합니다.
+> 앱은 서버가 계산한 결과를 표시만 합니다.
+>
+> ```
+>   iOS 앱(captest1)                 이 서버(server)
+>   기록 입력·표시   ── REST(JWT) ──▶   약동학·수면·학습 연산 ──▶ MySQL
+>   HealthKit 읽기  ── 원시샘플 업로드 ─▶   수면 병합·SOL·학습
+> ```
 
 ## 기술 스택
 
@@ -81,11 +94,33 @@ DB_URL=jdbc:mysql://localhost:3306/caffeine_tracker?serverTimezone=UTC&character
 
 ## API 엔드포인트
 
+전체 스펙은 서버 기동 후 `http://localhost:8080/swagger-ui.html` 참조.
+
+**인증**
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
 | `POST` | `/api/auth/signup` | 회원가입 | 불필요 |
 | `POST` | `/api/auth/login` | 로그인 (JWT 발급) | 불필요 |
-| `GET`  | `/api/me`          | 내 정보 조회 | Bearer 토큰 필수 |
+| `POST` | `/api/auth/refresh` | 토큰 갱신(로테이션) | 불필요 |
+| `POST` | `/api/auth/logout` | 로그아웃 | Bearer |
+| `GET`  | `/api/me` | 내 정보 조회 | Bearer |
+
+**설정 · 카페인** (전부 Bearer)
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| `GET`/`PUT` | `/api/settings` | 설정·학습 상태 조회/갱신(없으면 기본값 생성) |
+| `POST`/`PUT`/`DELETE` | `/api/caffeine-records[/{id}]` | 카페인 기록 CRUD |
+| `GET` | `/api/caffeine/today?now=&tz=` | **서버 계산**: 잔류량 차트·현재/취침 잔량·마감시각 |
+
+**수면 · 학습** (전부 Bearer)
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| `POST` | `/api/sleep/samples` | HealthKit 원시 수면 샘플 업로드(client_uuid 멱등) |
+| `GET` | `/api/sleep/summary?date=&tz=` | **서버 계산**: 병합·총수면·효율·SOL·단계별 시간 |
+| `POST` | `/api/learning/run?tz=` | **서버 계산**: 미학습 night 베이지안 배치 학습 |
+| `GET` | `/api/learning/observations` · `/api/learning/dashboard` | 관측 이력 · 대시보드 통계(CI·R²·RMSE·히스토그램) |
+
+> 연산 엔드포인트는 기기 로컬 타임존 재현을 위해 `tz`(IANA, 예 `Asia/Seoul`)와 필요 시 `now`(ISO-8601+오프셋)를 받는다.
 
 ### 사용 예시
 
@@ -121,9 +156,18 @@ curl -X POST http://localhost:8080/api/auth/login \
 
 ```
 src/main/java/com/jongbeom/server/
-├── auth/           # 회원가입, 로그인, JWT 발급
+├── auth/           # 회원가입, 로그인, JWT 발급, refresh 토큰
 ├── user/           # User 엔티티 및 사용자 정보 조회
-├── config/         # SecurityConfig, JwtConfig
+├── settings/       # 유저 설정 + 학습 상태 (연산 입력값)
+├── caffeine/       # 카페인 기록 CRUD + 잔류량/마감시각 계산
+├── sleep/          # 수면 원시 샘플 업로드 + 병합/요약
+├── learning/       # 베이지안 반감기 학습 + 대시보드
+├── calc/           # 순수 연산(iOS Swift 포팅): 약동학·수면병합·베이지안·타임존
+├── config/         # SecurityConfig, JwtConfig, ClockConfig
 ├── common/         # BaseTimeEntity, 전역 예외 처리
 └── ServerApplication.java
+
+src/main/resources/db/migration/   # Flyway V1(users)~V6(half_life_observations)
 ```
+
+> `calc/`의 도메인 수식은 iOS Swift에서 포팅했으며, Swift 단위테스트의 입력→기대값을 **골든 테스트**로 복제해 부동소수 정합을 검증한다.
