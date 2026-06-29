@@ -42,7 +42,7 @@ GRANT ALL PRIVILEGES ON caffeine_tracker.* TO 'caffeine'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-테이블 스키마는 애플리케이션 기동 시 Flyway가 `src/main/resources/db/migration/V1__init.sql`로 자동 생성합니다.
+테이블 스키마는 애플리케이션 기동 시 Flyway가 `src/main/resources/db/migration/`의 마이그레이션(V1~V6)을 순서대로 적용해 자동 생성합니다.
 
 ### 2. 환경변수 설정
 
