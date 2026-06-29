@@ -3,10 +3,10 @@ services:
     image: mysql:8.0
     container_name: caffeine-db
     environment:
-      MYSQL_ROOT_PASSWORD: localrootpw
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-localrootpw}
       MYSQL_DATABASE: caffeine_tracker
-      MYSQL_USER: caffeine
-      MYSQL_PASSWORD: localpw
+      MYSQL_USER: ${MYSQL_USER:-caffeine}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-localpw}
       TZ: Asia/Seoul
     ports:
       - "3306:3306"
@@ -16,7 +16,7 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-plocalrootpw"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p\"$$MYSQL_ROOT_PASSWORD\""]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -27,8 +27,8 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       DB_URL: jdbc:mysql://db:3306/caffeine_tracker?serverTimezone=UTC&characterEncoding=UTF-8&useUnicode=true&allowPublicKeyRetrieval=true&useSSL=false
-      DB_USERNAME: caffeine
-      DB_PASSWORD: localpw
+      DB_USERNAME: ${MYSQL_USER:-caffeine}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-localpw}
       JWT_SECRET: ${JWT_SECRET:-local-docker-development-secret-please-replace-in-production-32bytes}
     ports:
       - "8080:8080"

@@ -40,3 +40,11 @@ out/
 .env
 .env.*
 !.env.example
+
+### Spring local secrets (DB password / JWT secret) ###
+application-local.yaml
+src/main/resources/application-local.yaml
+
+### macOS / build artifacts ###
+.DS_Store
+*.tar
