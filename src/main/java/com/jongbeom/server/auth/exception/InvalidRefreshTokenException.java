@@ -1,7 +1,11 @@
 package com.jongbeom.server.auth.exception;
 
-public class InvalidRefreshTokenException extends RuntimeException {
+import com.jongbeom.server.common.error.BusinessException;
+import com.jongbeom.server.common.error.ErrorCode;
+
+/** 리프레시 토큰 미존재·만료·회수됨. → 401 {@link ErrorCode#INVALID_REFRESH_TOKEN}. */
+public class InvalidRefreshTokenException extends BusinessException {
     public InvalidRefreshTokenException() {
-        super("RefreshToken 이 유효하지 않습니다.");
+        super(ErrorCode.INVALID_REFRESH_TOKEN);
     }
 }

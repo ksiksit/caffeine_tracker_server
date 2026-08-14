@@ -1,7 +1,11 @@
 package com.jongbeom.server.auth.exception;
 
-public class InvalidCredentialsException extends RuntimeException {
+import com.jongbeom.server.common.error.BusinessException;
+import com.jongbeom.server.common.error.ErrorCode;
+
+/** 로그인 이메일/비밀번호 불일치. → 401 {@link ErrorCode#INVALID_CREDENTIALS}. */
+public class InvalidCredentialsException extends BusinessException {
     public InvalidCredentialsException() {
-        super("이메일 또는 비밀번호가 올바르지 않습니다.");
+        super(ErrorCode.INVALID_CREDENTIALS);
     }
 }

@@ -8,7 +8,7 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @Schema(description = "에러 응답 공통 포맷")
 public record ErrorResponse(
-        @Schema(description = "에러 코드 (EMAIL_ALREADY_EXISTS, INVALID_CREDENTIALS, INVALID_REFRESH_TOKEN, VALIDATION_FAILED, MALFORMED_JSON, INTERNAL_ERROR 중 하나)",
+        @Schema(description = "에러 코드 — ErrorCode enum 이름, 또는 프레임워크 발생 에러의 HTTP_{status}",
                 example = "INVALID_CREDENTIALS")
         String code,
 
@@ -18,19 +18,23 @@ public record ErrorResponse(
         @Schema(description = "필드별 검증 오류 목록 (VALIDATION_FAILED 일 때만 채워짐)")
         List<FieldError> fieldErrors,
 
-        @Schema(description = "에러 발생 시각 (ISO-8601 with offset)", example = "2026-05-02T10:30:00+09:00")
+        @Schema(description = "에러 발생 시각 (ISO-8601 with offset, 서버는 UTC)", example = "2026-05-02T10:30:00Z")
         OffsetDateTime timestamp
 ) {
     public static ErrorResponse of(ErrorCode code) {
-        return new ErrorResponse(code.name(), code.message(), null, OffsetDateTime.now());
+        return of(code, code.message(), null);
     }
 
     public static ErrorResponse of(ErrorCode code, String message) {
-        return new ErrorResponse(code.name(), message, null, OffsetDateTime.now());
+        return of(code, message, null);
     }
 
     public static ErrorResponse of(ErrorCode code, List<FieldError> fieldErrors) {
-        return new ErrorResponse(code.name(), code.message(), fieldErrors, OffsetDateTime.now());
+        return of(code, code.message(), fieldErrors);
+    }
+
+    private static ErrorResponse of(ErrorCode code, String message, List<FieldError> fieldErrors) {
+        return new ErrorResponse(code.name(), message, fieldErrors, OffsetDateTime.now());
     }
 
     @Schema(description = "필드별 검증 오류")
