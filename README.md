@@ -163,8 +163,8 @@ src/main/java/com/jongbeom/server/
 ├── sleep/          # 수면 원시 샘플 업로드 + 병합/요약
 ├── learning/       # 베이지안 반감기 학습 + 대시보드
 ├── calc/           # 순수 연산(iOS Swift 포팅): 약동학·수면병합·베이지안·타임존
-├── config/         # SecurityConfig, JwtConfig, ClockConfig
-├── common/         # BaseTimeEntity, 전역 예외 처리
+├── config/         # SecurityConfig, JwtConfig(+JwtProperties), ClockConfig, OpenApiConfig
+├── common/         # BaseTimeEntity, 전역 예외 처리(BusinessException·ErrorCode), 컨트롤러 공용 헬퍼
 └── ServerApplication.java
 
 src/main/resources/db/migration/   # Flyway V1(users)~V6(half_life_observations)

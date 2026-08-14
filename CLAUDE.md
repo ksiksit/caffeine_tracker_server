@@ -15,7 +15,9 @@
 ## 구조
 
 `com.jongbeom.server` — 도메인(feature)별 구성, 각 도메인 내부는 Controller→Service→Repository 3계층.
-`auth/`(+`auth/refresh/`), `user/`, `settings/`, `caffeine/`, `sleep/`, `learning/`, `calc/`(순수 연산), `config/`, `common/`(+`common/error/`). 상세 트리는 README 참조.
+`auth/`(+`auth/refresh/`), `user/`, `settings/`, `caffeine/`, `sleep/`, `learning/`, `calc/`(순수 연산), `config/`, `common/`(+`common/error/`, `common/web/`). 상세 트리는 README 참조.
+도메인 예외는 `common/error/BusinessException`(ErrorCode 보유) 상속 — 핸들러 등록 불필요.
+컨트롤러의 JWT userId 추출은 `common/web/CurrentUser.id(jwt)` 사용.
 
 ## 도메인 개요 (thin-client 서버)
 
@@ -63,7 +65,7 @@ iOS 앱의 도메인 연산을 서버로 이관 완료. 앱은 입력을 보내�
 
 ## 배포
 
-> 현재 방식: **수동 배포** (CI는 GHCR 이미지 push까지만 자동화). 마지막 갱신: 2026-06-01.
+> 현재 방식: **수동 배포** (CI는 GHCR 이미지 push까지만 자동화). 마지막 갱신: 2026-08-14.
 > "배포 준비 됐냐"는 질문은 **이 저장소(레포)의 배포 준비 상태만** 확인해 답한다.
 > 운영 서버(EC2)·운영 DB(RDS)는 사용자가 직접 준비·관리하는 외부 인프라이므로
 > 준비된 것으로 간주하고, 상태를 다시 검증하려 하지 말 것. 진행되면 체크리스트/날짜를 갱신할 것.
@@ -73,6 +75,6 @@ iOS 앱의 도메인 연산을 서버로 이관 완료. 앱은 입력을 보내�
 - **미완료**: HTTPS/리버스 프록시 · GHCR private 인증
 - **안 함(범위 외)**: CD 자동화 — 수동 배포 유지. 자동화 제안하지 말 것.
 
-수동 배포: 서버에서 `.env` 작성(`.env.example` 참고) →
-`docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d` →
-`curl localhost:8080/actuator/health` 로 `UP` 확인.
+수동 배포 절차는 `docs/운영-가이드.md` 참조 — **EC2에 인터넷이 없어 `docker compose pull` 불가**.
+PC에서 이미지 `docker save` → `scp` → EC2에서 `docker load` 후
+`docker compose -f docker-compose.prod.yml up -d` → `curl localhost:8080/actuator/health` 로 `UP` 확인.
