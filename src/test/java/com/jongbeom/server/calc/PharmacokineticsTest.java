@@ -120,8 +120,9 @@ class PharmacokineticsTest {
     void cutoff_computesTimeBeforeBedtime() {
         CutoffResult result = Pharmacokinetics.cutoffTime(List.of(), NOW, 75, 5.0, 50.0);
         assertThat(result.status()).isEqualTo(CutoffResult.Status.CUTOFF);
-        // hoursBeforeBedtime = ln(75/50)/(ln2/5) = 2.9248127 h
-        double expectedHoursBefore = Math.log(75.0 / 50.0) / (Math.log(2) / 5.0);
+        // 골든값: ln(75/50)/(ln2/5) = 2.9248125036 h — 프로덕션과 같은 수식으로 재계산하면
+        // 자기충족 단언이 되므로 리터럴로 고정한다.
+        double expectedHoursBefore = 2.9248125036057813;
         double actualHoursBefore = (NOW.toEpochMilli() - result.cutoff().toEpochMilli()) / 3_600_000.0;
         assertThat(actualHoursBefore).isCloseTo(expectedHoursBefore, within(0.001));
     }
