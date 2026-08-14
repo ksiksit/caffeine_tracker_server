@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.jongbeom.server.config.JwtProperties;
 import com.jongbeom.server.support.UserFixture;
-import com.jongbeom.server.user.User;
+import com.jongbeom.server.user.entity.User;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.nimbusds.jose.proc.SecurityContext;
 import java.nio.charset.StandardCharsets;

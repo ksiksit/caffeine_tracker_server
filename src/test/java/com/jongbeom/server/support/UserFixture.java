@@ -1,6 +1,6 @@
 package com.jongbeom.server.support;
 
-import com.jongbeom.server.user.User;
+import com.jongbeom.server.user.entity.User;
 import java.lang.reflect.Field;
 
 /** 단위 테스트용 User 픽스처. */

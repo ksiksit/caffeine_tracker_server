@@ -1,6 +1,6 @@
 package com.jongbeom.server.learning.dto;
 
-import com.jongbeom.server.learning.HalfLifeObservation;
+import com.jongbeom.server.learning.entity.HalfLifeObservation;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 

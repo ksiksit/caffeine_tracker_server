@@ -24,7 +24,8 @@ public enum LearningSkipReason {
         return message;
     }
 
-    static LearningSkipReason from(BedtimeExtractor.Gate gate) {
+    // public: 호출부(learning.service.LearningService)가 하위 패키지로 분리되면서 패키지 경계를 넘게 됨
+    public static LearningSkipReason from(BedtimeExtractor.Gate gate) {
         return switch (gate) {
             case SLEEP_TOO_SHORT -> SLEEP_TOO_SHORT;
             case MISSING_BEDTIME -> MISSING_BEDTIME;

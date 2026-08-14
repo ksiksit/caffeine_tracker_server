@@ -1,6 +1,6 @@
 package com.jongbeom.server.caffeine.dto;
 
-import com.jongbeom.server.caffeine.CaffeineRecord;
+import com.jongbeom.server.caffeine.entity.CaffeineRecord;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 

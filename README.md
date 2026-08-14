@@ -156,18 +156,23 @@ curl -X POST http://localhost:8080/api/auth/login \
 
 ```
 src/main/java/com/jongbeom/server/
-├── auth/           # 회원가입, 로그인, JWT 발급, refresh 토큰
-├── user/           # User 엔티티 및 사용자 정보 조회
+├── auth/           # 회원가입, 로그인, JWT 발급 (+refresh/ 리프레시 토큰 하위 모듈)
+├── user/           # 사용자 정보 조회
 ├── settings/       # 유저 설정 + 학습 상태 (연산 입력값)
-├── caffeine/       # 카페인 기록 CRUD + 잔류량/마감시각 계산
+├── caffeine/       # 카페인 기록 CRUD + 잔류량/마감시각 계산 — 레이어 구성 예시:
+│   ├── controller/ │ service/ │ repository/ │ entity/ │ dto/ │ exception/
 ├── sleep/          # 수면 원시 샘플 업로드 + 병합/요약
 ├── learning/       # 베이지안 반감기 학습 + 대시보드
-├── calc/           # 순수 연산(iOS Swift 포팅): 약동학·수면병합·베이지안·타임존
+├── calc/           # 순수 연산(iOS Swift 포팅): 약동학·수면병합·베이지안·타임존 — 레이어 없음
 ├── config/         # SecurityConfig, JwtConfig(+JwtProperties), ClockConfig, OpenApiConfig
 ├── common/         # BaseTimeEntity, 전역 예외 처리(BusinessException·ErrorCode), 컨트롤러 공용 헬퍼
 └── ServerApplication.java
 
 src/main/resources/db/migration/   # Flyway V1(users)~V6(half_life_observations)
 ```
+
+> 각 도메인 내부는 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/` 레이어 패키지로 구성한다.
+> 레이어가 아닌 도메인 컴포넌트(`auth/JwtTokenProvider`, `learning/LearningSkipReason` 등)와
+> 하위 기능 모듈(`auth/refresh/`)은 도메인 루트에 둔다.
 
 > `calc/`의 도메인 수식은 iOS Swift에서 포팅했으며, Swift 단위테스트의 입력→기대값을 **골든 테스트**로 복제해 부동소수 정합을 검증한다.

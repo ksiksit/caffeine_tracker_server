@@ -1,6 +1,6 @@
 package com.jongbeom.server.settings.dto;
 
-import com.jongbeom.server.settings.UserSettings;
+import com.jongbeom.server.settings.entity.UserSettings;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 

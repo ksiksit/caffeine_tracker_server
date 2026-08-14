@@ -1,7 +1,7 @@
 package com.jongbeom.server.auth;
 
 import com.jongbeom.server.config.JwtProperties;
-import com.jongbeom.server.user.User;
+import com.jongbeom.server.user.entity.User;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;

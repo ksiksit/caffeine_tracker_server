@@ -14,8 +14,11 @@
 
 ## 구조
 
-`com.jongbeom.server` — 도메인(feature)별 구성, 각 도메인 내부는 Controller→Service→Repository 3계층.
-`auth/`(+`auth/refresh/`), `user/`, `settings/`, `caffeine/`, `sleep/`, `learning/`, `calc/`(순수 연산), `config/`, `common/`(+`common/error/`, `common/web/`). 상세 트리는 README 참조.
+`com.jongbeom.server` — 도메인(feature)별 구성. 각 도메인 내부는 `controller/`·`service/`·`repository/`·
+`entity/`·`dto/`·`exception/` 레이어 하위 패키지로 배치한다. 레이어가 아닌 도메인 컴포넌트
+(`auth/JwtTokenProvider`, `learning/LearningSkipReason`)와 하위 기능 모듈(`auth/refresh/`)은 도메인 루트.
+도메인: `auth/`, `user/`, `settings/`, `caffeine/`, `sleep/`, `learning/`, `calc/`(순수 연산, 레이어 없음),
+`config/`, `common/`(+`common/error/`, `common/web/`). 상세 트리는 README 참조.
 도메인 예외는 `common/error/BusinessException`(ErrorCode 보유) 상속 — 핸들러 등록 불필요.
 컨트롤러의 JWT userId 추출은 `common/web/CurrentUser.id(jwt)` 사용.
 
@@ -33,8 +36,9 @@ iOS 앱의 도메인 연산을 서버로 이관 완료. 앱은 입력을 보내�
 인증 외에 settings·caffeine·sleep·learning 도메인이 구현되어 있다 — 새 작업은 대개 도메인 확장 또는 `calc` 수정이다.
 
 **새 도메인 추가 순서:**
-1. `com.jongbeom.server.<도메인>/` 패키지 생성 — Controller / Service / Repository / Entity /
-   `dto/` / `exception/` (기존 `auth/`, `user/` 패턴 그대로)
+1. `com.jongbeom.server.<도메인>/` 패키지 생성 — `controller/`·`service/`·`repository/`·`entity/`·
+   `dto/`·`exception/` 레이어 하위 패키지에 배치 (기존 `caffeine/`, `sleep/` 패턴 그대로).
+   테스트도 같은 패키지 구조로 미러링
 2. 새 엔드포인트 경로를 `config/SecurityConfig.java`의 `authorizeHttpRequests`에 등록
    (등록 안 하면 기본 `authenticated` 처리)
 3. DB 스키마는 `src/main/resources/db/migration/V{n}__{설명}.sql` Flyway 마이그레이션으로 추가

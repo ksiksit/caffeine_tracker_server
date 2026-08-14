@@ -1,6 +1,6 @@
 package com.jongbeom.server.calc;
 
-import com.jongbeom.server.settings.UserSettings;
+import com.jongbeom.server.settings.entity.UserSettings;
 import java.util.ArrayList;
 import java.util.List;
 
