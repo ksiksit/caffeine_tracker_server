@@ -21,9 +21,10 @@ public record TokenResponse(
         @Schema(description = "Refresh Token 유효 시간 (초)", example = "1209600")
         long refreshExpiresIn
 ) {
+    /** 파라미터 순서는 record 컴포넌트 순서와 동일하게 유지(호출부 오독 방지). */
     public static TokenResponse bearer(
-            String accessToken, long expiresIn,
-            String refreshToken, long refreshExpiresIn) {
+            String accessToken, String refreshToken,
+            long expiresIn, long refreshExpiresIn) {
         return new TokenResponse(accessToken, refreshToken, "Bearer", expiresIn, refreshExpiresIn);
     }
 }

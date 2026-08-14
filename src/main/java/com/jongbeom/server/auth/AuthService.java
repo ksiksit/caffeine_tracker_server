@@ -19,6 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** 회원가입·로그인·토큰 갱신·로그아웃. 토큰 발급은 JwtTokenProvider/RefreshTokenService에 위임. */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -45,21 +46,17 @@ public class AuthService {
 
     @Transactional
     public TokenResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.email())
-                .orElseThrow(() -> {
-                    log.info("로그인 실패(존재하지 않는 이메일) email={}", request.email());
-                    return new InvalidCredentialsException();
-                });
+        User user = findByEmailOrThrow(request.email());
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             log.info("로그인 실패(비밀번호 불일치) userId={}", user.getId());
             throw new InvalidCredentialsException();
         }
-        JwtTokenProvider.IssuedToken access = jwtTokenProvider.createAccessToken(user);
-        IssuedRefreshToken refresh = refreshTokenService.issue(user.getId());
+        JwtTokenProvider.IssuedToken accessToken = jwtTokenProvider.createAccessToken(user);
+        IssuedRefreshToken refreshToken = refreshTokenService.issue(user.getId());
         log.info("로그인 성공 userId={}", user.getId());
         return TokenResponse.bearer(
-                access.value(), access.expiresInSeconds(),
-                refresh.value(), refresh.expiresInSeconds());
+                accessToken.value(), refreshToken.value(),
+                accessToken.expiresInSeconds(), refreshToken.expiresInSeconds());
     }
 
     @Transactional
@@ -67,11 +64,19 @@ public class AuthService {
         RotationResult result = refreshTokenService.rotate(request.refreshToken());
         User user = userRepository.findById(result.userId())
                 .orElseThrow(InvalidRefreshTokenException::new);
-        JwtTokenProvider.IssuedToken access = jwtTokenProvider.createAccessToken(user);
+        JwtTokenProvider.IssuedToken accessToken = jwtTokenProvider.createAccessToken(user);
         log.info("토큰 회전 성공 userId={}", user.getId());
         return TokenResponse.bearer(
-                access.value(), access.expiresInSeconds(),
-                result.newToken().value(), result.newToken().expiresInSeconds());
+                accessToken.value(), result.newToken().value(),
+                accessToken.expiresInSeconds(), result.newToken().expiresInSeconds());
+    }
+
+    private User findByEmailOrThrow(String email) {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> {
+                    log.info("로그인 실패(존재하지 않는 이메일) email={}", email);
+                    return new InvalidCredentialsException();
+                });
     }
 
     @Transactional

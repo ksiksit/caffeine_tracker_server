@@ -11,10 +11,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** 리프레시 토큰 발급·회전·일괄 폐기. DB에는 SHA-256 해시만 저장한다(평문 미저장). */
 @Slf4j
 @Service
 public class RefreshTokenService {
 
+    /** 원문 토큰 난수 바이트 수. RefreshToken 의 tokenHash 컬럼 길이 64(SHA-256 hex)와는 별개 값이다. */
     private static final int RAW_TOKEN_BYTES = 64;
 
     private final RefreshTokenRepository repository;
@@ -23,6 +25,7 @@ public class RefreshTokenService {
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
 
+    // 프로덕션 생성자. 테스트는 아래 package-private 생성자로 고정 Clock 을 주입한다.
     @Autowired
     public RefreshTokenService(
             RefreshTokenRepository repository,
@@ -52,22 +55,27 @@ public class RefreshTokenService {
         return new IssuedRefreshToken(rawToken, jwtProperties.refreshExpiresInSeconds());
     }
 
+    /** 회전: 기존 토큰 검증·폐기 후 새 토큰 발급. 실패는 모두 INVALID_REFRESH_TOKEN 으로 수렴. */
     @Transactional
     public RotationResult rotate(String rawToken) {
-        String tokenHash = hasher.hash(rawToken);
-        RefreshToken found = repository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> {
-                    log.info("RefreshToken 회전 실패(존재하지 않음)");
-                    return new InvalidRefreshTokenException();
-                });
+        RefreshToken found = findByHashOrThrow(hasher.hash(rawToken));
         LocalDateTime now = LocalDateTime.now(clock);
         if (!found.isUsable(now)) {
             log.info("RefreshToken 회전 실패(만료 또는 폐기) tokenId={}", found.getId());
             throw new InvalidRefreshTokenException();
         }
         found.revoke(now);
+        // 같은 클래스의 @Transactional 자기호출 — 이미 트랜잭션 안이므로 프록시 미경유여도 의미 동일
         IssuedRefreshToken issued = issue(found.getUserId());
         return new RotationResult(found.getUserId(), issued);
+    }
+
+    private RefreshToken findByHashOrThrow(String tokenHash) {
+        return repository.findByTokenHash(tokenHash)
+                .orElseThrow(() -> {
+                    log.info("RefreshToken 회전 실패(존재하지 않음)");
+                    return new InvalidRefreshTokenException();
+                });
     }
 
     @Transactional
