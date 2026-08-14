@@ -3,10 +3,10 @@ package com.jongbeom.server.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.jongbeom.server.config.JwtProperties;
+import com.jongbeom.server.support.UserFixture;
 import com.jongbeom.server.user.User;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.nimbusds.jose.proc.SecurityContext;
-import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -44,21 +44,9 @@ class JwtTokenProviderTest {
         provider = new JwtTokenProvider(encoder, jwtProperties, clock);
     }
 
-    private static User userWithId(Long id) {
-        User user = User.create("a@b.com", "hashed", "테스터");
-        try {
-            Field idField = User.class.getDeclaredField("id");
-            idField.setAccessible(true);
-            idField.set(user, id);
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException(e);
-        }
-        return user;
-    }
-
     @Test
     void createAccessToken_은_iss_iat_exp_sub_email_roles_클레임을_정확히_담는다() {
-        User user = userWithId(7L);
+        User user = UserFixture.withId(7L);
 
         JwtTokenProvider.IssuedToken issued = provider.createAccessToken(user);
         Jwt jwt = decoder.decode(issued.value());
@@ -73,7 +61,7 @@ class JwtTokenProviderTest {
 
     @Test
     void createAccessToken_의_만료시각은_iat_더하기_expiresInSeconds다() {
-        User user = userWithId(7L);
+        User user = UserFixture.withId(7L);
 
         JwtTokenProvider.IssuedToken issued = provider.createAccessToken(user);
         Jwt jwt = decoder.decode(issued.value());
@@ -84,7 +72,7 @@ class JwtTokenProviderTest {
 
     @Test
     void createAccessToken_은_HS256_알고리즘으로_서명한다() {
-        User user = userWithId(7L);
+        User user = UserFixture.withId(7L);
 
         JwtTokenProvider.IssuedToken issued = provider.createAccessToken(user);
         Jwt jwt = decoder.decode(issued.value());

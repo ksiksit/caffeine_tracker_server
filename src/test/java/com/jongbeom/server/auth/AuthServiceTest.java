@@ -18,9 +18,9 @@ import com.jongbeom.server.auth.exception.InvalidRefreshTokenException;
 import com.jongbeom.server.auth.refresh.RefreshTokenService;
 import com.jongbeom.server.auth.refresh.RefreshTokenService.IssuedRefreshToken;
 import com.jongbeom.server.auth.refresh.RefreshTokenService.RotationResult;
+import com.jongbeom.server.support.UserFixture;
 import com.jongbeom.server.user.User;
 import com.jongbeom.server.user.UserRepository;
-import java.lang.reflect.Field;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,30 +44,13 @@ class AuthServiceTest {
     @InjectMocks
     AuthService authService;
 
-    private static User userWithId(Long id) {
-        User user = User.create("a@b.com", "hashed", "테스터");
-        try {
-            Field idField = User.class.getDeclaredField("id");
-            idField.setAccessible(true);
-            idField.set(user, id);
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException(e);
-        }
-        return user;
-    }
-
     @Test
     void signup_성공시_저장된_사용자_정보를_반환한다() {
         SignupRequest req = new SignupRequest("a@b.com", "password1!", "테스터");
         given(userRepository.existsByEmail("a@b.com")).willReturn(false);
         given(passwordEncoder.encode("password1!")).willReturn("hashed");
-        given(userRepository.save(any(User.class))).willAnswer(inv -> {
-            User u = inv.getArgument(0);
-            Field idField = User.class.getDeclaredField("id");
-            idField.setAccessible(true);
-            idField.set(u, 10L);
-            return u;
-        });
+        given(userRepository.save(any(User.class)))
+                .willAnswer(inv -> UserFixture.withId(inv.getArgument(0), 10L));
 
         SignupResponse response = authService.signup(req);
 
@@ -88,7 +71,7 @@ class AuthServiceTest {
 
     @Test
     void login_성공시_AccessToken과_RefreshToken을_모두_반환한다() {
-        User user = userWithId(7L);
+        User user = UserFixture.withId(7L);
         given(userRepository.findByEmail("a@b.com")).willReturn(Optional.of(user));
         given(passwordEncoder.matches("password1!", "hashed")).willReturn(true);
         given(jwtTokenProvider.createAccessToken(user))
@@ -116,7 +99,7 @@ class AuthServiceTest {
 
     @Test
     void login_비밀번호불일치이면_InvalidCredentialsException() {
-        User user = userWithId(7L);
+        User user = UserFixture.withId(7L);
         given(userRepository.findByEmail("a@b.com")).willReturn(Optional.of(user));
         given(passwordEncoder.matches("wrong", "hashed")).willReturn(false);
 
@@ -127,7 +110,7 @@ class AuthServiceTest {
 
     @Test
     void refresh_성공시_새_AccessToken과_새_RefreshToken을_반환한다() {
-        User user = userWithId(7L);
+        User user = UserFixture.withId(7L);
         given(refreshTokenService.rotate("old-refresh"))
                 .willReturn(new RotationResult(7L, new IssuedRefreshToken("new-refresh", 1209600)));
         given(userRepository.findById(7L)).willReturn(Optional.of(user));

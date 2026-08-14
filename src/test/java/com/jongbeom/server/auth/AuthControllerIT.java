@@ -7,47 +7,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jongbeom.server.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@ActiveProfiles("test")
-@Transactional
-class AuthControllerIT {
+/** auth 도메인 통합 테스트: 가입→로그인→me, 검증 실패, 토큰 회전·재사용 차단, 로그아웃. */
+class AuthControllerIT extends AbstractIntegrationTest {
 
-    @Autowired
-    MockMvc mockMvc;
-    @Autowired
-    ObjectMapper objectMapper;
-
-    private MvcResult signup(String email, String password, String nickname) throws Exception {
-        String body = String.format(
-                "{\"email\":\"%s\",\"password\":\"%s\",\"nickname\":\"%s\"}",
-                email, password, nickname);
-        return mockMvc.perform(post("/api/auth/signup")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isCreated())
-                .andReturn();
-    }
-
-    private JsonNode login(String email, String password) throws Exception {
-        String body = String.format("{\"email\":\"%s\",\"password\":\"%s\"}", email, password);
-        MvcResult result = mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isOk())
-                .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString());
+    private static String refreshTokenBody(String refreshToken) {
+        return """
+                {"refreshToken":"%s"}""".formatted(refreshToken);
     }
 
     @Test
@@ -76,7 +46,8 @@ class AuthControllerIT {
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"a@b.com\",\"password\":\"wrong-password\"}"))
+                        .content("""
+                                {"email":"a@b.com","password":"wrong-password"}"""))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
     }
@@ -85,7 +56,8 @@ class AuthControllerIT {
     void signup_빈이메일이면_400_VALIDATION_FAILED_fieldErrors_포함() throws Exception {
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"\",\"password\":\"password1!\",\"nickname\":\"테스터\"}"))
+                        .content("""
+                                {"email":"","password":"password1!","nickname":"테스터"}"""))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.fieldErrors").isArray());
@@ -99,7 +71,7 @@ class AuthControllerIT {
 
         MvcResult refreshResult = mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(String.format("{\"refreshToken\":\"%s\"}", oldRefresh)))
+                        .content(refreshTokenBody(oldRefresh)))
                 .andExpect(status().isOk())
                 .andReturn();
         JsonNode rotated = objectMapper.readTree(refreshResult.getResponse().getContentAsString());
@@ -110,7 +82,7 @@ class AuthControllerIT {
 
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(String.format("{\"refreshToken\":\"%s\"}", oldRefresh)))
+                        .content(refreshTokenBody(oldRefresh)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
     }
@@ -119,7 +91,7 @@ class AuthControllerIT {
     void refresh_존재하지않는토큰이면_401_INVALID_REFRESH_TOKEN() throws Exception {
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"non-existent-token\"}"))
+                        .content(refreshTokenBody("non-existent-token")))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
     }
@@ -134,12 +106,12 @@ class AuthControllerIT {
         mockMvc.perform(post("/api/auth/logout")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(String.format("{\"refreshToken\":\"%s\"}", refreshToken)))
+                        .content(refreshTokenBody(refreshToken)))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(String.format("{\"refreshToken\":\"%s\"}", refreshToken)))
+                        .content(refreshTokenBody(refreshToken)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
     }
@@ -148,7 +120,7 @@ class AuthControllerIT {
     void logout_인증없이_호출하면_401() throws Exception {
         mockMvc.perform(post("/api/auth/logout")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"any\"}"))
+                        .content(refreshTokenBody("any")))
                 .andExpect(status().isUnauthorized());
     }
 }
