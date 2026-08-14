@@ -1,5 +1,7 @@
 package com.jongbeom.server.learning;
 
+import com.jongbeom.server.common.web.CurrentUser;
+import com.jongbeom.server.common.web.TimeParamDocs;
 import com.jongbeom.server.learning.dto.LearningDashboardResponse;
 import com.jongbeom.server.learning.dto.LearningRunResponse;
 import com.jongbeom.server.learning.dto.ObservationResponse;
@@ -26,28 +28,31 @@ import org.springframework.web.bind.annotation.RestController;
 @SecurityRequirement(name = "bearerAuth")
 public class LearningController {
 
-    private final LearningService service;
+    private final LearningService learningService;
 
     @PostMapping("/run")
     @Operation(summary = "학습 실행", description = "최근 7일 중 미학습 night를 오래된 순으로 배치 학습합니다(순차 prior).")
     public ResponseEntity<LearningRunResponse> run(
             @AuthenticationPrincipal Jwt jwt,
-            @Parameter(description = "IANA 타임존", example = "Asia/Seoul") @RequestParam String tz) {
-        Long userId = Long.parseLong(jwt.getSubject());
-        return ResponseEntity.ok(service.run(userId, ZoneId.of(tz)));
+            @Parameter(description = TimeParamDocs.TZ_DESCRIPTION, example = TimeParamDocs.TZ_EXAMPLE)
+            @RequestParam String tz) {
+        Long userId = CurrentUser.id(jwt);
+        return ResponseEntity.ok(learningService.run(userId, ZoneId.of(tz)));
     }
+
+    // observations/dashboard 는 저장된 날짜를 그대로 반환하므로 tz 파라미터가 필요 없다 (run 만 달력 연산).
 
     @GetMapping("/observations")
     @Operation(summary = "학습 관측 이력", description = "날짜 오름차순.")
     public ResponseEntity<List<ObservationResponse>> observations(@AuthenticationPrincipal Jwt jwt) {
-        Long userId = Long.parseLong(jwt.getSubject());
-        return ResponseEntity.ok(service.observations(userId));
+        Long userId = CurrentUser.id(jwt);
+        return ResponseEntity.ok(learningService.observations(userId));
     }
 
     @GetMapping("/dashboard")
     @Operation(summary = "학습 대시보드(서버 계산)", description = "관측 + 신뢰구간·신뢰도·R²·RMSE·히스토그램.")
     public ResponseEntity<LearningDashboardResponse> dashboard(@AuthenticationPrincipal Jwt jwt) {
-        Long userId = Long.parseLong(jwt.getSubject());
-        return ResponseEntity.ok(service.dashboard(userId));
+        Long userId = CurrentUser.id(jwt);
+        return ResponseEntity.ok(learningService.dashboard(userId));
     }
 }

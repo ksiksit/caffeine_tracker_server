@@ -1,5 +1,6 @@
 package com.jongbeom.server.settings;
 
+import com.jongbeom.server.common.web.CurrentUser;
 import com.jongbeom.server.settings.dto.SettingsResponse;
 import com.jongbeom.server.settings.dto.UpdateSettingsRequest;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,13 +24,13 @@ import org.springframework.web.bind.annotation.RestController;
 @SecurityRequirement(name = "bearerAuth")
 public class SettingsController {
 
-    private final UserSettingsService service;
+    private final UserSettingsService userSettingsService;
 
     @GetMapping
     @Operation(summary = "내 설정 조회", description = "없으면 기본값으로 생성해 반환합니다.")
     public ResponseEntity<SettingsResponse> get(@AuthenticationPrincipal Jwt jwt) {
-        Long userId = Long.parseLong(jwt.getSubject());
-        return ResponseEntity.ok(SettingsResponse.from(service.getOrCreate(userId)));
+        Long userId = CurrentUser.id(jwt);
+        return ResponseEntity.ok(SettingsResponse.from(userSettingsService.getOrCreate(userId)));
     }
 
     @PutMapping
@@ -37,7 +38,7 @@ public class SettingsController {
     public ResponseEntity<SettingsResponse> update(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody UpdateSettingsRequest request) {
-        Long userId = Long.parseLong(jwt.getSubject());
-        return ResponseEntity.ok(SettingsResponse.from(service.update(userId, request)));
+        Long userId = CurrentUser.id(jwt);
+        return ResponseEntity.ok(SettingsResponse.from(userSettingsService.update(userId, request)));
     }
 }

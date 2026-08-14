@@ -1,5 +1,7 @@
 package com.jongbeom.server.sleep;
 
+import com.jongbeom.server.common.web.CurrentUser;
+import com.jongbeom.server.common.web.TimeParamDocs;
 import com.jongbeom.server.sleep.dto.SleepSummaryResponse;
 import com.jongbeom.server.sleep.dto.UploadSleepSamplesRequest;
 import com.jongbeom.server.sleep.dto.UploadSleepSamplesResponse;
@@ -29,15 +31,15 @@ import org.springframework.web.bind.annotation.RestController;
 @SecurityRequirement(name = "bearerAuth")
 public class SleepController {
 
-    private final SleepService service;
+    private final SleepService sleepService;
 
     @PostMapping("/samples")
     @Operation(summary = "수면 원시 샘플 업로드", description = "client_uuid 멱등. 기기에서 읽은 HealthKit 샘플을 배치 업로드합니다.")
     public ResponseEntity<UploadSleepSamplesResponse> upload(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody UploadSleepSamplesRequest request) {
-        Long userId = Long.parseLong(jwt.getSubject());
-        return ResponseEntity.ok(service.upload(userId, request));
+        Long userId = CurrentUser.id(jwt);
+        return ResponseEntity.ok(sleepService.upload(userId, request));
     }
 
     @GetMapping("/summary")
@@ -47,8 +49,9 @@ public class SleepController {
             @AuthenticationPrincipal Jwt jwt,
             @Parameter(description = "대상 날짜(아침 기준)", example = "2026-06-01")
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @Parameter(description = "IANA 타임존", example = "Asia/Seoul") @RequestParam String tz) {
-        Long userId = Long.parseLong(jwt.getSubject());
-        return ResponseEntity.ok(service.summary(userId, date, ZoneId.of(tz)));
+            @Parameter(description = TimeParamDocs.TZ_DESCRIPTION, example = TimeParamDocs.TZ_EXAMPLE)
+            @RequestParam String tz) {
+        Long userId = CurrentUser.id(jwt);
+        return ResponseEntity.ok(sleepService.summary(userId, date, ZoneId.of(tz)));
     }
 }

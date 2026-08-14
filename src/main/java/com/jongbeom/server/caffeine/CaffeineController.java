@@ -4,6 +4,8 @@ import com.jongbeom.server.caffeine.dto.CaffeineRecordResponse;
 import com.jongbeom.server.caffeine.dto.CaffeineTodayResponse;
 import com.jongbeom.server.caffeine.dto.CreateCaffeineRecordRequest;
 import com.jongbeom.server.caffeine.dto.UpdateCaffeineRecordRequest;
+import com.jongbeom.server.common.web.CurrentUser;
+import com.jongbeom.server.common.web.TimeParamDocs;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -28,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 카페인 기록 CRUD + 서버 계산 현황 API. {@code /caffeine-records}(CRUD)와 {@code /caffeine/today}(계산) 두 리소스를 다룬다. */
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -35,15 +38,15 @@ import org.springframework.web.bind.annotation.RestController;
 @SecurityRequirement(name = "bearerAuth")
 public class CaffeineController {
 
-    private final CaffeineService service;
+    private final CaffeineService caffeineService;
 
     @PostMapping("/caffeine-records")
     @Operation(summary = "카페인 기록 추가")
     public ResponseEntity<CaffeineRecordResponse> create(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateCaffeineRecordRequest request) {
-        Long userId = Long.parseLong(jwt.getSubject());
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(userId, request));
+        Long userId = CurrentUser.id(jwt);
+        return ResponseEntity.status(HttpStatus.CREATED).body(caffeineService.create(userId, request));
     }
 
     @PutMapping("/caffeine-records/{id}")
@@ -52,15 +55,15 @@ public class CaffeineController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable Long id,
             @Valid @RequestBody UpdateCaffeineRecordRequest request) {
-        Long userId = Long.parseLong(jwt.getSubject());
-        return ResponseEntity.ok(service.update(userId, id, request));
+        Long userId = CurrentUser.id(jwt);
+        return ResponseEntity.ok(caffeineService.update(userId, id, request));
     }
 
     @DeleteMapping("/caffeine-records/{id}")
     @Operation(summary = "카페인 기록 삭제")
     public ResponseEntity<Void> delete(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
-        Long userId = Long.parseLong(jwt.getSubject());
-        service.delete(userId, id);
+        Long userId = CurrentUser.id(jwt);
+        caffeineService.delete(userId, id);
         return ResponseEntity.noContent().build();
     }
 
@@ -68,11 +71,12 @@ public class CaffeineController {
     @Operation(summary = "오늘 카페인 기록 조회", description = "차트 시작(로컬 새벽 5시) 이후 기록만 반환합니다.")
     public ResponseEntity<List<CaffeineRecordResponse>> listToday(
             @AuthenticationPrincipal Jwt jwt,
-            @Parameter(description = "기준 시각(ISO-8601+오프셋)", example = "2026-06-01T14:30:00+09:00")
+            @Parameter(description = TimeParamDocs.NOW_DESCRIPTION, example = TimeParamDocs.NOW_EXAMPLE)
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime now,
-            @Parameter(description = "IANA 타임존", example = "Asia/Seoul") @RequestParam String tz) {
-        Long userId = Long.parseLong(jwt.getSubject());
-        return ResponseEntity.ok(service.listToday(userId, now.toInstant(), ZoneId.of(tz)));
+            @Parameter(description = TimeParamDocs.TZ_DESCRIPTION, example = TimeParamDocs.TZ_EXAMPLE)
+            @RequestParam String tz) {
+        Long userId = CurrentUser.id(jwt);
+        return ResponseEntity.ok(caffeineService.listToday(userId, now.toInstant(), ZoneId.of(tz)));
     }
 
     @GetMapping("/caffeine/today")
@@ -80,10 +84,11 @@ public class CaffeineController {
             description = "settings 를 읽어 잔류량 차트·현재/취침 잔량·마감시각을 한 번에 계산해 반환합니다.")
     public ResponseEntity<CaffeineTodayResponse> today(
             @AuthenticationPrincipal Jwt jwt,
-            @Parameter(description = "기준 시각(ISO-8601+오프셋)", example = "2026-06-01T14:30:00+09:00")
+            @Parameter(description = TimeParamDocs.NOW_DESCRIPTION, example = TimeParamDocs.NOW_EXAMPLE)
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime now,
-            @Parameter(description = "IANA 타임존", example = "Asia/Seoul") @RequestParam String tz) {
-        Long userId = Long.parseLong(jwt.getSubject());
-        return ResponseEntity.ok(service.today(userId, now.toInstant(), ZoneId.of(tz)));
+            @Parameter(description = TimeParamDocs.TZ_DESCRIPTION, example = TimeParamDocs.TZ_EXAMPLE)
+            @RequestParam String tz) {
+        Long userId = CurrentUser.id(jwt);
+        return ResponseEntity.ok(caffeineService.today(userId, now.toInstant(), ZoneId.of(tz)));
     }
 }

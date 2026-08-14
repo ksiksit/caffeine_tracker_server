@@ -7,6 +7,7 @@ import com.jongbeom.server.auth.dto.SignupRequest;
 import com.jongbeom.server.auth.dto.SignupResponse;
 import com.jongbeom.server.auth.dto.TokenResponse;
 import com.jongbeom.server.common.error.ErrorResponse;
+import com.jongbeom.server.common.web.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -88,9 +89,10 @@ public class AuthController {
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     public ResponseEntity<Void> logout(
+            // 바디는 클라이언트 계약 호환용으로 받기만 한다 — 폐기는 토큰의 userId 기준(전 기기 로그아웃)
             @Valid @RequestBody LogoutRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        Long userId = Long.parseLong(jwt.getSubject());
+        Long userId = CurrentUser.id(jwt);
         authService.logout(userId);
         return ResponseEntity.noContent().build();
     }
