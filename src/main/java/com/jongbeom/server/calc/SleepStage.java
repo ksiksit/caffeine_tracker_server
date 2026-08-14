@@ -40,6 +40,7 @@ public enum SleepStage {
 
     /** HK rawValue → 단계. 알 수 없는 값은 asleepUnspecified (← iOS SleepStage.init(from:) default). */
     public static SleepStage fromHkValue(int value) {
+        // 위 enum 테이블의 hkValue와 동기화 유지
         return switch (value) {
             case 0 -> IN_BED;
             case 2 -> AWAKE;
@@ -50,6 +51,7 @@ public enum SleepStage {
         };
     }
 
+    /** 병합용 우선순위 편의 메서드 — {@code fromHkValue(v).priority()}와 동일. */
     public static int stagePriority(int hkValue) {
         return fromHkValue(hkValue).priority;
     }
