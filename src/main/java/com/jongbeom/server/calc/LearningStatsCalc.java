@@ -13,19 +13,32 @@ public final class LearningStatsCalc {
     private LearningStatsCalc() {
     }
 
-    /** SOL = α + β·residual (Drake 2013). BayesianHalfLifeUpdater와 동기화. */
-    public static final double ALPHA = 15.0;
-    public static final double BETA = 0.10;
+    /** SOL = α + β·residual (Drake 2013). {@link BayesianHalfLifeUpdater} 값을 참조해 동기화 보장. */
+    public static final double ALPHA = BayesianHalfLifeUpdater.ALPHA;
+    public static final double BETA = BayesianHalfLifeUpdater.BETA;
 
+    /** R² 계산에 필요한 최소 관측 수. */
+    private static final int MIN_POINTS_FOR_R_SQUARED = 3;
+    /** calibration 축 여백(분). */
+    private static final double AXIS_PADDING_MINUTES = 5;
+    /** calibration 축 최소 스팬(분) — 점이 몰려도 축이 뭉개지지 않게. */
+    private static final double MIN_DOMAIN_SPAN_MINUTES = 10;
+    /** 데이터 없을 때 기본 축 도메인(분). */
+    private static final double DEFAULT_DOMAIN_LOWER_MINUTES = 0;
+    private static final double DEFAULT_DOMAIN_UPPER_MINUTES = 60;
+
+    /** calibration 산점도 한 점. predicted/observed 모두 SOL(분). */
     public record Point(double predicted, double observed) {
     }
 
     public record HistogramBin(double lower, double upper, int count) {
     }
 
+    /** calibration 축 도메인(분). x·y 양 축이 공유한다(y=x 기준선용). */
     public record Range(double lower, double upper) {
     }
 
+    /** 예측 SOL(분). residualMg는 취침 시 잔량(mg). */
     public static double predictedSOL(double residualMg) {
         return ALPHA + BETA * residualMg;
     }
@@ -38,17 +51,17 @@ public final class LearningStatsCalc {
         return Math.min(Math.max(raw, 0), 1);
     }
 
-    /** R² 결정계수. N<3 또는 SS_tot=0이면 null. */
+    /** R² 결정계수. N&lt;{@value #MIN_POINTS_FOR_R_SQUARED} 또는 SS_tot=0이면 null. */
     public static Double rSquared(List<Point> points) {
-        if (points.size() < 3) {
+        if (points.size() < MIN_POINTS_FOR_R_SQUARED) {
             return null;
         }
         double mean = points.stream().mapToDouble(Point::observed).average().orElse(0);
         double ssTot = 0;
         double ssRes = 0;
-        for (Point p : points) {
-            ssTot += (p.observed() - mean) * (p.observed() - mean);
-            ssRes += (p.observed() - p.predicted()) * (p.observed() - p.predicted());
+        for (Point point : points) {
+            ssTot += squaredDeviation(point.observed(), mean);
+            ssRes += squaredError(point);
         }
         if (ssTot <= 0) {
             return null;
@@ -56,56 +69,67 @@ public final class LearningStatsCalc {
         return 1 - ssRes / ssTot;
     }
 
-    /** 평균제곱오차의 제곱근. N=0이면 0. */
+    /** 평균제곱오차의 제곱근(분). N=0이면 0. */
     public static double rmse(List<Point> points) {
         if (points.isEmpty()) {
             return 0;
         }
-        double ss = 0;
-        for (Point p : points) {
-            ss += (p.observed() - p.predicted()) * (p.observed() - p.predicted());
+        double sumSquaredError = 0;
+        for (Point point : points) {
+            sumSquaredError += squaredError(point);
         }
-        return Math.sqrt(ss / points.size());
+        return Math.sqrt(sumSquaredError / points.size());
     }
 
-    /** 양 축 공통 도메인. 5분 패딩, 0 미만은 0. 빈 입력은 0~60. */
+    private static double squaredError(Point point) {
+        return (point.observed() - point.predicted()) * (point.observed() - point.predicted());
+    }
+
+    private static double squaredDeviation(double value, double mean) {
+        return (value - mean) * (value - mean);
+    }
+
+    /** 양 축 공통 도메인(분). {@value #AXIS_PADDING_MINUTES}분 패딩, 0 미만은 0. 빈 입력은 0~60. */
     public static Range calibrationDomain(List<Point> points) {
         if (points.isEmpty()) {
-            return new Range(0, 60);
+            return new Range(DEFAULT_DOMAIN_LOWER_MINUTES, DEFAULT_DOMAIN_UPPER_MINUTES);
         }
         double minVal = Double.MAX_VALUE;
         double maxVal = -Double.MAX_VALUE;
-        for (Point p : points) {
-            minVal = Math.min(minVal, Math.min(p.predicted(), p.observed()));
-            maxVal = Math.max(maxVal, Math.max(p.predicted(), p.observed()));
+        for (Point point : points) {
+            minVal = Math.min(minVal, Math.min(point.predicted(), point.observed()));
+            maxVal = Math.max(maxVal, Math.max(point.predicted(), point.observed()));
         }
-        double lo = Math.max(0, minVal - 5);
-        double hi = maxVal + 5;
-        return new Range(lo, Math.max(hi, lo + 10));
+        double lower = Math.max(0, minVal - AXIS_PADDING_MINUTES);
+        double upper = maxVal + AXIS_PADDING_MINUTES;
+        double upperWithMinimumSpan = Math.max(upper, lower + MIN_DOMAIN_SPAN_MINUTES);
+        return new Range(lower, upperWithMinimumSpan);
     }
 
     /**
-     * values를 binCount개 동일 폭 빈으로 분할. 빈 입력/binCount&lt;1 → []. 모두 동일 → 단일 빈.
+     * values를 binCount개 동일 폭 빈으로 분할해 하한 오름차순·연속 구간으로 반환.
+     * 빈 입력/binCount&lt;1 → []. 모두 동일 → 단일 빈.
      * 마지막 빈 상한 inclusive. (← LearningStats.histogram)
      */
     public static List<HistogramBin> histogram(List<Double> values, int binCount) {
         if (values.isEmpty() || binCount < 1) {
             return List.of();
         }
-        double lo = values.stream().mapToDouble(Double::doubleValue).min().orElse(0);
-        double hi = values.stream().mapToDouble(Double::doubleValue).max().orElse(0);
-        if (hi <= lo) {
-            return List.of(new HistogramBin(lo, lo, values.size()));
+        double lower = values.stream().mapToDouble(Double::doubleValue).min().orElse(0);
+        double upper = values.stream().mapToDouble(Double::doubleValue).max().orElse(0);
+        if (upper <= lower) {
+            return List.of(new HistogramBin(lower, lower, values.size()));
         }
-        double width = (hi - lo) / binCount;
+        double width = (upper - lower) / binCount;
         int[] counts = new int[binCount];
-        for (double v : values) {
-            int idx = Math.min((int) ((v - lo) / width), binCount - 1);
-            counts[idx]++;
+        for (double value : values) {
+            // 최대값은 bin[binCount]에 떨어지므로 마지막 빈으로 접음(상한 inclusive)
+            int binIndex = Math.min((int) ((value - lower) / width), binCount - 1);
+            counts[binIndex]++;
         }
         List<HistogramBin> bins = new ArrayList<>(binCount);
         for (int i = 0; i < binCount; i++) {
-            bins.add(new HistogramBin(lo + width * i, lo + width * (i + 1), counts[i]));
+            bins.add(new HistogramBin(lower + width * i, lower + width * (i + 1), counts[i]));
         }
         return bins;
     }
