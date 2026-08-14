@@ -25,6 +25,7 @@ class PharmacokineticsTest {
 
     @Test
     void remainingAmount_afterTwoHalfLives_is25Percent() {
+        // 200mg × 25% = 50mg
         assertThat(Pharmacokinetics.remainingAmount(200, 10.0, 5.0)).isCloseTo(50.0, within(0.01));
     }
 
@@ -107,29 +108,29 @@ class PharmacokineticsTest {
         }
     }
 
-    // MARK: - cutoffTime (← CaffeineHelpers.caffeineCutoffTime)
+    // ---- cutoffTime (← CaffeineHelpers.caffeineCutoffTime) ----
 
     @Test
     void cutoff_safeAnytime_whenHeadroomCoversReferenceDose() {
-        CutoffResult r = Pharmacokinetics.cutoffTime(List.of(), NOW, 30, 5.0, 50.0);
-        assertThat(r.status()).isEqualTo(CutoffResult.Status.SAFE_ANYTIME);
+        CutoffResult result = Pharmacokinetics.cutoffTime(List.of(), NOW, 30, 5.0, 50.0);
+        assertThat(result.status()).isEqualTo(CutoffResult.Status.SAFE_ANYTIME);
     }
 
     @Test
     void cutoff_computesTimeBeforeBedtime() {
-        CutoffResult r = Pharmacokinetics.cutoffTime(List.of(), NOW, 75, 5.0, 50.0);
-        assertThat(r.status()).isEqualTo(CutoffResult.Status.CUTOFF);
+        CutoffResult result = Pharmacokinetics.cutoffTime(List.of(), NOW, 75, 5.0, 50.0);
+        assertThat(result.status()).isEqualTo(CutoffResult.Status.CUTOFF);
         // hoursBeforeBedtime = ln(75/50)/(ln2/5) = 2.9248127 h
         double expectedHoursBefore = Math.log(75.0 / 50.0) / (Math.log(2) / 5.0);
-        double actualHoursBefore = (NOW.toEpochMilli() - r.cutoff().toEpochMilli()) / 3_600_000.0;
+        double actualHoursBefore = (NOW.toEpochMilli() - result.cutoff().toEpochMilli()) / 3_600_000.0;
         assertThat(actualHoursBefore).isCloseTo(expectedHoursBefore, within(0.001));
     }
 
     @Test
     void cutoff_alreadyExceeded_whenBedtimeResidualOverThreshold() {
         Dose bigDose = new Dose(NOW, 100); // 취침 시 잔량 100mg >= 50mg 안전선
-        CutoffResult r = Pharmacokinetics.cutoffTime(List.of(bigDose), NOW, 75, 5.0, 50.0);
-        assertThat(r.status()).isEqualTo(CutoffResult.Status.ALREADY_EXCEEDED);
-        assertThat(r.existingAtBedtime()).isCloseTo(100.0, within(0.01));
+        CutoffResult result = Pharmacokinetics.cutoffTime(List.of(bigDose), NOW, 75, 5.0, 50.0);
+        assertThat(result.status()).isEqualTo(CutoffResult.Status.ALREADY_EXCEEDED);
+        assertThat(result.existingAtBedtime()).isCloseTo(100.0, within(0.01));
     }
 }

@@ -12,20 +12,21 @@ import org.junit.jupiter.api.Test;
 /** iOS {@code LearningStatsTests.swift} 골든값 복제. */
 class LearningStatsCalcTest {
 
-    private static Point p(double predicted, double observed) {
+    private static Point point(double predicted, double observed) {
         return new Point(predicted, observed);
     }
 
     // predictedSOL
     @Test
     void predictedSOL() {
-        assertThat(LearningStatsCalc.predictedSOL(0)).isEqualTo(15.0);
-        assertThat(LearningStatsCalc.predictedSOL(100)).isEqualTo(25.0);
+        assertThat(LearningStatsCalc.predictedSOL(0)).isEqualTo(15.0);   // α=15 (0mg일 때 기본 SOL)
+        assertThat(LearningStatsCalc.predictedSOL(100)).isEqualTo(25.0); // 15 + 0.10×100
     }
 
     // confidenceScore
     @Test
-    void confidence_priorVariance_zero() {
+    void confidence_stillAtPopulationPrior_scoresZero() {
+        // 2.25 = 모집단 prior 분산 1.5² — 아직 아무것도 못 배운 상태라 신뢰도 0
         assertThat(LearningStatsCalc.confidenceScore(2.25)).isCloseTo(0, within(1e-9));
     }
 
@@ -46,35 +47,35 @@ class LearningStatsCalcTest {
 
     @Test
     void confidence_atFloor_highlyConfident() {
-        double score = LearningStatsCalc.confidenceScore(0.0025); // σ=0.05
-        assertThat(score).isCloseTo(1 - 0.05 / 1.5, within(1e-9));
+        double score = LearningStatsCalc.confidenceScore(0.0025); // VARIANCE_FLOOR = 0.05²
+        assertThat(score).isCloseTo(1 - 0.05 / 1.5, within(1e-9)); // 1.5 = 모집단 σ_prior
         assertThat(score).isGreaterThan(0.96).isLessThan(0.97);
     }
 
     // rSquared
     @Test
     void rSquared_perfectFit_one() {
-        Double r2 = LearningStatsCalc.rSquared(List.of(p(10, 10), p(20, 20), p(30, 30)));
+        Double r2 = LearningStatsCalc.rSquared(List.of(point(10, 10), point(20, 20), point(30, 30)));
         assertThat(r2).isNotNull();
         assertThat(r2).isCloseTo(1.0, within(1e-9));
     }
 
     @Test
     void rSquared_meanBaseline_zero() {
-        Double r2 = LearningStatsCalc.rSquared(List.of(p(20, 10), p(20, 20), p(20, 30)));
+        Double r2 = LearningStatsCalc.rSquared(List.of(point(20, 10), point(20, 20), point(20, 30)));
         assertThat(r2).isNotNull();
         assertThat(r2).isCloseTo(0.0, within(1e-9));
     }
 
     @Test
     void rSquared_worseThanMean_negative() {
-        Double r2 = LearningStatsCalc.rSquared(List.of(p(30, 10), p(10, 20), p(50, 30)));
+        Double r2 = LearningStatsCalc.rSquared(List.of(point(30, 10), point(10, 20), point(50, 30)));
         assertThat(r2).isNotNull().matches(v -> v < 0);
     }
 
     @Test
     void rSquared_lessThanThree_null() {
-        assertThat(LearningStatsCalc.rSquared(List.of(p(10, 10), p(20, 20)))).isNull();
+        assertThat(LearningStatsCalc.rSquared(List.of(point(10, 10), point(20, 20)))).isNull();
     }
 
     @Test
@@ -84,18 +85,18 @@ class LearningStatsCalcTest {
 
     @Test
     void rSquared_zeroVariance_null() {
-        assertThat(LearningStatsCalc.rSquared(List.of(p(10, 20), p(30, 20), p(50, 20)))).isNull();
+        assertThat(LearningStatsCalc.rSquared(List.of(point(10, 20), point(30, 20), point(50, 20)))).isNull();
     }
 
     // rmse
     @Test
     void rmse_perfectFit_zero() {
-        assertThat(LearningStatsCalc.rmse(List.of(p(1, 1), p(2, 2), p(3, 3)))).isZero();
+        assertThat(LearningStatsCalc.rmse(List.of(point(1, 1), point(2, 2), point(3, 3)))).isZero();
     }
 
     @Test
     void rmse_knownErrors() {
-        double r = LearningStatsCalc.rmse(List.of(p(0, 3), p(0, 4), p(5, 5)));
+        double r = LearningStatsCalc.rmse(List.of(point(0, 3), point(0, 4), point(5, 5)));
         assertThat(r).isCloseTo(Math.sqrt(25.0 / 3.0), within(1e-9));
     }
 
@@ -114,14 +115,14 @@ class LearningStatsCalcTest {
 
     @Test
     void calibrationDomain_padding() {
-        Range d = LearningStatsCalc.calibrationDomain(List.of(p(20, 30), p(40, 50)));
+        Range d = LearningStatsCalc.calibrationDomain(List.of(point(20, 30), point(40, 50)));
         assertThat(d.lower()).isEqualTo(15);
         assertThat(d.upper()).isEqualTo(55);
     }
 
     @Test
     void calibrationDomain_clampsLowerZero() {
-        Range d = LearningStatsCalc.calibrationDomain(List.of(p(2, 1)));
+        Range d = LearningStatsCalc.calibrationDomain(List.of(point(2, 1)));
         assertThat(d.lower()).isEqualTo(0);
     }
 

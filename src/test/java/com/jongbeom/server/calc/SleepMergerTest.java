@@ -14,6 +14,10 @@ class SleepMergerTest {
     /** 18:00 기준 분 오프셋 → Instant. (← Swift time(hour) 헬퍼와 동일 의미) */
     private static final Instant BASE = Instant.parse("2026-06-01T18:00:00Z");
 
+    /**
+     * 밤 시나리오용 벽시계 → Instant 변환. 18~23시는 당일 저녁, 0~17시는 다음날 새벽으로 해석한다.
+     * 예: time(22) = 06-01T22:00Z, time(1) = 06-02T01:00Z.
+     */
     private static Instant time(int hour, int minute) {
         int minutesFrom18 = (hour >= 18) ? (hour - 18) * 60 + minute : (hour + 6) * 60 + minute;
         return BASE.plusSeconds(minutesFrom18 * 60L);
@@ -23,8 +27,8 @@ class SleepMergerTest {
         return time(hour, 0);
     }
 
-    private static Sample s(int sh, int sm, int eh, int em, int value) {
-        return new Sample(time(sh, sm), time(eh, em), value);
+    private static Sample sample(int startHour, int startMinute, int endHour, int endMinute, int hkValue) {
+        return new Sample(time(startHour, startMinute), time(endHour, endMinute), hkValue);
     }
 
     @Test
@@ -34,98 +38,98 @@ class SleepMergerTest {
 
     @Test
     void singleSample_returnsSame() {
-        List<Interval> r = SleepMerger.merge(List.of(new Sample(time(22), time(23), 3)));
-        assertThat(r).hasSize(1);
-        assertThat(r.get(0).start()).isEqualTo(time(22));
-        assertThat(r.get(0).end()).isEqualTo(time(23));
-        assertThat(r.get(0).hkValue()).isEqualTo(3);
+        List<Interval> merged = SleepMerger.merge(List.of(new Sample(time(22), time(23), 3)));
+        assertThat(merged).hasSize(1);
+        assertThat(merged.get(0).start()).isEqualTo(time(22));
+        assertThat(merged.get(0).end()).isEqualTo(time(23));
+        assertThat(merged.get(0).hkValue()).isEqualTo(3);
     }
 
     @Test
     void adjacentNoOverlap_keepsAll() {
-        List<Interval> r = SleepMerger.merge(List.of(
+        List<Interval> merged = SleepMerger.merge(List.of(
                 new Sample(time(22), time(23), 3),
                 new Sample(time(23), time(0), 4)));
-        assertThat(r).hasSize(2);
-        assertThat(r.get(0).hkValue()).isEqualTo(3);
-        assertThat(r.get(1).hkValue()).isEqualTo(4);
+        assertThat(merged).hasSize(2);
+        assertThat(merged.get(0).hkValue()).isEqualTo(3);
+        assertThat(merged.get(1).hkValue()).isEqualTo(4);
     }
 
     @Test
     void adjacentSameStage_merged() {
-        List<Interval> r = SleepMerger.merge(List.of(
+        List<Interval> merged = SleepMerger.merge(List.of(
                 new Sample(time(22), time(23), 3),
                 new Sample(time(23), time(0), 3)));
-        assertThat(r).hasSize(1);
-        assertThat(r.get(0).start()).isEqualTo(time(22));
-        assertThat(r.get(0).end()).isEqualTo(time(0));
-        assertThat(r.get(0).hkValue()).isEqualTo(3);
+        assertThat(merged).hasSize(1);
+        assertThat(merged.get(0).start()).isEqualTo(time(22));
+        assertThat(merged.get(0).end()).isEqualTo(time(0));
+        assertThat(merged.get(0).hkValue()).isEqualTo(3);
     }
 
     @Test
     void fullOverlap_keepsHigherPriority() {
-        List<Interval> r = SleepMerger.merge(List.of(
+        List<Interval> merged = SleepMerger.merge(List.of(
                 new Sample(time(22), time(23), 0),  // inBed
-                new Sample(time(22), time(23), 5))); // deep
-        assertThat(r).hasSize(1);
-        assertThat(r.get(0).hkValue()).isEqualTo(5);
+                new Sample(time(22), time(23), 5))); // rem (hkValue 5)
+        assertThat(merged).hasSize(1);
+        assertThat(merged.get(0).hkValue()).isEqualTo(5);
     }
 
     @Test
     void partialOverlap_preservesNonOverlappingPortion() {
-        List<Interval> r = SleepMerger.merge(List.of(
+        List<Interval> merged = SleepMerger.merge(List.of(
                 new Sample(time(22), time(7), 0),  // inBed 22-07
                 new Sample(time(23), time(1), 3))); // core 23-01
-        assertThat(r).hasSize(3);
-        assertThat(r.get(0).start()).isEqualTo(time(22));
-        assertThat(r.get(0).end()).isEqualTo(time(23));
-        assertThat(r.get(0).hkValue()).isEqualTo(0);
-        assertThat(r.get(1).start()).isEqualTo(time(23));
-        assertThat(r.get(1).end()).isEqualTo(time(1));
-        assertThat(r.get(1).hkValue()).isEqualTo(3);
-        assertThat(r.get(2).start()).isEqualTo(time(1));
-        assertThat(r.get(2).end()).isEqualTo(time(7));
-        assertThat(r.get(2).hkValue()).isEqualTo(0);
+        assertThat(merged).hasSize(3);
+        assertThat(merged.get(0).start()).isEqualTo(time(22));
+        assertThat(merged.get(0).end()).isEqualTo(time(23));
+        assertThat(merged.get(0).hkValue()).isEqualTo(0);
+        assertThat(merged.get(1).start()).isEqualTo(time(23));
+        assertThat(merged.get(1).end()).isEqualTo(time(1));
+        assertThat(merged.get(1).hkValue()).isEqualTo(3);
+        assertThat(merged.get(2).start()).isEqualTo(time(1));
+        assertThat(merged.get(2).end()).isEqualTo(time(7));
+        assertThat(merged.get(2).hkValue()).isEqualTo(0);
     }
 
     @Test
     void iPhoneWatchRealisticScenario() {
-        List<Interval> r = SleepMerger.merge(List.of(
-                s(22, 0, 6, 0, 0),
-                s(22, 30, 23, 45, 3),
-                s(23, 45, 0, 30, 5),
-                s(0, 30, 2, 0, 4),
-                s(2, 0, 4, 0, 3),
-                s(4, 0, 4, 15, 2),
-                s(4, 15, 6, 0, 3)));
-        assertThat(r).hasSize(7);
-        assertThat(r.get(0).start()).isEqualTo(time(22));
-        assertThat(r.get(0).end()).isEqualTo(time(22, 30));
-        assertThat(r.get(0).hkValue()).isEqualTo(0);
-        assertThat(r.get(1).hkValue()).isEqualTo(3);
-        assertThat(r.get(2).start()).isEqualTo(time(23, 45));
-        assertThat(r.get(2).end()).isEqualTo(time(0, 30));
-        assertThat(r.get(2).hkValue()).isEqualTo(5);
+        List<Interval> merged = SleepMerger.merge(List.of(
+                sample(22, 0, 6, 0, 0),
+                sample(22, 30, 23, 45, 3),
+                sample(23, 45, 0, 30, 5),
+                sample(0, 30, 2, 0, 4),
+                sample(2, 0, 4, 0, 3),
+                sample(4, 0, 4, 15, 2),
+                sample(4, 15, 6, 0, 3)));
+        assertThat(merged).hasSize(7);
+        assertThat(merged.get(0).start()).isEqualTo(time(22));
+        assertThat(merged.get(0).end()).isEqualTo(time(22, 30));
+        assertThat(merged.get(0).hkValue()).isEqualTo(0);
+        assertThat(merged.get(1).hkValue()).isEqualTo(3);
+        assertThat(merged.get(2).start()).isEqualTo(time(23, 45));
+        assertThat(merged.get(2).end()).isEqualTo(time(0, 30));
+        assertThat(merged.get(2).hkValue()).isEqualTo(5);
     }
 
     @Test
     void gapBetweenSamples_gapPreserved() {
-        List<Interval> r = SleepMerger.merge(List.of(
+        List<Interval> merged = SleepMerger.merge(List.of(
                 new Sample(time(22), time(23), 3),
                 new Sample(time(1), time(2), 4)));
-        assertThat(r).hasSize(2);
-        assertThat(r.get(0).end()).isEqualTo(time(23));
-        assertThat(r.get(1).start()).isEqualTo(time(1));
+        assertThat(merged).hasSize(2);
+        assertThat(merged.get(0).end()).isEqualTo(time(23));
+        assertThat(merged.get(1).start()).isEqualTo(time(1));
     }
 
     @Test
     void tripleOverlap_highestPriorityWins() {
-        List<Interval> r = SleepMerger.merge(List.of(
+        List<Interval> merged = SleepMerger.merge(List.of(
                 new Sample(time(22), time(23), 0),
                 new Sample(time(22), time(23), 3),
                 new Sample(time(22), time(23), 5)));
-        assertThat(r).hasSize(1);
-        assertThat(r.get(0).hkValue()).isEqualTo(5);
+        assertThat(merged).hasSize(1);
+        assertThat(merged.get(0).hkValue()).isEqualTo(5);
     }
 
     @Test

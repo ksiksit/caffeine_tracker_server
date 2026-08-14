@@ -17,7 +17,9 @@ class BayesianHalfLifeUpdaterTest {
 
     private static final Instant BEDTIME = Instant.parse("2026-06-01T14:00:00Z");
     private static final double PRIOR_MEAN = 5.0;
-    private static final double PRIOR_VAR = 2.25;
+    private static final double PRIOR_VAR = 2.25; // 모집단 prior 분산 1.5² (Koletzko 2021)
+    /** trust region(±0.5h)을 한참 벗어난 극단 posterior — 안전장치 작동을 강제하는 센티널. */
+    private static final double ABSURD_MEAN = 99.0;
 
     private static Dose dose(int mg, double hoursBeforeBedtime) {
         return new Dose(BEDTIME.minusMillis((long) (hoursBeforeBedtime * 3_600_000)), mg);
@@ -37,38 +39,39 @@ class BayesianHalfLifeUpdaterTest {
     @Test
     void doseExactlyAtBedtime_derivativeZero_posteriorEqualsPrior() {
         // dtHours=0 → cPrime=0 → 관측이 반감기에 무정보 → posterior == prior
-        Linearization lin = BayesianHalfLifeUpdater.linearize(BEDTIME, List.of(dose(100, 0)), PRIOR_MEAN, 1.0);
-        assertThat(lin).isNotNull();
-        assertThat(lin.cMu()).isCloseTo(100.0, within(1e-9));
-        assertThat(lin.cPrime()).isCloseTo(0.0, within(1e-12));
+        Linearization linearization = BayesianHalfLifeUpdater.linearize(BEDTIME, List.of(dose(100, 0)), PRIOR_MEAN, 1.0);
+        assertThat(linearization).isNotNull();
+        assertThat(linearization.cMu()).isCloseTo(100.0, within(1e-9));
+        assertThat(linearization.cPrime()).isCloseTo(0.0, within(1e-12));
 
-        Posterior raw = BayesianHalfLifeUpdater.posteriorEstimate(PRIOR_MEAN, PRIOR_VAR, lin, 30);
-        assertThat(raw.mean()).isCloseTo(PRIOR_MEAN, within(1e-9));
-        assertThat(raw.variance()).isCloseTo(PRIOR_VAR, within(1e-9));
+        Posterior rawPosterior = BayesianHalfLifeUpdater.posteriorEstimate(PRIOR_MEAN, PRIOR_VAR, linearization, 30);
+        assertThat(rawPosterior.mean()).isCloseTo(PRIOR_MEAN, within(1e-9));
+        assertThat(rawPosterior.variance()).isCloseTo(PRIOR_VAR, within(1e-9));
     }
 
     @Test
     void informativeObservation_reducesVariance() {
-        Linearization lin = BayesianHalfLifeUpdater.linearize(BEDTIME, List.of(dose(200, 4)), PRIOR_MEAN, 1.0);
-        assertThat(lin).isNotNull();
-        assertThat(lin.cPrime()).isGreaterThan(0); // 시간 경과 → 반감기 민감도 존재
-        Posterior raw = BayesianHalfLifeUpdater.posteriorEstimate(PRIOR_MEAN, PRIOR_VAR, lin, 30);
-        assertThat(raw.variance()).isLessThan(PRIOR_VAR);
+        Linearization linearization = BayesianHalfLifeUpdater.linearize(BEDTIME, List.of(dose(200, 4)), PRIOR_MEAN, 1.0);
+        assertThat(linearization).isNotNull();
+        assertThat(linearization.cPrime()).isGreaterThan(0); // 시간 경과 → 반감기 민감도 존재
+        Posterior rawPosterior = BayesianHalfLifeUpdater.posteriorEstimate(PRIOR_MEAN, PRIOR_VAR, linearization, 30);
+        assertThat(rawPosterior.variance()).isLessThan(PRIOR_VAR);
     }
 
     @Test
     void safetyBounds_trustRegion_limitsStep() {
-        Posterior safe = BayesianHalfLifeUpdater.applySafetyBounds(99.0, 0.5, PRIOR_MEAN);
-        assertThat(Math.abs(safe.mean() - PRIOR_MEAN)).isLessThanOrEqualTo(0.5 + 1e-9);
+        Posterior bounded = BayesianHalfLifeUpdater.applySafetyBounds(ABSURD_MEAN, 0.5, PRIOR_MEAN);
+        assertThat(Math.abs(bounded.mean() - PRIOR_MEAN))
+                .isLessThanOrEqualTo(BayesianHalfLifeUpdater.MAX_STEP_PER_UPDATE + 1e-9);
     }
 
     @Test
     void safetyBounds_clampsToValidRange() {
         // prior 6.8 + step 0.5 = 7.3 → clamp 7.0
-        assertThat(BayesianHalfLifeUpdater.applySafetyBounds(99.0, 0.5, 6.8).mean())
+        assertThat(BayesianHalfLifeUpdater.applySafetyBounds(ABSURD_MEAN, 0.5, 6.8).mean())
                 .isEqualTo(7.0);
         // prior 3.2 - step 0.5 = 2.7 → clamp 3.0
-        assertThat(BayesianHalfLifeUpdater.applySafetyBounds(-99.0, 0.5, 3.2).mean())
+        assertThat(BayesianHalfLifeUpdater.applySafetyBounds(-ABSURD_MEAN, 0.5, 3.2).mean())
                 .isEqualTo(3.0);
     }
 
