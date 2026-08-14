@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 인증 API. signup/login/refresh 는 공개, logout 만 인증 필요(그래서 @SecurityRequirement 는 메서드 레벨). */
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor

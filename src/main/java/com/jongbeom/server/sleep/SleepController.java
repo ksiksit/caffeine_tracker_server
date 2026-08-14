@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 수면 API — 원시 샘플 업로드(멱등)와 서버 병합·요약 조회. */
 @RestController
 @RequestMapping("/api/sleep")
 @RequiredArgsConstructor

@@ -1,7 +1,6 @@
 package com.jongbeom.server.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
-import com.nimbusds.jose.proc.SecurityContext;
 import java.nio.charset.StandardCharsets;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -16,10 +15,12 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 
+/** JWT 인코더/디코더 + 권한 변환 설정 (HS256 대칭키). */
 @Configuration
 @EnableConfigurationProperties(JwtProperties.class)
 public class JwtConfig {
 
+    /** HS256은 RFC 7518상 256비트(32바이트) 이상 키를 요구한다. */
     private static final int MIN_KEY_BYTES = 32;
 
     @Bean
@@ -38,7 +39,7 @@ public class JwtConfig {
 
     @Bean
     public JwtEncoder jwtEncoder(SecretKey jwtSecretKey) {
-        return new NimbusJwtEncoder(new ImmutableSecret<SecurityContext>(jwtSecretKey));
+        return new NimbusJwtEncoder(new ImmutableSecret<>(jwtSecretKey));
     }
 
     @Bean
@@ -52,6 +53,7 @@ public class JwtConfig {
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtGrantedAuthoritiesConverter authoritiesConverter = new JwtGrantedAuthoritiesConverter();
         authoritiesConverter.setAuthoritiesClaimName("roles");
+        // prefix 빈 문자열: UserRole.authority()가 이미 "ROLE_USER" 형태로 클레임에 넣는다 (JwtTokenProvider 참조)
         authoritiesConverter.setAuthorityPrefix("");
 
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();

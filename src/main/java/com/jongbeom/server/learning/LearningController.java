@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 베이지안 반감기 학습 API — 배치 실행(run)과 관측 이력·대시보드 조회. */
 @RestController
 @RequestMapping("/api/learning")
 @RequiredArgsConstructor

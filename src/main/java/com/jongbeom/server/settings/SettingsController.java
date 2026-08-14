@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 유저 설정 API — 조회(없으면 생성)와 전체 교체 갱신. */
 @RestController
 @RequestMapping("/api/settings")
 @RequiredArgsConstructor

@@ -16,6 +16,7 @@ import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
 
+/** Swagger(OpenAPI) 문서 설정 — 보안 스킴, 전역 400/500 응답, API 개요 텍스트. prod 에서는 비활성. */
 @Configuration
 public class OpenApiConfig {
 

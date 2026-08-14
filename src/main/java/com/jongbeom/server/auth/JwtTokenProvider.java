@@ -13,6 +13,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Component;
 
+/** Access Token(JWT) 발급. subject = users.id, 클레임 email/roles 포함. */
 @Component
 public class JwtTokenProvider {
 
@@ -20,6 +21,7 @@ public class JwtTokenProvider {
     private final JwtProperties jwtProperties;
     private final Clock clock;
 
+    // 프로덕션 생성자. 테스트는 아래 package-private 생성자로 고정 Clock 을 주입한다 (ClockConfig 빈 미사용 — 사유는 ClockConfig 참조).
     @Autowired
     public JwtTokenProvider(JwtEncoder jwtEncoder, JwtProperties jwtProperties) {
         this(jwtEncoder, jwtProperties, Clock.systemUTC());
