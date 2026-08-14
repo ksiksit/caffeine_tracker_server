@@ -32,9 +32,11 @@ public class HalfLifeObservation extends BaseTimeEntity {
     @Column(name = "obs_date", nullable = false)
     private LocalDate date;
 
+    /** 취침 시 예측 잔량(mg). 컬럼명은 축약형 predicted_residual — DB 변경 금지라 이름 차이 유지. */
     @Column(name = "predicted_residual", nullable = false)
     private double predictedResidualAtBedtime;
 
+    /** SOL(sleep onset latency, 수면 잠복기) 관측값(분). */
     @Column(name = "observed_sol_minutes", nullable = false)
     private double observedSolMinutes;
 
@@ -67,30 +69,41 @@ public class HalfLifeObservation extends BaseTimeEntity {
         this.conditionMultiplier = conditionMultiplier;
     }
 
-    /** 검증 통과 시에만 생성(← Swift init 레벨 검증). 무효값이면 IllegalArgumentException. */
-    public static HalfLifeObservation create(
-            Long userId, LocalDate date, double predictedResidualAtBedtime, double observedSolMinutes,
-            double priorMean, double priorVariance, double posteriorMean, double posteriorVariance,
-            double conditionMultiplier) {
-        validate("predictedResidualAtBedtime", predictedResidualAtBedtime);
-        validate("observedSolMinutes", observedSolMinutes);
-        validate("priorMean", priorMean);
-        validate("priorVariance", priorVariance);
-        validate("posteriorMean", posteriorMean);
-        validate("posteriorVariance", posteriorVariance);
-        validate("conditionMultiplier", conditionMultiplier);
-        require(predictedResidualAtBedtime >= 0, "predictedResidualAtBedtime >= 0");
-        require(observedSolMinutes >= 0, "observedSolMinutes >= 0");
-        require(priorMean > 0, "priorMean > 0");
-        require(posteriorMean > 0, "posteriorMean > 0");
-        require(priorVariance > 0, "priorVariance > 0");
-        require(posteriorVariance > 0, "posteriorVariance > 0");
-        require(conditionMultiplier > 0, "conditionMultiplier > 0");
-        return new HalfLifeObservation(userId, date, predictedResidualAtBedtime, observedSolMinutes,
-                priorMean, priorVariance, posteriorMean, posteriorVariance, conditionMultiplier);
+    /** 학습 prior 상태 (mean: 시간, variance: 시간²). */
+    public record Prior(double mean, double variance) {
     }
 
-    private static void validate(String field, double value) {
+    /** 학습 posterior 상태 (mean: 시간, variance: 시간²). {@code calc}의 Posterior와 별개 타입(엔티티 결합 방지). */
+    public record Posterior(double mean, double variance) {
+    }
+
+    /**
+     * 검증 통과 시에만 생성(← Swift init 레벨 검증). 무효값이면 IllegalArgumentException.
+     * prior/posterior를 타입으로 묶어 연속 double 인자의 자리 바꿈 실수를 막는다.
+     */
+    public static HalfLifeObservation create(
+            Long userId, LocalDate date, double predictedResidualAtBedtime, double observedSolMinutes,
+            Prior prior, Posterior posterior, double conditionMultiplier) {
+        // 검증 순서는 기존과 동일: 유한성 전체 → 범위 전체
+        requireFinite("predictedResidualAtBedtime", predictedResidualAtBedtime);
+        requireFinite("observedSolMinutes", observedSolMinutes);
+        requireFinite("priorMean", prior.mean());
+        requireFinite("priorVariance", prior.variance());
+        requireFinite("posteriorMean", posterior.mean());
+        requireFinite("posteriorVariance", posterior.variance());
+        requireFinite("conditionMultiplier", conditionMultiplier);
+        require(predictedResidualAtBedtime >= 0, "predictedResidualAtBedtime >= 0");
+        require(observedSolMinutes >= 0, "observedSolMinutes >= 0");
+        require(prior.mean() > 0, "priorMean > 0");
+        require(posterior.mean() > 0, "posteriorMean > 0");
+        require(prior.variance() > 0, "priorVariance > 0");
+        require(posterior.variance() > 0, "posteriorVariance > 0");
+        require(conditionMultiplier > 0, "conditionMultiplier > 0");
+        return new HalfLifeObservation(userId, date, predictedResidualAtBedtime, observedSolMinutes,
+                prior.mean(), prior.variance(), posterior.mean(), posterior.variance(), conditionMultiplier);
+    }
+
+    private static void requireFinite(String field, double value) {
         if (!Double.isFinite(value)) {
             throw new IllegalArgumentException("비유한 값: " + field + "=" + value);
         }
