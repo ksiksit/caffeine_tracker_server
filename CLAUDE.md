@@ -14,13 +14,15 @@
 
 ## 구조
 
-`com.jongbeom.server` — 도메인(feature)별 구성. 각 도메인 내부는 `controller/`·`service/`·`repository/`·
+`com.jongbeom.server` — 도메인형(domain/global) 구성.
+`domain/` 하위 도메인: `auth/`, `user/`, `settings/`, `caffeine/`, `sleep/`, `learning/`,
+`calc/`(순수 연산, 레이어 없음). 각 도메인 내부는 `controller/`·`service/`·`repository/`·
 `entity/`·`dto/`·`exception/` 레이어 하위 패키지로 배치한다. 레이어가 아닌 도메인 컴포넌트
-(`auth/JwtTokenProvider`, `learning/LearningSkipReason`)와 하위 기능 모듈(`auth/refresh/`)은 도메인 루트.
-도메인: `auth/`, `user/`, `settings/`, `caffeine/`, `sleep/`, `learning/`, `calc/`(순수 연산, 레이어 없음),
-`config/`, `common/`(+`common/error/`, `common/web/`). 상세 트리는 README 참조.
-도메인 예외는 `common/error/BusinessException`(ErrorCode 보유) 상속 — 핸들러 등록 불필요.
-컨트롤러의 JWT userId 추출은 `common/web/CurrentUser.id(jwt)` 사용.
+(`domain/auth/JwtTokenProvider`, `domain/learning/LearningSkipReason`)와 하위 기능 모듈(`auth/refresh/`)은 도메인 루트.
+`global/` 하위 인프라: `config/`, `error/`, `web/`, `entity/`(BaseTimeEntity).
+`ServerApplication`은 패키지 루트 고정(컴포넌트 스캔 베이스). 상세 트리는 README 참조.
+도메인 예외는 `global/error/BusinessException`(ErrorCode 보유) 상속 — 핸들러 등록 불필요.
+컨트롤러의 JWT userId 추출은 `global/web/CurrentUser.id(jwt)` 사용.
 
 ## 도메인 개요 (thin-client 서버)
 
@@ -36,10 +38,10 @@ iOS 앱의 도메인 연산을 서버로 이관 완료. 앱은 입력을 보내�
 인증 외에 settings·caffeine·sleep·learning 도메인이 구현되어 있다 — 새 작업은 대개 도메인 확장 또는 `calc` 수정이다.
 
 **새 도메인 추가 순서:**
-1. `com.jongbeom.server.<도메인>/` 패키지 생성 — `controller/`·`service/`·`repository/`·`entity/`·
+1. `com.jongbeom.server.domain.<도메인>/` 패키지 생성 — `controller/`·`service/`·`repository/`·`entity/`·
    `dto/`·`exception/` 레이어 하위 패키지에 배치 (기존 `caffeine/`, `sleep/` 패턴 그대로).
    테스트도 같은 패키지 구조로 미러링
-2. 새 엔드포인트 경로를 `config/SecurityConfig.java`의 `authorizeHttpRequests`에 등록
+2. 새 엔드포인트 경로를 `global/config/SecurityConfig.java`의 `authorizeHttpRequests`에 등록
    (등록 안 하면 기본 `authenticated` 처리)
 3. DB 스키마는 `src/main/resources/db/migration/V{n}__{설명}.sql` Flyway 마이그레이션으로 추가
    (`ddl-auto: validate`라 엔티티만 바꾸면 부팅 실패)
@@ -64,7 +66,7 @@ iOS 앱의 도메인 연산을 서버로 이관 완료. 앱은 입력을 보내�
 - **§JSON 날짜**: body/쿼리 날짜는 ISO-8601 + 오프셋(`OffsetDateTime`). 응답 시각은 UTC `Instant`(`...Z`).
 - **learning**: 배치는 오래된→최신 순으로 **순차 prior 체이닝**(매 night마다 settings의 갱신 prior 재사용).
   `half_life_observations`는 `UNIQUE(user_id, obs_date)`로 같은 날 1회만 학습. 관측 저장 성공 후에만 settings 반영.
-- 시간 의존 로직(학습 후보 날짜)은 주입형 `Clock`(`config/ClockConfig`) 사용 — 테스트에서 `@MockBean Clock`으로 고정.
+- 시간 의존 로직(학습 후보 날짜)은 주입형 `Clock`(`global/config/ClockConfig`) 사용 — 테스트에서 `@MockBean Clock`으로 고정.
 - Flyway는 V6(`half_life_observations`)까지. 엔티티 변경 시 반드시 `V{n}` 동반(`ddl-auto: validate`).
 
 ## 배포
