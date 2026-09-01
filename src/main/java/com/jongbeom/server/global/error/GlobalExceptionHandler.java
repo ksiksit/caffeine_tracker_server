@@ -3,8 +3,6 @@ package com.jongbeom.server.global.error;
 import java.time.OffsetDateTime;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.Ordered;
-import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -28,7 +26,6 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  * </ul>
  */
 @Slf4j
-@Order(Ordered.HIGHEST_PRECEDENCE) // springdoc 등 다른 advice보다 먼저 잡아 ErrorResponse 포맷 보장
 @RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 

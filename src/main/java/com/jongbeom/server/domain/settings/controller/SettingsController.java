@@ -4,9 +4,6 @@ import com.jongbeom.server.global.web.CurrentUser;
 import com.jongbeom.server.domain.settings.dto.SettingsResponse;
 import com.jongbeom.server.domain.settings.dto.UpdateSettingsRequest;
 import com.jongbeom.server.domain.settings.service.UserSettingsService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,21 +19,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/settings")
 @RequiredArgsConstructor
-@Tag(name = "Settings", description = "유저 설정 · 학습 상태")
-@SecurityRequirement(name = "bearerAuth")
 public class SettingsController {
 
     private final UserSettingsService userSettingsService;
 
     @GetMapping
-    @Operation(summary = "내 설정 조회", description = "없으면 기본값으로 생성해 반환합니다.")
     public ResponseEntity<SettingsResponse> get(@AuthenticationPrincipal Jwt jwt) {
         Long userId = CurrentUser.id(jwt);
         return ResponseEntity.ok(SettingsResponse.from(userSettingsService.getOrCreate(userId)));
     }
 
     @PutMapping
-    @Operation(summary = "내 설정 갱신", description = "전체 교체. 반감기 변경 시 학습 prior 가 리셋됩니다.")
     public ResponseEntity<SettingsResponse> update(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody UpdateSettingsRequest request) {

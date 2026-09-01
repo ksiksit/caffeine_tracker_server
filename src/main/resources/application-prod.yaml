@@ -12,13 +12,6 @@ logging:
     com.jongbeom.server: INFO
     org.hibernate.SQL: WARN
 
-# 운영에서는 API 문서 미노출
-springdoc:
-  api-docs:
-    enabled: false
-  swagger-ui:
-    enabled: false
-
 management:
   endpoints:
     web:

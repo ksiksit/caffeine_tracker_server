@@ -18,10 +18,6 @@ public class SecurityConfig {
     private static final String[] PUBLIC_AUTH_ENDPOINTS = {
             "/api/auth/signup", "/api/auth/login", "/api/auth/refresh"};
 
-    /** Swagger UI·스펙 (GET). prod 프로파일에서는 springdoc 자체가 비활성이라 노출되지 않는다. */
-    private static final String[] SWAGGER_ENDPOINTS = {
-            "/v3/api-docs/**", "/v3/api-docs.yaml", "/swagger-ui/**", "/swagger-ui.html", "/webjars/**"};
-
     /** 배포 헬스체크 (GET). */
     private static final String[] ACTUATOR_HEALTH_ENDPOINTS = {
             "/actuator/health", "/actuator/health/**"};
@@ -44,7 +40,6 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, PUBLIC_AUTH_ENDPOINTS).permitAll()
-                        .requestMatchers(HttpMethod.GET, SWAGGER_ENDPOINTS).permitAll()
                         .requestMatchers(HttpMethod.GET, ACTUATOR_HEALTH_ENDPOINTS).permitAll()
                         // 새 도메인 엔드포인트는 여기 등록하지 않으면 기본 authenticated (CLAUDE.md 규칙)
                         .anyRequest().authenticated())

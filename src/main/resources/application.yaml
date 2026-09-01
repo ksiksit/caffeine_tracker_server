@@ -30,18 +30,3 @@ app:
     issuer: caffeine-tracker
     expires-in-seconds: 3600            # 1시간
     refresh-expires-in-seconds: 1209600 # 14일
-
-# ---- Swagger (prod 프로파일에서는 비활성) ----
-springdoc:
-  api-docs:
-    path: /v3/api-docs
-  swagger-ui:
-    path: /swagger-ui.html
-    operations-sorter: method
-    tags-sorter: alpha
-    display-request-duration: true
-    try-it-out-enabled: true
-    persist-authorization: true
-    disable-swagger-default-url: true
-  default-produces-media-type: application/json
-  default-consumes-media-type: application/json

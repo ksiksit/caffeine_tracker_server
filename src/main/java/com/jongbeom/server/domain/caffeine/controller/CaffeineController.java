@@ -6,11 +6,6 @@ import com.jongbeom.server.domain.caffeine.dto.CreateCaffeineRecordRequest;
 import com.jongbeom.server.domain.caffeine.dto.UpdateCaffeineRecordRequest;
 import com.jongbeom.server.domain.caffeine.service.CaffeineService;
 import com.jongbeom.server.global.web.CurrentUser;
-import com.jongbeom.server.global.web.TimeParamDocs;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -35,14 +30,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
-@Tag(name = "Caffeine", description = "카페인 기록 · 잔류량/마감시각 계산")
-@SecurityRequirement(name = "bearerAuth")
 public class CaffeineController {
 
     private final CaffeineService caffeineService;
 
     @PostMapping("/caffeine-records")
-    @Operation(summary = "카페인 기록 추가")
     public ResponseEntity<CaffeineRecordResponse> create(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateCaffeineRecordRequest request) {
@@ -51,7 +43,6 @@ public class CaffeineController {
     }
 
     @PutMapping("/caffeine-records/{id}")
-    @Operation(summary = "카페인 기록 수정")
     public ResponseEntity<CaffeineRecordResponse> update(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable Long id,
@@ -61,7 +52,6 @@ public class CaffeineController {
     }
 
     @DeleteMapping("/caffeine-records/{id}")
-    @Operation(summary = "카페인 기록 삭제")
     public ResponseEntity<Void> delete(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
         Long userId = CurrentUser.id(jwt);
         caffeineService.delete(userId, id);
@@ -69,25 +59,18 @@ public class CaffeineController {
     }
 
     @GetMapping("/caffeine-records")
-    @Operation(summary = "오늘 카페인 기록 조회", description = "차트 시작(로컬 새벽 5시) 이후 기록만 반환합니다.")
     public ResponseEntity<List<CaffeineRecordResponse>> listToday(
             @AuthenticationPrincipal Jwt jwt,
-            @Parameter(description = TimeParamDocs.NOW_DESCRIPTION, example = TimeParamDocs.NOW_EXAMPLE)
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime now,
-            @Parameter(description = TimeParamDocs.TZ_DESCRIPTION, example = TimeParamDocs.TZ_EXAMPLE)
             @RequestParam String tz) {
         Long userId = CurrentUser.id(jwt);
         return ResponseEntity.ok(caffeineService.listToday(userId, now.toInstant(), ZoneId.of(tz)));
     }
 
     @GetMapping("/caffeine/today")
-    @Operation(summary = "오늘의 카페인 현황(서버 계산)",
-            description = "settings 를 읽어 잔류량 차트·현재/취침 잔량·마감시각을 한 번에 계산해 반환합니다.")
     public ResponseEntity<CaffeineTodayResponse> today(
             @AuthenticationPrincipal Jwt jwt,
-            @Parameter(description = TimeParamDocs.NOW_DESCRIPTION, example = TimeParamDocs.NOW_EXAMPLE)
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime now,
-            @Parameter(description = TimeParamDocs.TZ_DESCRIPTION, example = TimeParamDocs.TZ_EXAMPLE)
             @RequestParam String tz) {
         Long userId = CurrentUser.id(jwt);
         return ResponseEntity.ok(caffeineService.today(userId, now.toInstant(), ZoneId.of(tz)));

@@ -94,8 +94,6 @@ DB_URL=jdbc:mysql://localhost:3306/caffeine_tracker?serverTimezone=UTC&character
 
 ## API 엔드포인트
 
-전체 스펙은 서버 기동 후 `http://localhost:8080/swagger-ui.html` 참조.
-
 **인증**
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
@@ -166,9 +164,9 @@ src/main/java/com/jongbeom/server/
 │   ├── learning/       # 베이지안 반감기 학습 + 대시보드
 │   └── calc/           # 순수 연산(iOS Swift 포팅): 약동학·수면병합·베이지안·타임존 — 레이어 없음
 ├── global/
-│   ├── config/         # SecurityConfig, JwtConfig(+JwtProperties), ClockConfig, OpenApiConfig
+│   ├── config/         # SecurityConfig, JwtConfig(+JwtProperties), ClockConfig
 │   ├── error/          # 전역 예외 처리 (BusinessException·ErrorCode·GlobalExceptionHandler)
-│   ├── web/            # 컨트롤러 공용 헬퍼 (CurrentUser·TimeParamDocs)
+│   ├── web/            # 컨트롤러 공용 헬퍼 (CurrentUser)
 │   └── entity/         # BaseTimeEntity
 └── ServerApplication.java   # 패키지 루트 고정 — 컴포넌트 스캔 베이스
 
