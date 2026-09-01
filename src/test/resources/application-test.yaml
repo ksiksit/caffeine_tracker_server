@@ -1,9 +1,10 @@
+# 테스트 프로파일 (@ActiveProfiles("test")). 환경변수 없이 H2 인메모리로 동작한다.
 spring:
   datasource:
+    # MODE=MySQL: MySQL용 Flyway 마이그레이션을 H2에 그대로 적용하기 위한 호환 모드
     url: jdbc:h2:mem:testdb;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
     username: sa
     password:
-    driver-class-name: org.h2.Driver
   jpa:
     hibernate:
       ddl-auto: validate
@@ -17,7 +18,8 @@ spring:
 
 app:
   jwt:
+    # 테스트 전용 더미 시크릿(32바이트 이상). JwtTokenProviderTest 의 시크릿과 일치할 필요는 없다.
     secret: test-secret-key-must-be-at-least-32-bytes-long-xxxxxxxxxxx
     issuer: caffeine-tracker-test
-    expires-in-seconds: 3600
-    refresh-expires-in-seconds: 1209600
+    expires-in-seconds: 3600            # 1시간
+    refresh-expires-in-seconds: 1209600 # 14일
