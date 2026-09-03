@@ -19,7 +19,6 @@
 
 - **Java 21**, **Spring Boot 3.5.14**
 - **Spring Data JPA** (Hibernate) + **MySQL 8**
-- **Flyway** — DB 스키마 마이그레이션
 - **Spring Security** + **OAuth2 Resource Server (JWT)** — 인증
 - **Gradle** — 빌드
 
@@ -42,7 +41,13 @@ GRANT ALL PRIVILEGES ON caffeine_tracker.* TO 'caffeine'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-테이블 스키마는 애플리케이션 기동 시 Flyway가 `src/main/resources/db/migration/`의 마이그레이션(V1~V6)을 순서대로 적용해 자동 생성합니다.
+테이블은 애플리케이션이 만들지 않습니다. DDL 원본 `docs/db-schema.sql`을 직접 실행합니다 (모든 문장이 `CREATE TABLE IF NOT EXISTS`라 재실행해도 안전).
+
+```bash
+mysql -u caffeine -p caffeine_tracker < docs/db-schema.sql
+```
+
+스키마 설명·변경 절차·변경 이력은 `docs/db-schema.md` 참조. 스키마가 없거나 엔티티와 다르면 서버가 기동 시 `Schema-validation` 오류로 즉시 실패합니다.
 
 ### 2. 환경변수 설정
 
@@ -88,7 +93,7 @@ DB_URL=jdbc:mysql://localhost:3306/caffeine_tracker?serverTimezone=UTC&character
 ./gradlew bootRun
 ```
 
-서버는 `http://localhost:8080`에서 기동되며 Flyway가 `src/main/resources/db/migration/`의 마이그레이션을 자동 적용합니다.
+서버는 `http://localhost:8080`에서 기동됩니다. 기동 시 엔티티와 DB 스키마를 대조(`ddl-auto: validate`)하므로 1번 단계의 DDL이 적용되어 있어야 합니다.
 
 > 환경변수가 빠져 있으면 부팅 시 `Could not resolve placeholder 'DB_URL'` 같은 에러로 즉시 실패합니다. 4개 변수가 모두 설정되어 있는지 확인하세요.
 
@@ -170,7 +175,8 @@ src/main/java/com/jongbeom/server/
 │   └── entity/         # BaseTimeEntity
 └── ServerApplication.java   # 패키지 루트 고정 — 컴포넌트 스캔 베이스
 
-src/main/resources/db/migration/   # Flyway V1(users)~V6(half_life_observations)
+docs/db-schema.sql                 # DB 스키마 DDL 원본 — 사용자가 직접 실행, 테스트는 H2 에 적용해 엔티티와 대조
+docs/db-schema.md                  # 스키마 설명 · 변경 절차 · 변경 이력
 ```
 
 > 각 도메인 내부는 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/` 레이어 패키지로 구성한다.

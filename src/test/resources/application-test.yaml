@@ -1,7 +1,7 @@
 # 테스트 프로파일 (@ActiveProfiles("test")). 환경변수 없이 H2 인메모리로 동작한다.
 spring:
   datasource:
-    # MODE=MySQL: MySQL용 Flyway 마이그레이션을 H2에 그대로 적용하기 위한 호환 모드
+    # MODE=MySQL: MySQL용 DDL(docs/db-schema.sql)을 H2에 그대로 적용하기 위한 호환 모드
     url: jdbc:h2:mem:testdb;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
     username: sa
     password:
@@ -12,9 +12,13 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
+  # docs/db-schema.sql 을 H2 에 적용해 엔티티와 대조한다 (build.gradle 의 processTestResources 가 db/ 로 복사).
+  # 스프링 컨텍스트가 여러 개면 같은 인메모리 DB 에 다시 실행되므로 DDL 은 IF NOT EXISTS 여야 한다.
+  sql:
+    init:
+      mode: always
+      encoding: UTF-8
+      schema-locations: classpath:db/db-schema.sql
 
 app:
   jwt:

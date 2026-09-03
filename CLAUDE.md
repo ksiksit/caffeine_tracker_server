@@ -43,8 +43,10 @@ iOS 앱의 도메인 연산을 서버로 이관 완료. 앱은 입력을 보내�
    테스트도 같은 패키지 구조로 미러링
 2. 새 엔드포인트 경로를 `global/config/SecurityConfig.java`의 `authorizeHttpRequests`에 등록
    (등록 안 하면 기본 `authenticated` 처리)
-3. DB 스키마는 `src/main/resources/db/migration/V{n}__{설명}.sql` Flyway 마이그레이션으로 추가
-   (`ddl-auto: validate`라 엔티티만 바꾸면 부팅 실패)
+3. DB 스키마는 `docs/db-schema.sql`(DDL 원본)의 `CREATE TABLE`을 갱신하고, 기존 DB용 `ALTER`를
+   `docs/db-schema.md` 변경 이력에 기록. 앱은 스키마를 만들지 않으며(`spring.sql.init.mode: never`)
+   사용자가 DB에 직접 실행한다 (`ddl-auto: validate`라 DB에 미적용이면 부팅 실패).
+   테스트는 같은 파일을 H2에 적용해 엔티티와 대조하므로 DDL을 안 고치면 빌드 실패
 4. 테스트 추가 — JUnit 5, 통합 테스트는 `*IT` 접미사 (테스트는 H2로 자동 실행)
 
 **코드 규칙:**
@@ -67,20 +69,23 @@ iOS 앱의 도메인 연산을 서버로 이관 완료. 앱은 입력을 보내�
 - **learning**: 배치는 오래된→최신 순으로 **순차 prior 체이닝**(매 night마다 settings의 갱신 prior 재사용).
   `half_life_observations`는 `UNIQUE(user_id, obs_date)`로 같은 날 1회만 학습. 관측 저장 성공 후에만 settings 반영.
 - 시간 의존 로직(학습 후보 날짜)은 주입형 `Clock`(`global/config/ClockConfig`) 사용 — 테스트에서 `@MockBean Clock`으로 고정.
-- Flyway는 V6(`half_life_observations`)까지. 엔티티 변경 시 반드시 `V{n}` 동반(`ddl-auto: validate`).
+- 스키마 관리 도구 없음(Flyway 제거, 2026-09-03). 엔티티 변경 시 반드시 `docs/db-schema.sql` 갱신 + 변경 이력에 `ALTER` 기록 동반(`ddl-auto: validate`).
+  Flyway/Liquibase/부팅 시 자동 스키마 적용 재도입은 범위 외 — 제안하지 말 것.
 
 ## 배포
 
-> 현재 방식: **수동 배포** (CI는 GHCR 이미지 push까지만 자동화). 마지막 갱신: 2026-08-14.
+> 현재 방식: **수동 배포** (CI는 GHCR 이미지 push까지만 자동화). 마지막 갱신: 2026-09-03.
 > "배포 준비 됐냐"는 질문은 **이 저장소(레포)의 배포 준비 상태만** 확인해 답한다.
 > 운영 서버(EC2)·운영 DB(RDS)는 사용자가 직접 준비·관리하는 외부 인프라이므로
 > 준비된 것으로 간주하고, 상태를 다시 검증하려 하지 말 것. 진행되면 체크리스트/날짜를 갱신할 것.
 
-- **완료**: Dockerfile · docker-compose(.prod).yml · CI(빌드+테스트→GHCR push) · prod 프로파일 · Flyway
+- **완료**: Dockerfile · docker-compose(.prod).yml · CI(빌드+테스트→GHCR push) · prod 프로파일 · DB DDL(`docs/db-schema.sql`, 사용자가 직접 적용)
 - **인프라(사용자 관리, 준비 완료)**: 운영 서버(EC2) · 운영 DB(RDS)
 - **미완료**: HTTPS/리버스 프록시 · GHCR private 인증
 - **안 함(범위 외)**: CD 자동화 — 수동 배포 유지. 자동화 제안하지 말 것.
 
+배포 전 DB 준비: 첫 배포는 RDS에 `docs/db-schema.sql` 실행, 이후 스키마 변경은 `docs/db-schema.md` 변경 이력의 `ALTER`를
+먼저 적용한다(앱은 스키마를 만들지 않음 — 미적용이면 기동 시 `Schema-validation` 실패).
 수동 배포 절차는 `docs/운영-가이드.md` 참조 — **EC2에 인터넷이 없어 `docker compose pull` 불가**.
 PC에서 이미지 `docker save` → `scp` → EC2에서 `docker load` 후
 `docker compose -f docker-compose.prod.yml up -d` → `curl localhost:8080/actuator/health` 로 `UP` 확인.
