@@ -45,4 +45,9 @@ tasks.named('processTestResources') {
 	from('docs/db-schema.sql') {
 		into 'db'
 	}
+	// API 문서 정합성 테스트(ApiDocsConsistencyIT)가 docs/ 원본을 그대로 읽는다.
+	from('docs') {
+		include 'api.md', 'openapi.yaml'
+		into 'docs'
+	}
 }

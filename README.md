@@ -99,6 +99,9 @@ DB_URL=jdbc:mysql://localhost:3306/caffeine_tracker?serverTimezone=UTC&character
 
 ## API 엔드포인트
 
+> 상세 명세: [`docs/api.md`](docs/api.md) (요청·응답 필드, 예시, 에러 코드) · [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.0.3 — Swagger Editor·Postman에서 열기).
+> 엔드포인트 목록·DTO 필드·에러 코드는 `ApiDocsConsistencyIT`가 코드와 대조한다.
+
 **인증**
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
@@ -198,6 +201,8 @@ src/main/java/com/jongbeom/server/
 
 docs/db-schema.sql                 # DB 스키마 DDL 원본 — 사용자가 직접 실행, 테스트는 H2 에 적용해 엔티티와 대조
 docs/db-schema.md                  # 스키마 설명 · 변경 절차 · 변경 이력
+docs/api.md                        # API 명세(사람용) — 필드 표 · 예시 · 에러 코드
+docs/openapi.yaml                  # API 명세(기계용, OpenAPI 3.0.3) — 테스트가 코드와 대조
 ```
 
 > 각 도메인 내부는 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/` 레이어 패키지로 구성한다.

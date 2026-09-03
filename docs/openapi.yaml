@@ -1,0 +1,1321 @@
+openapi: 3.0.3
+info:
+  title: 카페인 트래커 API
+  version: 1.0.0
+  description: |
+    카페인 트래커 서버(thin-client) REST API. 사람용 상세 명세는 docs/api.md.
+
+    - 모든 응답은 봉투 `{ success, data, error, message }` 형태이며 키 4개는 null 이어도 항상 존재한다.
+    - 시각: 요청은 ISO-8601 + 오프셋, 응답은 UTC(Z). 날짜는 YYYY-MM-DD. `tz`는 IANA 타임존.
+    - 인증: Bearer JWT(access 1시간, refresh 14일·1회용 회전). 공개 엔드포인트는 signup/login/refresh.
+    - 공통 에러: 인증 필요 엔드포인트 401 UNAUTHORIZED, 바디 있는 엔드포인트 400 VALIDATION_FAILED/MALFORMED_JSON,
+      파라미터 있는 엔드포인트 400 INVALID_PARAMETER. 그 외 404 NOT_FOUND, 405 METHOD_NOT_ALLOWED, 415 UNSUPPORTED_MEDIA_TYPE, 500 INTERNAL_ERROR.
+servers:
+  - url: http://localhost:8080
+    description: 로컬
+security:
+  - bearerAuth: []
+tags:
+  - name: auth
+    description: 인증 — 회원가입·로그인·토큰 재발급·로그아웃
+  - name: user
+    description: 사용자
+  - name: settings
+    description: 유저 설정 + 학습 상태
+  - name: caffeine
+    description: 카페인 기록 CRUD + 오늘 현황(서버 계산)
+  - name: sleep
+    description: HealthKit 수면 샘플 업로드 + 요약(서버 병합)
+  - name: learning
+    description: 베이지안 반감기 학습 + 대시보드
+
+paths:
+  /api/auth/signup:
+    post:
+      tags: [auth]
+      summary: 회원가입
+      operationId: signup
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: 가입 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SignupResponse'
+              example:
+                success: true
+                data: { userId: 1, email: user@example.com, nickname: 테스터 }
+                error: null
+                message: null
+        '400':
+          $ref: '#/components/responses/BadRequestBody'
+        '409':
+          $ref: '#/components/responses/EmailAlreadyExists'
+
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: 로그인
+      description: 이메일·비밀번호 검증 후 access/refresh 토큰 쌍을 발급한다.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/TokenIssued'
+        '400':
+          $ref: '#/components/responses/BadRequestBody'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+
+  /api/auth/refresh:
+    post:
+      tags: [auth]
+      summary: 토큰 재발급(회전)
+      description: refresh 토큰으로 새 access/refresh 쌍을 발급한다. 기존 refresh는 즉시 폐기되며 재사용 시 401.
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/TokenIssued'
+        '400':
+          $ref: '#/components/responses/BadRequestBody'
+        '401':
+          $ref: '#/components/responses/InvalidRefreshToken'
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      summary: 로그아웃
+      description: 토큰의 사용자에 속한 refresh 토큰을 전부 폐기한다(모든 기기). access 토큰은 만료 전까지 유효하므로 앱이 폐기한다.
+      operationId: logout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/EmptySuccess'
+        '400':
+          $ref: '#/components/responses/BadRequestBody'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/me:
+    get:
+      tags: [user]
+      summary: 내 정보 조회
+      description: access 토큰의 클레임을 그대로 반환한다(DB 조회 없음).
+      operationId: me
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MeResponse'
+              example:
+                success: true
+                data: { userId: 1, email: user@example.com }
+                error: null
+                message: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/settings:
+    get:
+      tags: [settings]
+      summary: 설정 조회
+      description: 유저 설정과 학습 상태. 설정 행이 없으면 기본값으로 생성해 반환한다.
+      operationId: getSettings
+      responses:
+        '200':
+          $ref: '#/components/responses/SettingsResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [settings]
+      summary: 설정 변경(전체 교체)
+      description: halfLife 가 이전 값과 다르면 학습 prior 리셋(learnedMean=halfLife, learnedVariance=2.25, lastLearnedDate=null).
+      operationId: updateSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSettingsRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/SettingsResult'
+        '400':
+          $ref: '#/components/responses/BadRequestBody'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/caffeine-records:
+    post:
+      tags: [caffeine]
+      summary: 카페인 기록 추가
+      operationId: createCaffeineRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCaffeineRecordRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/CaffeineRecordResult'
+        '400':
+          $ref: '#/components/responses/BadRequestBody'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      tags: [caffeine]
+      summary: 오늘 기록 조회
+      description: now 가 속한 오늘(tz 기준 05:00 경계)의 기록을 섭취 시각 오름차순으로 반환한다.
+      operationId: listTodayCaffeineRecords
+      parameters:
+        - $ref: '#/components/parameters/now'
+        - $ref: '#/components/parameters/tz'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CaffeineRecordResponse'
+              example:
+                success: true
+                data:
+                  - { id: 10, amount: 100, drinkName: 아메리카노, timestamp: '2026-06-01T00:00:00Z' }
+                error: null
+                message: null
+        '400':
+          $ref: '#/components/responses/InvalidParameter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/caffeine-records/{id}:
+    parameters:
+      - $ref: '#/components/parameters/recordId'
+    put:
+      tags: [caffeine]
+      summary: 카페인 기록 수정(전체 교체)
+      description: 본인 기록만 수정할 수 있다.
+      operationId: updateCaffeineRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCaffeineRecordRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/CaffeineRecordResult'
+        '400':
+          $ref: '#/components/responses/BadRequestBody'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CaffeineRecordNotFound'
+    delete:
+      tags: [caffeine]
+      summary: 카페인 기록 삭제
+      operationId: deleteCaffeineRecord
+      responses:
+        '200':
+          $ref: '#/components/responses/EmptySuccess'
+        '400':
+          $ref: '#/components/responses/InvalidParameter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CaffeineRecordNotFound'
+
+  /api/caffeine/today:
+    get:
+      tags: [caffeine]
+      summary: 오늘의 카페인 현황(서버 계산)
+      description: |
+        홈 화면용 통합 계산. 설정을 읽어 잔량 시계열(05:00부터 24h, 15분 간격 + 섭취 직전·직후 점)·현재/취침 잔량·
+        섭취 마감시각을 한 번에 계산한다. 잔량 계산에는 effectiveHalfLifeHours 를 쓴다. 기록이 없으면 차트는 []·잔량 0.
+      operationId: caffeineToday
+      parameters:
+        - $ref: '#/components/parameters/now'
+        - $ref: '#/components/parameters/tz'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CaffeineTodayResponse'
+              example:
+                success: true
+                data:
+                  now: '2026-06-01T05:00:00Z'
+                  bedtime: '2026-06-01T14:00:00Z'
+                  records:
+                    - { id: 10, amount: 100, drinkName: 아메리카노, timestamp: '2026-06-01T00:00:00Z' }
+                  todayTotal: 100
+                  overDailyLimit: false
+                  chart:
+                    - { time: '2026-05-31T20:00:00Z', concentrationMg: 0.0 }
+                    - { time: '2026-06-01T00:00:00Z', concentrationMg: 100.0 }
+                  currentResidual: 50.0
+                  predictedAtBedtime: 14.36
+                  cutoff: { status: CUTOFF, cutoff: '2026-06-01T08:38:00Z', existingAtBedtime: null }
+                  effectiveHalfLifeHours: 5.0
+                  referenceDoseMg: 75
+                error: null
+                message: null
+        '400':
+          $ref: '#/components/responses/InvalidParameter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/sleep/samples:
+    post:
+      tags: [sleep]
+      summary: 수면 샘플 업로드(멱등)
+      description: clientUuid 가 이미 저장돼 있으면 건너뛴다. 배치 안의 중복 clientUuid 는 첫 항목만 저장.
+      operationId: uploadSleepSamples
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadSleepSamplesRequest'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UploadSleepSamplesResponse'
+              example:
+                success: true
+                data: { received: 2, inserted: 2 }
+                error: null
+                message: null
+        '400':
+          $ref: '#/components/responses/BadRequestBody'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/sleep/summary:
+    get:
+      tags: [sleep]
+      summary: 수면 요약 조회(서버 병합)
+      description: date(아침 날짜) 기준 수면 윈도우(전날 18:00 ~ 당일 12:00, tz 로컬)의 원시 샘플을 병합해 요약한다.
+      operationId: sleepSummary
+      parameters:
+        - $ref: '#/components/parameters/date'
+        - $ref: '#/components/parameters/tz'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SleepSummaryResponse'
+              example:
+                success: true
+                data:
+                  date: '2026-06-01'
+                  hasData: true
+                  bedtimeStart: '2026-05-31T14:00:00Z'
+                  records:
+                    - { start: '2026-05-31T14:00:00Z', end: '2026-05-31T14:30:00Z', hkValue: 0 }
+                    - { start: '2026-05-31T14:30:00Z', end: '2026-05-31T20:00:00Z', hkValue: 3 }
+                  totalSleepSeconds: 19800.0
+                  timeInBedSeconds: 21600.0
+                  sleepEfficiency: 0.9167
+                  sleepOnsetLatencySeconds: 1800.0
+                  stageBreakdown:
+                    - { hkValue: 0, durationSeconds: 1800.0 }
+                    - { hkValue: 3, durationSeconds: 19800.0 }
+                error: null
+                message: null
+        '400':
+          $ref: '#/components/responses/InvalidParameter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/learning/run:
+    post:
+      tags: [learning]
+      summary: 반감기 학습 실행
+      description: |
+        오늘(tz 기준) 포함 최근 7일 중 수면 데이터가 있고 아직 학습하지 않은 밤을 오래된 순으로 베이지안 학습하고
+        설정의 학습 상태에 반영한다. 같은 날짜는 1회만 학습된다. 하나라도 학습되면 skipReason 은 null.
+      operationId: runLearning
+      parameters:
+        - $ref: '#/components/parameters/tz'
+      responses:
+        '200':
+          description: 성공(학습 여부는 updatedCount 로 판단)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LearningRunResponse'
+              examples:
+                learned:
+                  summary: 1박 학습됨
+                  value:
+                    success: true
+                    data: { updatedCount: 1, skipReason: null, skipMessage: null }
+                    error: null
+                    message: null
+                skipped:
+                  summary: 이미 학습된 밤뿐
+                  value:
+                    success: true
+                    data: { updatedCount: 0, skipReason: ALREADY_LEARNED, skipMessage: 최근 수면 기록은 이미 학습에 반영됐어요. }
+                    error: null
+                    message: null
+        '400':
+          $ref: '#/components/responses/InvalidParameter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/learning/observations:
+    get:
+      tags: [learning]
+      summary: 학습 관측 이력 조회
+      description: 관측을 날짜 오름차순으로 반환한다.
+      operationId: learningObservations
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ObservationResponse'
+              example:
+                success: true
+                data:
+                  - { date: '2026-06-01', predictedResidualAtBedtime: 114.87, observedSolMinutes: 30.0, priorMean: 5.0, posteriorMean: 5.2, posteriorVariance: 1.9, conditionMultiplier: 1.0 }
+                error: null
+                message: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/learning/dashboard:
+    get:
+      tags: [learning]
+      summary: 학습 대시보드(서버 계산)
+      operationId: learningDashboard
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LearningDashboardResponse'
+              example:
+                success: true
+                data:
+                  count: 1
+                  latest: { posteriorMean: 5.2, posteriorVariance: 1.9, ciLower: 2.5, ciUpper: 7.9, confidence: 0.08 }
+                  observations:
+                    - { date: '2026-06-01', predictedResidualAtBedtime: 114.87, observedSolMinutes: 30.0, priorMean: 5.0, posteriorMean: 5.2, posteriorVariance: 1.9, conditionMultiplier: 1.0 }
+                  calibration:
+                    points: [ { predicted: 26.49, observed: 30.0 } ]
+                    rSquared: null
+                    rmse: 3.51
+                    domainLower: 16.49
+                    domainUpper: 40.0
+                  residualHistogram: [ { lower: 114.87, upper: 114.87, count: 1 } ]
+                  solHistogram: [ { lower: 30.0, upper: 30.0, count: 1 } ]
+                error: null
+                message: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 로그인·재발급으로 받은 accessToken. 1시간 유효.
+
+  parameters:
+    tz:
+      name: tz
+      in: query
+      required: true
+      description: IANA 타임존 이름. 로컬 달력 연산(오늘 경계·취침시각·수면 윈도우)에 사용. 잘못된 값은 400 INVALID_PARAMETER.
+      schema:
+        type: string
+        example: Asia/Seoul
+    now:
+      name: now
+      in: query
+      required: true
+      description: 기기 현재 시각, ISO-8601 + 오프셋.
+      schema:
+        type: string
+        format: date-time
+        example: '2026-06-01T14:00:00+09:00'
+    date:
+      name: date
+      in: query
+      required: true
+      description: 잠에서 깬 아침 날짜(로컬), YYYY-MM-DD.
+      schema:
+        type: string
+        format: date
+        example: '2026-06-01'
+    recordId:
+      name: id
+      in: path
+      required: true
+      description: 카페인 기록 id. 숫자가 아니면 400 INVALID_PARAMETER.
+      schema:
+        type: integer
+        format: int64
+
+  responses:
+    TokenIssued:
+      description: 토큰 발급
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TokenResponse'
+          example:
+            success: true
+            data: { accessToken: eyJhbGciOiJIUzI1NiJ9..., refreshToken: 9f3c..., tokenType: Bearer, expiresIn: 3600, refreshExpiresIn: 1209600 }
+            error: null
+            message: null
+    SettingsResult:
+      description: 설정 + 학습 상태
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SettingsResponse'
+          example:
+            success: true
+            data: { halfLife: 5.0, condition: 0, bedtimeHour: 23, bedtimeMinute: 0, referenceDoseMg: 75, isLearningEnabled: true, learnedMean: 5.0, learnedVariance: 2.25, lastLearnedDate: null, inferredBaseHalfLife: 5.0, effectiveHalfLifeHours: 5.0 }
+            error: null
+            message: null
+    CaffeineRecordResult:
+      description: 카페인 기록
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CaffeineRecordResponse'
+          example:
+            success: true
+            data: { id: 10, amount: 100, drinkName: 아메리카노, timestamp: '2026-06-01T00:00:00Z' }
+            error: null
+            message: null
+    EmptySuccess:
+      description: 바디 없는 성공 — 204 대신 200 + data null
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SuccessEnvelope'
+          example:
+            success: true
+            data: null
+            error: null
+            message: null
+    Unauthorized:
+      description: 인증 실패 — Bearer 토큰 없음·만료·위조 (UNAUTHORIZED)
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: Bearer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error: { code: UNAUTHORIZED }
+            message: 인증이 필요합니다.
+    BadRequestBody:
+      description: 바디 검증 실패(VALIDATION_FAILED, fieldErrors 포함) 또는 JSON 파싱·타입 오류(MALFORMED_JSON)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error:
+              code: VALIDATION_FAILED
+              fieldErrors:
+                - { field: email, message: must not be blank }
+            message: 입력값이 올바르지 않습니다.
+    InvalidParameter:
+      description: 쿼리·경로 파라미터 누락 또는 형식 오류 (INVALID_PARAMETER)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error: { code: INVALID_PARAMETER }
+            message: 요청 파라미터가 올바르지 않습니다.
+    EmailAlreadyExists:
+      description: 이메일 중복 (EMAIL_ALREADY_EXISTS)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error: { code: EMAIL_ALREADY_EXISTS }
+            message: 이미 사용 중인 이메일입니다.
+    InvalidCredentials:
+      description: 이메일 또는 비밀번호 불일치 (INVALID_CREDENTIALS)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error: { code: INVALID_CREDENTIALS }
+            message: 이메일 또는 비밀번호가 올바르지 않습니다.
+    InvalidRefreshToken:
+      description: refresh 토큰 없음·만료·폐기·재사용 (INVALID_REFRESH_TOKEN)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error: { code: INVALID_REFRESH_TOKEN }
+            message: RefreshToken 이 유효하지 않습니다.
+    CaffeineRecordNotFound:
+      description: 본인 기록이 아니거나 없는 id (CAFFEINE_RECORD_NOT_FOUND)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error: { code: CAFFEINE_RECORD_NOT_FOUND }
+            message: 카페인 기록을 찾을 수 없습니다.
+
+  schemas:
+    # ---------- 공통 봉투 ----------
+    SuccessEnvelope:
+      type: object
+      description: 성공 응답 봉투. data 는 엔드포인트별 스키마로 덮어쓴다(바디 없는 성공은 null).
+      required: [success, data, error, message]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          nullable: true
+          description: 성공 페이로드. 바디 없는 성공은 null
+        error:
+          type: object
+          nullable: true
+          description: 성공 시 항상 null
+        message:
+          type: string
+          nullable: true
+          description: 성공 시 항상 null
+    ErrorEnvelope:
+      type: object
+      description: 실패 응답 봉투
+      required: [success, data, error, message]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        data:
+          type: object
+          nullable: true
+          description: 실패 시 항상 null
+        error:
+          $ref: '#/components/schemas/ApiError'
+        message:
+          type: string
+          description: 사용자에게 보여줄 문장(ErrorCode 메시지)
+    ApiError:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: 에러 코드(global/error/ErrorCode). 프레임워크가 정하는 그 외 상태는 HTTP_{status}.
+          enum:
+            - EMAIL_ALREADY_EXISTS
+            - INVALID_CREDENTIALS
+            - INVALID_REFRESH_TOKEN
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - VALIDATION_FAILED
+            - MALFORMED_JSON
+            - INVALID_PARAMETER
+            - NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - UNSUPPORTED_MEDIA_TYPE
+            - CAFFEINE_RECORD_NOT_FOUND
+            - INTERNAL_ERROR
+        fieldErrors:
+          type: array
+          description: VALIDATION_FAILED 에만 존재
+          items:
+            $ref: '#/components/schemas/FieldError'
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+          description: 검증 라이브러리 기본 문구(영문). 화면 표시용 아님
+
+    # ---------- auth ----------
+    SignupRequest:
+      type: object
+      required: [email, password, nickname]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+        nickname:
+          type: string
+          minLength: 2
+          maxLength: 20
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+    LogoutRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          description: 클라이언트 계약 호환용. 서버는 값과 무관하게 토큰의 사용자 기준으로 전부 폐기
+    SignupResponse:
+      type: object
+      required: [userId, email, nickname]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        email:
+          type: string
+        nickname:
+          type: string
+    TokenResponse:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn, refreshExpiresIn]
+      properties:
+        accessToken:
+          type: string
+          description: JWT. Authorization Bearer 헤더에 사용
+        refreshToken:
+          type: string
+          description: 불투명 문자열. 재발급 전용·1회용
+        tokenType:
+          type: string
+          enum: [Bearer]
+        expiresIn:
+          type: integer
+          format: int64
+          description: access 토큰 유효 시간(초)
+          example: 3600
+        refreshExpiresIn:
+          type: integer
+          format: int64
+          description: refresh 토큰 유효 시간(초)
+          example: 1209600
+
+    # ---------- user ----------
+    MeResponse:
+      type: object
+      required: [userId, email]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        email:
+          type: string
+
+    # ---------- settings ----------
+    SettingsResponse:
+      type: object
+      required: [halfLife, condition, bedtimeHour, bedtimeMinute, referenceDoseMg, isLearningEnabled,
+                 learnedMean, learnedVariance, lastLearnedDate, inferredBaseHalfLife, effectiveHalfLifeHours]
+      properties:
+        halfLife:
+          type: number
+          format: double
+          description: 수동 설정 반감기(시간). 기본 5.0
+        condition:
+          type: integer
+          description: 건강 상태 0=NONE, 1=SMOKER, 2=ORAL_CONTRACEPTIVE, 3=PREGNANT (배수 1.0/0.5/2.0/2.5)
+          minimum: 0
+          maximum: 3
+        bedtimeHour:
+          type: integer
+          description: 취침 시각(로컬) 시. 기본 23
+        bedtimeMinute:
+          type: integer
+          description: 취침 시각(로컬) 분. 기본 0
+        referenceDoseMg:
+          type: integer
+          description: 기준 용량(mg). 기본 75
+        isLearningEnabled:
+          type: boolean
+          description: 자동 학습 여부. 기본 true
+        learnedMean:
+          type: number
+          format: double
+          description: 학습된 반감기 평균(시간). 기본 5.0
+        learnedVariance:
+          type: number
+          format: double
+          description: 학습된 반감기 분산(시간²). 기본 2.25
+        lastLearnedDate:
+          type: string
+          format: date
+          nullable: true
+          description: 마지막 학습 날짜(로컬). 학습 전이면 null
+        inferredBaseHalfLife:
+          type: number
+          format: double
+          description: 학습 ON 이면 learnedMean, OFF 면 halfLife
+        effectiveHalfLifeHours:
+          type: number
+          format: double
+          description: inferredBaseHalfLife × 건강 상태 배수. 잔량·마감시각 연산에 쓰는 값
+    UpdateSettingsRequest:
+      type: object
+      required: [halfLife, condition, bedtimeHour, bedtimeMinute, referenceDoseMg, isLearningEnabled]
+      properties:
+        halfLife:
+          type: number
+          format: double
+          minimum: 3.0
+          maximum: 7.0
+        condition:
+          type: integer
+          minimum: 0
+          maximum: 3
+        bedtimeHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        bedtimeMinute:
+          type: integer
+          minimum: 0
+          maximum: 59
+        referenceDoseMg:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        isLearningEnabled:
+          type: boolean
+        learnedMean:
+          type: number
+          format: double
+          description: learnedVariance 와 함께 보내면 학습 상태를 1회 시드(기기 이전용). 하나만 보내면 무시
+        learnedVariance:
+          type: number
+          format: double
+        lastLearnedDate:
+          type: string
+          format: date
+          description: 시드 시 함께 저장. 생략하면 null
+
+    # ---------- caffeine ----------
+    CreateCaffeineRecordRequest:
+      type: object
+      required: [amount, drinkName, timestamp]
+      properties:
+        amount:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: 카페인량(mg)
+        drinkName:
+          type: string
+          maxLength: 100
+        timestamp:
+          type: string
+          format: date-time
+          description: 섭취 시각, 오프셋 포함
+    UpdateCaffeineRecordRequest:
+      type: object
+      required: [amount, drinkName, timestamp]
+      properties:
+        amount:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: 카페인량(mg)
+        drinkName:
+          type: string
+          maxLength: 100
+        timestamp:
+          type: string
+          format: date-time
+          description: 섭취 시각, 오프셋 포함
+    CaffeineRecordResponse:
+      type: object
+      required: [id, amount, drinkName, timestamp]
+      properties:
+        id:
+          type: integer
+          format: int64
+        amount:
+          type: integer
+          description: mg
+        drinkName:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+          description: 섭취 시각(UTC)
+    CaffeineTodayResponse:
+      type: object
+      required: [now, bedtime, records, todayTotal, overDailyLimit, chart, currentResidual, predictedAtBedtime,
+                 cutoff, effectiveHalfLifeHours, referenceDoseMg]
+      properties:
+        now:
+          type: string
+          format: date-time
+          description: 요청 now(UTC)
+        bedtime:
+          type: string
+          format: date-time
+          description: 다음 취침시각(UTC)
+        records:
+          type: array
+          description: 오늘 기록
+          items:
+            $ref: '#/components/schemas/CaffeineRecordResponse'
+        todayTotal:
+          type: integer
+          description: 오늘 섭취 합(mg)
+        overDailyLimit:
+          type: boolean
+          description: todayTotal > 400
+        chart:
+          type: array
+          description: 잔량 시계열. 05:00 부터 24h, 15분 간격 + 섭취 직전·직후 점. 기록 없으면 []
+          items:
+            $ref: '#/components/schemas/DataPointResponse'
+        currentResidual:
+          type: number
+          format: double
+          description: now 시점 잔량(mg). 기록 없으면 0
+        predictedAtBedtime:
+          type: number
+          format: double
+          description: 취침시각 예상 잔량(mg). 기록 없으면 0
+        cutoff:
+          $ref: '#/components/schemas/CutoffResponse'
+        effectiveHalfLifeHours:
+          type: number
+          format: double
+        referenceDoseMg:
+          type: integer
+    DataPointResponse:
+      type: object
+      required: [time, concentrationMg]
+      properties:
+        time:
+          type: string
+          format: date-time
+        concentrationMg:
+          type: number
+          format: double
+          description: 그 시각 체내 잔량(mg)
+    CutoffResponse:
+      type: object
+      description: 기준 용량을 취침 시 잔량 50mg 이내로 마실 수 있는 가장 늦은 시각
+      required: [status, cutoff, existingAtBedtime]
+      properties:
+        status:
+          type: string
+          enum: [SAFE_ANYTIME, CUTOFF, ALREADY_EXCEEDED]
+        cutoff:
+          type: string
+          format: date-time
+          nullable: true
+          description: CUTOFF 일 때만. 과거일 수 있다
+        existingAtBedtime:
+          type: number
+          format: double
+          nullable: true
+          description: ALREADY_EXCEEDED 일 때만. 취침 시 기존 잔량(mg)
+
+    # ---------- sleep ----------
+    UploadSleepSamplesRequest:
+      type: object
+      required: [samples]
+      properties:
+        samples:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/SampleItem'
+    SampleItem:
+      type: object
+      required: [clientUuid, start, end, hkValue]
+      properties:
+        clientUuid:
+          type: string
+          maxLength: 64
+          description: HealthKit 샘플 UUID. 멱등 키
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        hkValue:
+          type: integer
+          minimum: 0
+          maximum: 5
+          description: 0=inBed, 1=asleepUnspecified, 2=awake, 3=asleepCore, 4=asleepDeep, 5=asleepREM
+    UploadSleepSamplesResponse:
+      type: object
+      required: [received, inserted]
+      properties:
+        received:
+          type: integer
+          description: 요청에 담긴 샘플 수
+        inserted:
+          type: integer
+          description: 새로 저장된 수
+    SleepSummaryResponse:
+      type: object
+      required: [date, hasData, bedtimeStart, records, totalSleepSeconds, timeInBedSeconds, sleepEfficiency,
+                 sleepOnsetLatencySeconds, stageBreakdown]
+      properties:
+        date:
+          type: string
+          format: date
+        hasData:
+          type: boolean
+          description: 윈도우에 샘플이 있는지. false 면 나머지는 0·[]·null
+        bedtimeStart:
+          type: string
+          format: date-time
+          nullable: true
+          description: 원시 샘플의 최초 inBed 시작(UTC)
+        records:
+          type: array
+          description: 병합된 수면 구간
+          items:
+            $ref: '#/components/schemas/RecordItem'
+        totalSleepSeconds:
+          type: number
+          format: double
+          description: 수면 단계(unspecified·core·deep·rem) 합(초)
+        timeInBedSeconds:
+          type: number
+          format: double
+          description: 병합 구간 전체 스팬(초)
+        sleepEfficiency:
+          type: number
+          format: double
+          description: totalSleep / timeInBed, 0~1
+        sleepOnsetLatencySeconds:
+          type: number
+          format: double
+          nullable: true
+          description: 수면 잠복기(SOL) — inBed 시작 → 최초 수면 단계 시작(초). 계산 불가면 null
+        stageBreakdown:
+          type: array
+          description: 지속시간 > 0 인 단계만, inBed→awake→core→deep→rem→unspecified 순
+          items:
+            $ref: '#/components/schemas/StageItem'
+    RecordItem:
+      type: object
+      required: [start, end, hkValue]
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        hkValue:
+          type: integer
+    StageItem:
+      type: object
+      required: [hkValue, durationSeconds]
+      properties:
+        hkValue:
+          type: integer
+        durationSeconds:
+          type: number
+          format: double
+
+    # ---------- learning ----------
+    LearningRunResponse:
+      type: object
+      required: [updatedCount, skipReason, skipMessage]
+      properties:
+        updatedCount:
+          type: integer
+          description: 이번 실행에서 학습된 밤 수
+        skipReason:
+          type: string
+          nullable: true
+          description: updatedCount 가 0 일 때만. 데이터가 있는 가장 최근 밤의 사유
+          enum:
+            - LEARNING_DISABLED
+            - NO_SLEEP_SUMMARY
+            - SLEEP_TOO_SHORT
+            - MISSING_BEDTIME
+            - INVALID_SOL
+            - ALREADY_LEARNED
+            - INVALID_PRIOR
+            - INSUFFICIENT_CAFFEINE_RESIDUAL
+            - INVALID_OBSERVATION
+        skipMessage:
+          type: string
+          nullable: true
+          description: skipReason 의 사용자 표시 문장
+    ObservationResponse:
+      type: object
+      required: [date, predictedResidualAtBedtime, observedSolMinutes, priorMean, posteriorMean, posteriorVariance,
+                 conditionMultiplier]
+      properties:
+        date:
+          type: string
+          format: date
+          description: 관측 날짜 = 그 밤이 끝나는 아침(로컬)
+        predictedResidualAtBedtime:
+          type: number
+          format: double
+          description: 취침 시 예측 잔량(mg)
+        observedSolMinutes:
+          type: number
+          format: double
+          description: 관측 SOL(분)
+        priorMean:
+          type: number
+          format: double
+        posteriorMean:
+          type: number
+          format: double
+        posteriorVariance:
+          type: number
+          format: double
+        conditionMultiplier:
+          type: number
+          format: double
+    LearningDashboardResponse:
+      type: object
+      required: [count, latest, observations, calibration, residualHistogram, solHistogram]
+      properties:
+        count:
+          type: integer
+          description: 관측 수. 앱 카드 분기 0 / 1~2 / 3 이상
+        latest:
+          nullable: true
+          description: 최신 관측 기준 추정. count 가 0 이면 null
+          allOf:
+            - $ref: '#/components/schemas/LatestEstimate'
+        observations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservationResponse'
+        calibration:
+          $ref: '#/components/schemas/Calibration'
+        residualHistogram:
+          type: array
+          description: 취침 잔량 분포, 최대 6개 빈
+          items:
+            $ref: '#/components/schemas/HistogramBinItem'
+        solHistogram:
+          type: array
+          description: 관측 SOL 분포, 최대 6개 빈
+          items:
+            $ref: '#/components/schemas/HistogramBinItem'
+    LatestEstimate:
+      type: object
+      required: [posteriorMean, posteriorVariance, ciLower, ciUpper, confidence]
+      properties:
+        posteriorMean:
+          type: number
+          format: double
+          description: 반감기 추정(시간)
+        posteriorVariance:
+          type: number
+          format: double
+        ciLower:
+          type: number
+          format: double
+          description: 95% 신뢰구간 하한(±1.96σ)
+        ciUpper:
+          type: number
+          format: double
+        confidence:
+          type: number
+          format: double
+          description: 신뢰도 0~1 (1 − σ_post / 1.5)
+    Calibration:
+      type: object
+      description: 예측 SOL(15 + 0.1×잔량) 대 관측 SOL
+      required: [points, rSquared, rmse, domainLower, domainUpper]
+      properties:
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/PointItem'
+        rSquared:
+          type: number
+          format: double
+          nullable: true
+          description: 결정계수. 관측이 적거나 분산이 0 이면 null
+        rmse:
+          type: number
+          format: double
+          description: 분
+        domainLower:
+          type: number
+          format: double
+          description: 산점도 양 축 공통 범위(분)
+        domainUpper:
+          type: number
+          format: double
+    PointItem:
+      type: object
+      required: [predicted, observed]
+      properties:
+        predicted:
+          type: number
+          format: double
+        observed:
+          type: number
+          format: double
+    HistogramBinItem:
+      type: object
+      required: [lower, upper, count]
+      properties:
+        lower:
+          type: number
+          format: double
+        upper:
+          type: number
+          format: double
+          description: 마지막 빈은 상한 포함
+        count:
+          type: integer

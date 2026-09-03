@@ -27,6 +27,7 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.condition").value(0))
                 .andExpect(jsonPath("$.data.bedtimeHour").value(23))
                 .andExpect(jsonPath("$.data.referenceDoseMg").value(75))
+                .andExpect(jsonPath("$.data.isLearningEnabled").value(true))
                 .andExpect(jsonPath("$.data.learnedMean").value(5.0))
                 .andExpect(jsonPath("$.data.learnedVariance").value(2.25))
                 .andExpect(jsonPath("$.data.effectiveHalfLifeHours").value(5.0));

@@ -59,6 +59,8 @@ iOS 앱의 도메인 연산을 서버로 이관 완료. 앱은 입력을 보내�
   → `ApiResponse` 실패 봉투(`error.code`=ErrorCode name, `message`=ErrorCode message). 실패 봉투를 만드는 곳은
   `GlobalExceptionHandler`와 `JsonSecurityErrorHandler`(시큐리티 401/403) 둘뿐. 컨트롤러/서비스에서 ad-hoc try/catch 지양
 - 검증: DTO에 Jakarta Validation 어노테이션 + 컨트롤러 인자 `@Valid`
+- API 명세: `docs/api.md`(사람용)와 `docs/openapi.yaml`(OpenAPI 3.0.3)이 계약 문서. 엔드포인트·DTO·ErrorCode를 바꾸면
+  둘 다 갱신 — `ApiDocsConsistencyIT`가 엔드포인트 목록·DTO 필드·enum 누락을 잡는다(설명·제약 문구는 못 잡음)
 - Lombok: `@Getter`, `@RequiredArgsConstructor`, `@Slf4j`
 
 ## 주의사항
