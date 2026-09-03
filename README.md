@@ -125,6 +125,27 @@ DB_URL=jdbc:mysql://localhost:3306/caffeine_tracker?serverTimezone=UTC&character
 
 > 연산 엔드포인트는 기기 로컬 타임존 재현을 위해 `tz`(IANA, 예 `Asia/Seoul`)와 필요 시 `now`(ISO-8601+오프셋)를 받는다.
 
+### 공통 응답 구조
+
+모든 API는 아래 봉투로 응답합니다. 키 4개는 값이 없어도 항상 존재합니다(`null`).
+
+| 키 | 성공 | 실패 |
+|---|---|---|
+| `success` | `true` | `false` |
+| `data` | 페이로드(객체·배열) | `null` |
+| `error` | `null` | `{ "code": "...", "fieldErrors": [...] }` — `fieldErrors`는 검증 실패(`VALIDATION_FAILED`)에만 |
+| `message` | `null` | 사용자에게 보여줄 문장 |
+
+```json
+{ "success": true,  "data": { "accessToken": "...", "refreshToken": "...", "tokenType": "Bearer", "expiresIn": 3600, "refreshExpiresIn": 1209600 }, "error": null, "message": null }
+{ "success": false, "data": null, "error": { "code": "INVALID_CREDENTIALS" }, "message": "이메일 또는 비밀번호가 올바르지 않습니다." }
+{ "success": false, "data": null, "error": { "code": "VALIDATION_FAILED", "fieldErrors": [ { "field": "email", "message": "..." } ] }, "message": "입력값이 올바르지 않습니다." }
+```
+
+- HTTP 상태 코드는 그대로 의미를 가집니다(201 생성, 400/401/404/409 등). 바디 없는 성공(로그아웃·삭제)도 204 대신 `200` + `data: null`.
+- `error.code`와 HTTP 상태 매핑의 단일 출처는 `global/error/ErrorCode.java`. 시큐리티 단계의 401(`UNAUTHORIZED`)·403(`FORBIDDEN`)과
+  프레임워크가 정하는 400(`INVALID_PARAMETER`: 잘못된 `tz`·필수 파라미터 누락)·404(`NOT_FOUND`)·405(`METHOD_NOT_ALLOWED`)도 같은 봉투입니다.
+
 ### 사용 예시
 
 **회원가입**
@@ -143,7 +164,7 @@ curl -X POST http://localhost:8080/api/auth/login \
   -d '{"email":"test@example.com","password":"password123"}'
 ```
 
-응답으로 받은 access token을 `Authorization: Bearer <token>` 헤더로 전송하여 인증된 API를 호출합니다.
+응답 `data.accessToken`을 `Authorization: Bearer <token>` 헤더로 전송하여 인증된 API를 호출합니다.
 
 ## 빌드 & 테스트
 
@@ -170,8 +191,8 @@ src/main/java/com/jongbeom/server/
 │   └── calc/           # 순수 연산(iOS Swift 포팅): 약동학·수면병합·베이지안·타임존 — 레이어 없음
 ├── global/
 │   ├── config/         # SecurityConfig, JwtConfig(+JwtProperties), ClockConfig
-│   ├── error/          # 전역 예외 처리 (BusinessException·ErrorCode·GlobalExceptionHandler)
-│   ├── web/            # 컨트롤러 공용 헬퍼 (CurrentUser)
+│   ├── error/          # 전역 에러 (BusinessException·ErrorCode·ApiError·GlobalExceptionHandler·JsonSecurityErrorHandler=401/403)
+│   ├── web/            # 컨트롤러 공용 (ApiResponse 응답 봉투, CurrentUser)
 │   └── entity/         # BaseTimeEntity
 └── ServerApplication.java   # 패키지 루트 고정 — 컴포넌트 스캔 베이스
 

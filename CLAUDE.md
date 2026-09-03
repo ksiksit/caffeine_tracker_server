@@ -23,6 +23,7 @@
 `ServerApplication`은 패키지 루트 고정(컴포넌트 스캔 베이스). 상세 트리는 README 참조.
 도메인 예외는 `global/error/BusinessException`(ErrorCode 보유) 상속 — 핸들러 등록 불필요.
 컨트롤러의 JWT userId 추출은 `global/web/CurrentUser.id(jwt)` 사용.
+모든 응답은 `global/web/ApiResponse`(success/data/error/message) 봉투 — 형태 계약은 README "공통 응답 구조".
 
 ## 도메인 개요 (thin-client 서버)
 
@@ -52,8 +53,11 @@ iOS 앱의 도메인 연산을 서버로 이관 완료. 앱은 입력을 보내�
 **코드 규칙:**
 - DTO는 Java `record`, `*Request` / `*Response` 네이밍
 - 엔티티: `BaseTimeEntity` 상속, `@NoArgsConstructor(access = PROTECTED)`, `@Data` 금지
+- 응답: 컨트롤러는 `ApiResponse<T>`를 직접 반환 — 성공 `ApiResponse.ok(data)`, 바디 없는 성공은 `ApiResponse.ok()`(200, 204 안 씀),
+  201은 `@ResponseStatus`. `ResponseEntity`·DTO 직접 반환 금지. 타임존 파라미터는 `ZoneId tz`로 바인딩(잘못된 값 → 400 INVALID_PARAMETER)
 - 예외: 도메인별 커스텀 예외를 `*/exception/`에 두고 `GlobalExceptionHandler`가 일괄 처리
-  → `ErrorResponse` 응답. 컨트롤러/서비스에서 ad-hoc try/catch 지양
+  → `ApiResponse` 실패 봉투(`error.code`=ErrorCode name, `message`=ErrorCode message). 실패 봉투를 만드는 곳은
+  `GlobalExceptionHandler`와 `JsonSecurityErrorHandler`(시큐리티 401/403) 둘뿐. 컨트롤러/서비스에서 ad-hoc try/catch 지양
 - 검증: DTO에 Jakarta Validation 어노테이션 + 컨트롤러 인자 `@Valid`
 - Lombok: `@Getter`, `@RequiredArgsConstructor`, `@Slf4j`
 

@@ -1,14 +1,14 @@
 package com.jongbeom.server.domain.learning.controller;
 
-import com.jongbeom.server.global.web.CurrentUser;
 import com.jongbeom.server.domain.learning.dto.LearningDashboardResponse;
 import com.jongbeom.server.domain.learning.dto.LearningRunResponse;
 import com.jongbeom.server.domain.learning.dto.ObservationResponse;
 import com.jongbeom.server.domain.learning.service.LearningService;
+import com.jongbeom.server.global.web.ApiResponse;
+import com.jongbeom.server.global.web.CurrentUser;
 import java.time.ZoneId;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,24 +26,24 @@ public class LearningController {
     private final LearningService learningService;
 
     @PostMapping("/run")
-    public ResponseEntity<LearningRunResponse> run(
+    public ApiResponse<LearningRunResponse> run(
             @AuthenticationPrincipal Jwt jwt,
-            @RequestParam String tz) {
+            @RequestParam ZoneId tz) {
         Long userId = CurrentUser.id(jwt);
-        return ResponseEntity.ok(learningService.run(userId, ZoneId.of(tz)));
+        return ApiResponse.ok(learningService.run(userId, tz));
     }
 
     // observations/dashboard 는 저장된 날짜를 그대로 반환하므로 tz 파라미터가 필요 없다 (run 만 달력 연산).
 
     @GetMapping("/observations")
-    public ResponseEntity<List<ObservationResponse>> observations(@AuthenticationPrincipal Jwt jwt) {
+    public ApiResponse<List<ObservationResponse>> observations(@AuthenticationPrincipal Jwt jwt) {
         Long userId = CurrentUser.id(jwt);
-        return ResponseEntity.ok(learningService.observations(userId));
+        return ApiResponse.ok(learningService.observations(userId));
     }
 
     @GetMapping("/dashboard")
-    public ResponseEntity<LearningDashboardResponse> dashboard(@AuthenticationPrincipal Jwt jwt) {
+    public ApiResponse<LearningDashboardResponse> dashboard(@AuthenticationPrincipal Jwt jwt) {
         Long userId = CurrentUser.id(jwt);
-        return ResponseEntity.ok(learningService.dashboard(userId));
+        return ApiResponse.ok(learningService.dashboard(userId));
     }
 }

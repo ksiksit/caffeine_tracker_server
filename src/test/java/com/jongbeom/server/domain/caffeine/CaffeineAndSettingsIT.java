@@ -23,13 +23,13 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
         // 기본값 자동 생성 (5.0=기본 반감기, 2.25=모집단 prior 분산 1.5², 23시/75mg=기본 취침·기준용량)
         mockMvc.perform(get("/api/settings").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.halfLife").value(5.0))
-                .andExpect(jsonPath("$.condition").value(0))
-                .andExpect(jsonPath("$.bedtimeHour").value(23))
-                .andExpect(jsonPath("$.referenceDoseMg").value(75))
-                .andExpect(jsonPath("$.learnedMean").value(5.0))
-                .andExpect(jsonPath("$.learnedVariance").value(2.25))
-                .andExpect(jsonPath("$.effectiveHalfLifeHours").value(5.0));
+                .andExpect(jsonPath("$.data.halfLife").value(5.0))
+                .andExpect(jsonPath("$.data.condition").value(0))
+                .andExpect(jsonPath("$.data.bedtimeHour").value(23))
+                .andExpect(jsonPath("$.data.referenceDoseMg").value(75))
+                .andExpect(jsonPath("$.data.learnedMean").value(5.0))
+                .andExpect(jsonPath("$.data.learnedVariance").value(2.25))
+                .andExpect(jsonPath("$.data.effectiveHalfLifeHours").value(5.0));
 
         // 반감기 6.0 + 흡연(×0.5): prior 리셋 → learnedMean=6.0, effective=6.0*0.5=3.0
         mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
@@ -38,8 +38,8 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                         {"halfLife":6.0,"condition":1,"bedtimeHour":1,"bedtimeMinute":30,\
                         "referenceDoseMg":75,"isLearningEnabled":true}"""))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.learnedMean").value(6.0))
-                .andExpect(jsonPath("$.effectiveHalfLifeHours").value(3.0));
+                .andExpect(jsonPath("$.data.learnedMean").value(6.0))
+                .andExpect(jsonPath("$.data.effectiveHalfLifeHours").value(3.0));
     }
 
     @Test
@@ -52,23 +52,23 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .content("""
                         {"amount":100,"drinkName":"아메리카노","timestamp":"2026-06-01T09:00:00+09:00"}"""))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.amount").value(100));
+                .andExpect(jsonPath("$.data.amount").value(100));
 
         mockMvc.perform(get("/api/caffeine/today").header("Authorization", "Bearer " + accessToken)
                 .param("now", "2026-06-01T14:00:00+09:00")
                 .param("tz", "Asia/Seoul"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.todayTotal").value(100))
-                .andExpect(jsonPath("$.overDailyLimit").value(false))
+                .andExpect(jsonPath("$.data.todayTotal").value(100))
+                .andExpect(jsonPath("$.data.overDailyLimit").value(false))
                 // 현재 잔량 ≈ 50 (1 반감기 경과)
-                .andExpect(jsonPath("$.currentResidual",
+                .andExpect(jsonPath("$.data.currentResidual",
                         Matchers.closeTo(50.0, 0.5)))
                 // 취침(23:00) 시 ≈ 14.36mg (14h 경과)
-                .andExpect(jsonPath("$.predictedAtBedtime",
+                .andExpect(jsonPath("$.data.predictedAtBedtime",
                         Matchers.closeTo(14.36, 0.5)))
-                .andExpect(jsonPath("$.cutoff.status").value("CUTOFF"))
-                .andExpect(jsonPath("$.chart").isArray())
-                .andExpect(jsonPath("$.chart", Matchers.not(Matchers.empty())));
+                .andExpect(jsonPath("$.data.cutoff.status").value("CUTOFF"))
+                .andExpect(jsonPath("$.data.chart").isArray())
+                .andExpect(jsonPath("$.data.chart", Matchers.not(Matchers.empty())));
     }
 
     @Test
@@ -78,9 +78,9 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .param("now", "2026-06-01T14:00:00+09:00")
                 .param("tz", "Asia/Seoul"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.currentResidual").value(0.0))
-                .andExpect(jsonPath("$.predictedAtBedtime").value(0.0))
-                .andExpect(jsonPath("$.chart").isEmpty());
+                .andExpect(jsonPath("$.data.currentResidual").value(0.0))
+                .andExpect(jsonPath("$.data.predictedAtBedtime").value(0.0))
+                .andExpect(jsonPath("$.data.chart").isEmpty());
     }
 
     @Test
@@ -92,21 +92,23 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .content("""
                         {"amount":150,"drinkName":"라떼","timestamp":"2026-06-01T09:00:00+09:00"}"""))
                 .andExpect(status().isCreated()).andReturn();
-        long id = objectMapper.readTree(created.getResponse().getContentAsString()).get("id").asLong();
+        long id = dataOf(created).get("id").asLong();
 
         mockMvc.perform(put("/api/caffeine-records/" + id).header("Authorization", "Bearer " + accessToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"amount":80,"drinkName":"콜라","timestamp":"2026-06-01T10:00:00+09:00"}"""))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.amount").value(80));
+                .andExpect(jsonPath("$.data.amount").value(80));
 
         mockMvc.perform(delete("/api/caffeine-records/" + id).header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").value(Matchers.nullValue()));
 
         mockMvc.perform(delete("/api/caffeine-records/" + id).header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("CAFFEINE_RECORD_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("CAFFEINE_RECORD_NOT_FOUND"));
     }
 
     @Test

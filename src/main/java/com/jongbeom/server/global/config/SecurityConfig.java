@@ -1,5 +1,6 @@
 package com.jongbeom.server.global.config;
 
+import com.jongbeom.server.global.error.JsonSecurityErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -30,7 +31,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            JwtAuthenticationConverter jwtAuthenticationConverter) throws Exception {
+            JwtAuthenticationConverter jwtAuthenticationConverter,
+            JsonSecurityErrorHandler securityErrorHandler) throws Exception {
         http
                 // 무상태 JWT API — 브라우저 세션/폼로그인이 없으므로 CSRF 토큰도 불필요.
                 // CORS 미설정: 클라이언트가 iOS 네이티브뿐이라 브라우저 프리플라이트가 없다.
@@ -43,8 +45,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, ACTUATOR_HEALTH_ENDPOINTS).permitAll()
                         // 새 도메인 엔드포인트는 여기 등록하지 않으면 기본 authenticated (CLAUDE.md 규칙)
                         .anyRequest().authenticated())
-                // 인증 실패(401)는 엔트리포인트 미설정으로 빈 바디 — ErrorResponse 아님 (수정은 동작 변경이라 보류)
+                // 401/403 을 ApiResponse 봉투(JSON)로. 토큰 없음(익명) 경로는 exceptionHandling 이,
+                // 토큰 무효 경로는 BearerTokenAuthenticationFilter 가 oauth2ResourceServer 쪽 핸들러를 쓴다 — 둘 다 등록.
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(securityErrorHandler)
+                        .accessDeniedHandler(securityErrorHandler))
                 .oauth2ResourceServer(oauth2 -> oauth2
+                        .authenticationEntryPoint(securityErrorHandler)
+                        .accessDeniedHandler(securityErrorHandler)
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
         return http.build();
     }

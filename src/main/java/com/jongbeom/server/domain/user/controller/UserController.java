@@ -1,8 +1,8 @@
 package com.jongbeom.server.domain.user.controller;
 
-import com.jongbeom.server.global.web.CurrentUser;
 import com.jongbeom.server.domain.user.dto.MeResponse;
-import org.springframework.http.ResponseEntity;
+import com.jongbeom.server.global.web.ApiResponse;
+import com.jongbeom.server.global.web.CurrentUser;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
     @GetMapping("/me")
-    public ResponseEntity<MeResponse> me(@AuthenticationPrincipal Jwt jwt) {
-        return ResponseEntity.ok(new MeResponse(CurrentUser.id(jwt), jwt.getClaimAsString("email")));
+    public ApiResponse<MeResponse> me(@AuthenticationPrincipal Jwt jwt) {
+        return ApiResponse.ok(new MeResponse(CurrentUser.id(jwt), jwt.getClaimAsString("email")));
     }
 }

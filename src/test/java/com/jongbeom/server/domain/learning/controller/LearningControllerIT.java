@@ -62,26 +62,26 @@ class LearningControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/learning/run").header("Authorization", "Bearer " + accessToken)
                 .param("tz", "Asia/Seoul"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.updatedCount").value(1));
+                .andExpect(jsonPath("$.data.updatedCount").value(1));
 
         // settings 갱신 확인(prior 분산 2.25=1.5² 에서 감소, lastLearnedDate 설정)
         mockMvc.perform(get("/api/settings").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.learnedVariance").value(Matchers.lessThan(2.25)))
-                .andExpect(jsonPath("$.lastLearnedDate").value("2026-06-01"));
+                .andExpect(jsonPath("$.data.learnedVariance").value(Matchers.lessThan(2.25)))
+                .andExpect(jsonPath("$.data.lastLearnedDate").value("2026-06-01"));
 
         mockMvc.perform(get("/api/learning/dashboard").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.count").value(1))
-                .andExpect(jsonPath("$.observations[0].observedSolMinutes").value(30.0))
-                .andExpect(jsonPath("$.latest.posteriorMean").isNumber());
+                .andExpect(jsonPath("$.data.count").value(1))
+                .andExpect(jsonPath("$.data.observations[0].observedSolMinutes").value(30.0))
+                .andExpect(jsonPath("$.data.latest.posteriorMean").isNumber());
 
         // 재실행 → 멱등(updated 0, ALREADY_LEARNED)
         mockMvc.perform(post("/api/learning/run").header("Authorization", "Bearer " + accessToken)
                 .param("tz", "Asia/Seoul"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.updatedCount").value(0))
-                .andExpect(jsonPath("$.skipReason").value("ALREADY_LEARNED"));
+                .andExpect(jsonPath("$.data.updatedCount").value(0))
+                .andExpect(jsonPath("$.data.skipReason").value("ALREADY_LEARNED"));
     }
 
     @Test
@@ -98,16 +98,15 @@ class LearningControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/learning/run").header("Authorization", "Bearer " + accessToken)
                 .param("tz", "Asia/Seoul"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.updatedCount").value(2));
+                .andExpect(jsonPath("$.data.updatedCount").value(2));
 
         // 오래된→최신 순. obs[1].priorMean == obs[0].posteriorMean (순차 체이닝, #1)
         MvcResult dash = mockMvc.perform(get("/api/learning/dashboard")
                 .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.count").value(2))
+                .andExpect(jsonPath("$.data.count").value(2))
                 .andReturn();
-        JsonNode observations = objectMapper.readTree(dash.getResponse().getContentAsString())
-                .get("observations");
+        JsonNode observations = dataOf(dash).get("observations");
         double firstPosteriorMean = observations.get(0).get("posteriorMean").asDouble();
         double secondPriorMean = observations.get(1).get("priorMean").asDouble();
         assertThat(secondPriorMean).isCloseTo(firstPosteriorMean, within(1e-9));
@@ -127,8 +126,8 @@ class LearningControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/learning/run").header("Authorization", "Bearer " + accessToken)
                 .param("tz", "Asia/Seoul"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.updatedCount").value(0))
-                .andExpect(jsonPath("$.skipReason").value("LEARNING_DISABLED"));
+                .andExpect(jsonPath("$.data.updatedCount").value(0))
+                .andExpect(jsonPath("$.data.skipReason").value("LEARNING_DISABLED"));
     }
 
     @Test

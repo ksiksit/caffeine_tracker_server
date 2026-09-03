@@ -28,23 +28,23 @@ class SleepControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/sleep/samples").header("Authorization", "Bearer " + accessToken)
                 .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.received").value(2))
-                .andExpect(jsonPath("$.inserted").value(2));
+                .andExpect(jsonPath("$.data.received").value(2))
+                .andExpect(jsonPath("$.data.inserted").value(2));
 
         // 같은 배치 재업로드 → 멱등(inserted 0)
         mockMvc.perform(post("/api/sleep/samples").header("Authorization", "Bearer " + accessToken)
                 .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.inserted").value(0));
+                .andExpect(jsonPath("$.data.inserted").value(0));
 
         // 요약: SOL 1800초, 총수면=core 5.5h, 단계 2개
         mockMvc.perform(get("/api/sleep/summary").header("Authorization", "Bearer " + accessToken)
                 .param("date", "2026-06-01").param("tz", "Asia/Seoul"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.hasData").value(true))
-                .andExpect(jsonPath("$.sleepOnsetLatencySeconds").value(1800.0))
-                .andExpect(jsonPath("$.totalSleepSeconds").value(Matchers.closeTo(5.5 * 3600, 1.0)))
-                .andExpect(jsonPath("$.records", Matchers.hasSize(2)));
+                .andExpect(jsonPath("$.data.hasData").value(true))
+                .andExpect(jsonPath("$.data.sleepOnsetLatencySeconds").value(1800.0))
+                .andExpect(jsonPath("$.data.totalSleepSeconds").value(Matchers.closeTo(5.5 * 3600, 1.0)))
+                .andExpect(jsonPath("$.data.records", Matchers.hasSize(2)));
     }
 
     @Test
@@ -53,8 +53,8 @@ class SleepControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/sleep/summary").header("Authorization", "Bearer " + accessToken)
                 .param("date", "2026-06-01").param("tz", "Asia/Seoul"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.hasData").value(false))
-                .andExpect(jsonPath("$.records").isEmpty());
+                .andExpect(jsonPath("$.data.hasData").value(false))
+                .andExpect(jsonPath("$.data.records").isEmpty());
     }
 
     @Test

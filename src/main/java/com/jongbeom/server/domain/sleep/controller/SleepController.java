@@ -1,16 +1,16 @@
 package com.jongbeom.server.domain.sleep.controller;
 
-import com.jongbeom.server.global.web.CurrentUser;
 import com.jongbeom.server.domain.sleep.dto.SleepSummaryResponse;
 import com.jongbeom.server.domain.sleep.dto.UploadSleepSamplesRequest;
 import com.jongbeom.server.domain.sleep.dto.UploadSleepSamplesResponse;
 import com.jongbeom.server.domain.sleep.service.SleepService;
+import com.jongbeom.server.global.web.ApiResponse;
+import com.jongbeom.server.global.web.CurrentUser;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,19 +29,19 @@ public class SleepController {
     private final SleepService sleepService;
 
     @PostMapping("/samples")
-    public ResponseEntity<UploadSleepSamplesResponse> upload(
+    public ApiResponse<UploadSleepSamplesResponse> upload(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody UploadSleepSamplesRequest request) {
         Long userId = CurrentUser.id(jwt);
-        return ResponseEntity.ok(sleepService.upload(userId, request));
+        return ApiResponse.ok(sleepService.upload(userId, request));
     }
 
     @GetMapping("/summary")
-    public ResponseEntity<SleepSummaryResponse> summary(
+    public ApiResponse<SleepSummaryResponse> summary(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @RequestParam String tz) {
+            @RequestParam ZoneId tz) {
         Long userId = CurrentUser.id(jwt);
-        return ResponseEntity.ok(sleepService.summary(userId, date, ZoneId.of(tz)));
+        return ApiResponse.ok(sleepService.summary(userId, date, tz));
     }
 }

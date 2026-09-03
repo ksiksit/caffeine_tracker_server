@@ -1,12 +1,12 @@
 package com.jongbeom.server.domain.settings.controller;
 
-import com.jongbeom.server.global.web.CurrentUser;
 import com.jongbeom.server.domain.settings.dto.SettingsResponse;
 import com.jongbeom.server.domain.settings.dto.UpdateSettingsRequest;
 import com.jongbeom.server.domain.settings.service.UserSettingsService;
+import com.jongbeom.server.global.web.ApiResponse;
+import com.jongbeom.server.global.web.CurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,16 +24,16 @@ public class SettingsController {
     private final UserSettingsService userSettingsService;
 
     @GetMapping
-    public ResponseEntity<SettingsResponse> get(@AuthenticationPrincipal Jwt jwt) {
+    public ApiResponse<SettingsResponse> get(@AuthenticationPrincipal Jwt jwt) {
         Long userId = CurrentUser.id(jwt);
-        return ResponseEntity.ok(SettingsResponse.from(userSettingsService.getOrCreate(userId)));
+        return ApiResponse.ok(SettingsResponse.from(userSettingsService.getOrCreate(userId)));
     }
 
     @PutMapping
-    public ResponseEntity<SettingsResponse> update(
+    public ApiResponse<SettingsResponse> update(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody UpdateSettingsRequest request) {
         Long userId = CurrentUser.id(jwt);
-        return ResponseEntity.ok(SettingsResponse.from(userSettingsService.update(userId, request)));
+        return ApiResponse.ok(SettingsResponse.from(userSettingsService.update(userId, request)));
     }
 }

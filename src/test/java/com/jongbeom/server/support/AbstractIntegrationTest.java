@@ -42,7 +42,7 @@ public abstract class AbstractIntegrationTest {
                 .andReturn();
     }
 
-    /** 로그인(200 기대) 후 토큰 응답 JSON. */
+    /** 로그인(200 기대) 후 응답 봉투의 {@code data}(토큰 객체) JSON. */
     protected JsonNode login(String email, String password) throws Exception {
         String body = """
                 {"email":"%s","password":"%s"}""".formatted(email, password);
@@ -51,12 +51,17 @@ public abstract class AbstractIntegrationTest {
                         .content(body))
                 .andExpect(status().isOk())
                 .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString());
+        return dataOf(result);
     }
 
     /** 회원가입 + 로그인 후 accessToken 반환 — 도메인 IT 의 표준 준비 단계. */
     protected String authToken(String email, String nickname) throws Exception {
         signup(email, DEFAULT_PASSWORD, nickname);
         return login(email, DEFAULT_PASSWORD).get("accessToken").asText();
+    }
+
+    /** 응답 봉투({@code ApiResponse})에서 {@code data} 노드를 꺼낸다 — 성공 응답 파싱의 표준 경로. */
+    protected JsonNode dataOf(MvcResult result) throws Exception {
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
     }
 }

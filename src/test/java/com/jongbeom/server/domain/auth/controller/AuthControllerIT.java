@@ -23,8 +23,7 @@ class AuthControllerIT extends AbstractIntegrationTest {
     @Test
     void signup_201_login_200_그리고_me_조회_200() throws Exception {
         MvcResult signupResult = signup("a@b.com", "password1!", "테스터");
-        JsonNode signupBody = objectMapper.readTree(signupResult.getResponse().getContentAsString());
-        long userId = signupBody.get("userId").asLong();
+        long userId = dataOf(signupResult).get("userId").asLong();
 
         JsonNode tokens = login("a@b.com", "password1!");
         String accessToken = tokens.get("accessToken").asText();
@@ -35,9 +34,9 @@ class AuthControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/me")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId").isNumber())
-                .andExpect(jsonPath("$.userId").value((int) userId))
-                .andExpect(jsonPath("$.email").value("a@b.com"));
+                .andExpect(jsonPath("$.data.userId").isNumber())
+                .andExpect(jsonPath("$.data.userId").value((int) userId))
+                .andExpect(jsonPath("$.data.email").value("a@b.com"));
     }
 
     @Test
@@ -49,7 +48,7 @@ class AuthControllerIT extends AbstractIntegrationTest {
                         .content("""
                                 {"email":"a@b.com","password":"wrong-password"}"""))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+                .andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS"));
     }
 
     @Test
@@ -59,8 +58,8 @@ class AuthControllerIT extends AbstractIntegrationTest {
                         .content("""
                                 {"email":"","password":"password1!","nickname":"테스터"}"""))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.fieldErrors").isArray());
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.error.fieldErrors").isArray());
     }
 
     @Test
@@ -74,7 +73,7 @@ class AuthControllerIT extends AbstractIntegrationTest {
                         .content(refreshTokenBody(oldRefresh)))
                 .andExpect(status().isOk())
                 .andReturn();
-        JsonNode rotated = objectMapper.readTree(refreshResult.getResponse().getContentAsString());
+        JsonNode rotated = dataOf(refreshResult);
         assertThat(rotated.get("accessToken").asText()).isNotBlank();
         assertThat(rotated.get("refreshToken").asText())
                 .isNotBlank()
@@ -84,7 +83,7 @@ class AuthControllerIT extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(refreshTokenBody(oldRefresh)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+                .andExpect(jsonPath("$.error.code").value("INVALID_REFRESH_TOKEN"));
     }
 
     @Test
@@ -93,11 +92,11 @@ class AuthControllerIT extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(refreshTokenBody("non-existent-token")))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+                .andExpect(jsonPath("$.error.code").value("INVALID_REFRESH_TOKEN"));
     }
 
     @Test
-    void logout_204_그리고_같은_refreshToken으로_refresh시_401() throws Exception {
+    void logout_200_그리고_같은_refreshToken으로_refresh시_401() throws Exception {
         signup("a@b.com", "password1!", "테스터");
         JsonNode tokens = login("a@b.com", "password1!");
         String accessToken = tokens.get("accessToken").asText();
@@ -107,13 +106,14 @@ class AuthControllerIT extends AbstractIntegrationTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(refreshTokenBody(refreshToken)))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
 
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(refreshTokenBody(refreshToken)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+                .andExpect(jsonPath("$.error.code").value("INVALID_REFRESH_TOKEN"));
     }
 
     @Test
