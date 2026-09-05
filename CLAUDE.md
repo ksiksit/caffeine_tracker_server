@@ -1,97 +1,54 @@
 # CLAUDE.md
 
-캡스톤 카페인 트래커 백엔드 REST API 서버. **Java 21 / Spring Boot 3.5 / MySQL 8**.
-
-> 이 파일은 코드 작업에 필요한 핵심만 담는다. 스택·환경변수·로컬 실행·API 예시 등
-> 사람용 온보딩 상세는 `README.md` 참조 (중복 회피).
+캡스톤 카페인 트래커 백엔드 REST API. Java 21 / Spring Boot 3.5 / MySQL 8.
+iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(스택·환경변수·실행·API 예시)과
+패키지 트리는 README.md 참조.
 
 ## 명령어
+- `./gradlew build` — 빌드+테스트 (테스트는 H2, 환경변수 불필요)
+- `./gradlew build -x test` — 컴파일만
+- `./gradlew bootRun` — 로컬 실행 (환경변수 4개 필요, README 참조)
 
-- `./gradlew build` — 빌드 + 테스트 (테스트는 H2로 동작, 환경변수 불필요)
-- `./gradlew build -x test` — 빠른 컴파일 확인
-- `./gradlew test` — 테스트만
-- `./gradlew bootRun` — 로컬 실행 (환경변수 4개 필요, 상세는 README)
+## 배치 규칙
+- `com.jongbeom.server.domain.<도메인>/` 아래 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/`.
+  테스트도 같은 구조로 미러링, 통합 테스트는 `*IT` 접미사.
+- 레이어가 아닌 컴포넌트(`JwtTokenProvider`, `LearningSkipReason`)와 하위 모듈(`auth/refresh/`)은 도메인 루트.
+- 인프라는 `global/`(config·error·web·entity). `ServerApplication`은 패키지 루트 고정(컴포넌트 스캔 베이스).
+- 새 엔드포인트는 `SecurityConfig.authorizeHttpRequests`에 등록 (미등록 = authenticated).
 
-## 구조
+## 코드 규칙
+- DTO는 record, `*Request`/`*Response`, Jakarta Validation + 컨트롤러 `@Valid`.
+- 엔티티: `BaseTimeEntity` 상속, `@NoArgsConstructor(access = PROTECTED)`, `@Data` 금지.
+- 컨트롤러는 `ApiResponse<T>` 직접 반환(`ok(data)`/`ok()`, 201은 `@ResponseStatus`). `ResponseEntity`·DTO 직접 반환 금지.
+  타임존 파라미터는 `ZoneId tz`로 바인딩. JWT userId는 `CurrentUser.id(jwt)`.
+- 예외는 `*/exception/`에 `BusinessException` 상속으로 두면 `GlobalExceptionHandler`가 봉투로 변환.
+  실패 봉투를 만드는 곳은 그 핸들러와 `JsonSecurityErrorHandler`(401/403) 둘뿐 — 컨트롤러/서비스 ad-hoc try/catch 금지.
+- Lombok: `@Getter`, `@RequiredArgsConstructor`, `@Slf4j`.
 
-`com.jongbeom.server` — 도메인형(domain/global) 구성.
-`domain/` 하위 도메인: `auth/`, `user/`, `settings/`, `caffeine/`, `sleep/`, `learning/`,
-`calc/`(순수 연산, 레이어 없음). 각 도메인 내부는 `controller/`·`service/`·`repository/`·
-`entity/`·`dto/`·`exception/` 레이어 하위 패키지로 배치한다. 레이어가 아닌 도메인 컴포넌트
-(`domain/auth/JwtTokenProvider`, `domain/learning/LearningSkipReason`)와 하위 기능 모듈(`auth/refresh/`)은 도메인 루트.
-`global/` 하위 인프라: `config/`, `error/`, `web/`, `entity/`(BaseTimeEntity).
-`ServerApplication`은 패키지 루트 고정(컴포넌트 스캔 베이스). 상세 트리는 README 참조.
-도메인 예외는 `global/error/BusinessException`(ErrorCode 보유) 상속 — 핸들러 등록 불필요.
-컨트롤러의 JWT userId 추출은 `global/web/CurrentUser.id(jwt)` 사용.
-모든 응답은 `global/web/ApiResponse`(success/data/error/message) 봉투 — 형태 계약은 README "공통 응답 구조".
+## 바꾸면 같이 바꿀 것
+- 엔티티/테이블 → `docs/db-schema.sql`의 CREATE 갱신 + `docs/db-schema.md` 변경 이력에 ALTER 기록.
+  앱은 스키마를 만들지 않고(`ddl-auto: validate`) 테스트가 같은 DDL을 H2에 적용해 대조하므로 안 고치면 빌드 실패.
+- 엔드포인트/DTO/ErrorCode → `docs/api.md` + `docs/openapi.yaml` 둘 다. `ApiDocsConsistencyIT`가 누락을 잡는다(설명 문구는 못 잡음).
 
-## 도메인 개요 (thin-client 서버)
+## 절대 규칙
+- `domain/calc/` 상수(반감기 clamp 3~7h, alpha 0.15/beta 0.10/sigmaObs 10, trust region 0.5h 등)는 도메인 근거값 — 변경 금지.
+  iOS Swift 포팅이라 골든 테스트와 일치해야 한다.
+- Flyway/Liquibase/부팅 시 자동 스키마 적용 재도입 제안 금지 — 수동 적용이 결정 사항.
+- CD 자동화 제안 금지 — 수동 배포 유지가 결정 사항.
+- 리프레시 토큰은 DB에 SHA-256 해시로만 저장, 평문 금지.
 
-iOS 앱의 도메인 연산을 서버로 이관 완료. 앱은 입력을 보내고 서버가 계산·저장한다(thin-client).
-- `settings` — 유저 설정 + 학습 상태(반감기·건강상태·취침·학습 mean/variance). 연산이 읽는 입력값.
-- `caffeine` — 카페인 기록 CRUD + `GET /api/caffeine/today`(잔류량 차트·마감시각을 서버가 settings 읽어 계산).
-- `sleep` — HealthKit 원시 수면 샘플 업로드 + 병합·SOL·요약(앱은 읽기만, 병합은 서버).
-- `learning` — 카페인 잔량 + 수면 SOL로 베이지안 반감기 학습 + 대시보드 통계.
-- `calc/` — iOS Swift에서 **포팅한 순수 연산**: `Pharmacokinetics`(약동학)·`SleepMerger`/`SleepSummaryCalc`(수면)·`BayesianHalfLifeUpdater`/`BedtimeExtractor`/`LearningStatsCalc`(학습)·`LocalCalendar`(타임존). 상수(반감기 clamp 3~7h, alpha15/beta0.10/sigmaObs10, trust region 0.5h 등)는 도메인 근거값 — **임의 변경 금지**, iOS 테스트값과 골든 일치 유지.
+## 도메인 계약 (코드만 보고는 의도인지 알 수 없는 것)
+- 타임존: `timestamp`/`start`/`end`는 UTC `Instant`로 저장. 하루 경계·취침시각·24h 윈도우 같은 로컬 달력 연산만
+  요청 `tz`(IANA)로 `LocalCalendar`에서 변환. 연산 엔드포인트는 `tz`(+필요시 `now`) 파라미터 필수.
+- JSON 날짜: 입력은 ISO-8601+오프셋(`OffsetDateTime`), 응답은 UTC `Instant`(`...Z`).
+- learning: 오래된→최신 순 순차 prior 체이닝(매 night마다 settings의 갱신 prior 재사용).
+  `half_life_observations`는 `UNIQUE(user_id, obs_date)`. 관측 저장 성공 후에만 settings 반영.
+- 시간 의존 로직은 주입 `Clock`(`ClockConfig`) 사용, 테스트는 `@MockBean Clock`으로 고정.
 
-## 코드 컨벤션 + 새 기능 추가
-
-인증 외에 settings·caffeine·sleep·learning 도메인이 구현되어 있다 — 새 작업은 대개 도메인 확장 또는 `calc` 수정이다.
-
-**새 도메인 추가 순서:**
-1. `com.jongbeom.server.domain.<도메인>/` 패키지 생성 — `controller/`·`service/`·`repository/`·`entity/`·
-   `dto/`·`exception/` 레이어 하위 패키지에 배치 (기존 `caffeine/`, `sleep/` 패턴 그대로).
-   테스트도 같은 패키지 구조로 미러링
-2. 새 엔드포인트 경로를 `global/config/SecurityConfig.java`의 `authorizeHttpRequests`에 등록
-   (등록 안 하면 기본 `authenticated` 처리)
-3. DB 스키마는 `docs/db-schema.sql`(DDL 원본)의 `CREATE TABLE`을 갱신하고, 기존 DB용 `ALTER`를
-   `docs/db-schema.md` 변경 이력에 기록. 앱은 스키마를 만들지 않으며(`spring.sql.init.mode: never`)
-   사용자가 DB에 직접 실행한다 (`ddl-auto: validate`라 DB에 미적용이면 부팅 실패).
-   테스트는 같은 파일을 H2에 적용해 엔티티와 대조하므로 DDL을 안 고치면 빌드 실패
-4. 테스트 추가 — JUnit 5, 통합 테스트는 `*IT` 접미사 (테스트는 H2로 자동 실행)
-
-**코드 규칙:**
-- DTO는 Java `record`, `*Request` / `*Response` 네이밍
-- 엔티티: `BaseTimeEntity` 상속, `@NoArgsConstructor(access = PROTECTED)`, `@Data` 금지
-- 응답: 컨트롤러는 `ApiResponse<T>`를 직접 반환 — 성공 `ApiResponse.ok(data)`, 바디 없는 성공은 `ApiResponse.ok()`(200, 204 안 씀),
-  201은 `@ResponseStatus`. `ResponseEntity`·DTO 직접 반환 금지. 타임존 파라미터는 `ZoneId tz`로 바인딩(잘못된 값 → 400 INVALID_PARAMETER)
-- 예외: 도메인별 커스텀 예외를 `*/exception/`에 두고 `GlobalExceptionHandler`가 일괄 처리
-  → `ApiResponse` 실패 봉투(`error.code`=ErrorCode name, `message`=ErrorCode message). 실패 봉투를 만드는 곳은
-  `GlobalExceptionHandler`와 `JsonSecurityErrorHandler`(시큐리티 401/403) 둘뿐. 컨트롤러/서비스에서 ad-hoc try/catch 지양
-- 검증: DTO에 Jakarta Validation 어노테이션 + 컨트롤러 인자 `@Valid`
-- API 명세: `docs/api.md`(사람용)와 `docs/openapi.yaml`(OpenAPI 3.0.3)이 계약 문서. 엔드포인트·DTO·ErrorCode를 바꾸면
-  둘 다 갱신 — `ApiDocsConsistencyIT`가 엔드포인트 목록·DTO 필드·enum 누락을 잡는다(설명·제약 문구는 못 잡음)
-- Lombok: `@Getter`, `@RequiredArgsConstructor`, `@Slf4j`
-
-## 주의사항
-
-- 환경변수 `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` / `JWT_SECRET` 4개 없으면 부팅 즉시 실패.
-  `JWT_SECRET`은 32바이트 이상
-- `application-local.yaml`은 gitignore됨 (로컬 DB/JWT 시크릿 보관처)
-- 리프레시 토큰은 DB에 SHA-256 해시로만 저장 (평문 미저장)
-- **§타임존 계약**: `timestamp`/`start`/`end`는 UTC `Instant`로 저장. "하루 경계·취침시각·24h 윈도우" 같은
-  *로컬 달력 연산*만 요청 `tz`(IANA)로 `LocalCalendar`에서 변환. 연산 엔드포인트는 `tz`(+필요시 `now`) 파라미터 필수.
-- **§JSON 날짜**: body/쿼리 날짜는 ISO-8601 + 오프셋(`OffsetDateTime`). 응답 시각은 UTC `Instant`(`...Z`).
-- **learning**: 배치는 오래된→최신 순으로 **순차 prior 체이닝**(매 night마다 settings의 갱신 prior 재사용).
-  `half_life_observations`는 `UNIQUE(user_id, obs_date)`로 같은 날 1회만 학습. 관측 저장 성공 후에만 settings 반영.
-- 시간 의존 로직(학습 후보 날짜)은 주입형 `Clock`(`global/config/ClockConfig`) 사용 — 테스트에서 `@MockBean Clock`으로 고정.
-- 스키마 관리 도구 없음(Flyway 제거, 2026-09-03). 엔티티 변경 시 반드시 `docs/db-schema.sql` 갱신 + 변경 이력에 `ALTER` 기록 동반(`ddl-auto: validate`).
-  Flyway/Liquibase/부팅 시 자동 스키마 적용 재도입은 범위 외 — 제안하지 말 것.
+## 환경
+- `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`/`JWT_SECRET` 없으면 부팅 즉시 실패. `JWT_SECRET`은 32바이트 이상.
+  `application-local.yaml`은 gitignore(로컬 시크릿 보관처).
 
 ## 배포
-
-> 현재 방식: **수동 배포** (CI는 GHCR 이미지 push까지만 자동화). 마지막 갱신: 2026-09-03.
-> "배포 준비 됐냐"는 질문은 **이 저장소(레포)의 배포 준비 상태만** 확인해 답한다.
-> 운영 서버(EC2)·운영 DB(RDS)는 사용자가 직접 준비·관리하는 외부 인프라이므로
-> 준비된 것으로 간주하고, 상태를 다시 검증하려 하지 말 것. 진행되면 체크리스트/날짜를 갱신할 것.
-
-- **완료**: Dockerfile · docker-compose(.prod).yml · CI(빌드+테스트→GHCR push) · prod 프로파일 · DB DDL(`docs/db-schema.sql`, 사용자가 직접 적용)
-- **인프라(사용자 관리, 준비 완료)**: 운영 서버(EC2) · 운영 DB(RDS)
-- **미완료**: HTTPS/리버스 프록시 · GHCR private 인증
-- **안 함(범위 외)**: CD 자동화 — 수동 배포 유지. 자동화 제안하지 말 것.
-
-배포 전 DB 준비: 첫 배포는 RDS에 `docs/db-schema.sql` 실행, 이후 스키마 변경은 `docs/db-schema.md` 변경 이력의 `ALTER`를
-먼저 적용한다(앱은 스키마를 만들지 않음 — 미적용이면 기동 시 `Schema-validation` 실패).
-수동 배포 절차는 `docs/운영-가이드.md` 참조 — **EC2에 인터넷이 없어 `docker compose pull` 불가**.
-PC에서 이미지 `docker save` → `scp` → EC2에서 `docker load` 후
-`docker compose -f docker-compose.prod.yml up -d` → `curl localhost:8080/actuator/health` 로 `UP` 확인.
+- 수동 배포. "배포 준비 됐냐"는 이 레포의 준비 상태만 답한다. EC2·RDS는 사용자 관리 인프라 — 준비된 것으로 간주, 재검증 금지.
+- 절차·체크리스트·현재 상태: `docs/운영-가이드.md`.
