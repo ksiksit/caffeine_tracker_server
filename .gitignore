@@ -48,3 +48,7 @@ src/main/resources/application-local.yaml
 ### macOS / build artifacts ###
 .DS_Store
 *.tar
+
+### Claude Code (개인 설정·워크트리 — 공유 스킬은 .claude/skills/ 로 추적) ###
+.claude/settings.local.json
+.claude/worktrees/
