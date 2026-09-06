@@ -543,10 +543,12 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | 종류 | 생성 조건 | `fireAt` | 문구 |
 |---|---|---|---|
 | `CUTOFF` | `notifications.cutoff` 켜짐 · 오늘 현황의 `cutoff.status`가 `CUTOFF` · `cutoff − 30분`이 `now` 이후 | `cutoff − 30분` | 제목 `섭취 마감 30분 전`. 본문 `{취침 HH:mm} 취침 기준, {referenceDoseMg}mg를 마실 수 있는 마지막 시각은 {마감 HH:mm}이에요.` (HH:mm은 `tz` 로컬) |
-| `BEDTIME_RESIDUAL` | 미구현 | | |
+| `BEDTIME_RESIDUAL` | `notifications.bedtimeResidual` 켜짐 · 오늘 현황의 `predictedAtBedtime`이 50mg 이상 · `bedtime − 60분`이 `now` 이후 | `bedtime − 60분` | 제목 `취침 60분 전 잔량 예고`. 본문 `{취침 HH:mm} 취침 시 카페인이 약 {반올림 mg}mg 남아 있을 것으로 보여요.` |
 | `RECORD_REMINDER` | 미구현 | | |
 
 `SAFE_ANYTIME`(마감 없음)·`ALREADY_EXCEEDED`(취침 잔량 이미 초과)·마감까지 30분 미만 남음이면 `CUTOFF` 항목은 없다. 홈 화면이 마감시각을 이미 보여주므로 중복 안내하지 않는다.
+기록이 없거나(잔량 0) 예상 잔량이 50mg 미만이거나 취침 60분 전이 지났으면 `BEDTIME_RESIDUAL` 항목은 없다.
+예상 잔량 50mg 이상은 곧 `ALREADY_EXCEEDED`이므로 `CUTOFF`와 `BEDTIME_RESIDUAL`은 같은 계획에 함께 나오지 않는다(여유 있으면 마감 알림, 초과면 잔량 예고).
 
 ```json
 { "success": true, "data": { "now": "2026-06-01T05:00:00Z", "items": [

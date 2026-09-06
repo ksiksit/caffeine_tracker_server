@@ -513,6 +513,7 @@ paths:
         앱은 기존 예약을 전부 취소하고 목록대로 다시 예약한다. 재조회 시점: 기록 추가·수정·삭제 후, 설정 변경 후,
         학습 실행 후, 앱 포그라운드 진입. 서버는 푸시를 보내지 않는다.
         종류별 생성 규칙은 api.md 알림 절. CUTOFF: 오늘 현황 cutoff.status 가 CUTOFF 이고 cutoff−30분이 now 이후일 때 fireAt=cutoff−30분.
+        BEDTIME_RESIDUAL: 오늘 현황 predictedAtBedtime 이 50mg 이상이고 bedtime−60분이 now 이후일 때 fireAt=bedtime−60분. 두 종류는 함께 나오지 않는다.
       operationId: notificationPlan
       parameters:
         - $ref: '#/components/parameters/now'

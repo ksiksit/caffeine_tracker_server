@@ -7,7 +7,7 @@ package com.jongbeom.server.domain.notification;
 public enum NotificationType {
     /** 섭취 마감 알림 — 섭취 마감시각 30분 전. */
     CUTOFF,
-    /** 취침 잔량 예고 — 취침시각 전. (예정) */
+    /** 취침 잔량 예고 — 취침시각 60분 전, 취침 시 예상 잔량 50mg 이상일 때. */
     BEDTIME_RESIDUAL,
     /** 기록 리마인더 — 평소 기록 패턴에서 벗어나 기록이 없을 때. (예정) */
     RECORD_REMINDER

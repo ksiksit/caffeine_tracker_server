@@ -117,7 +117,7 @@ DB_URL=jdbc:mysql://localhost:3306/caffeine_tracker?serverTimezone=UTC&character
 | `GET`/`PUT` | `/api/settings` | 설정·학습 상태 조회/갱신(없으면 기본값 생성) |
 | `POST`/`PUT`/`DELETE` | `/api/caffeine-records[/{id}]` | 카페인 기록 CRUD |
 | `GET` | `/api/caffeine/today?now=&tz=` | **서버 계산**: 잔류량 차트·현재/취침 잔량·마감시각 |
-| `GET` | `/api/notifications/plan?now=&tz=` | **서버 계산**: 로컬 알림 계획(종류·시각·문구), 앱이 예약. 섭취 마감 30분 전 |
+| `GET` | `/api/notifications/plan?now=&tz=` | **서버 계산**: 로컬 알림 계획(종류·시각·문구), 앱이 예약. 섭취 마감 30분 전·취침 60분 전 잔량 예고 |
 
 **수면 · 학습** (전부 Bearer)
 | 메서드 | 경로 | 설명 |
