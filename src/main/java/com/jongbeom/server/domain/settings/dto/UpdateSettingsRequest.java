@@ -1,5 +1,6 @@
 package com.jongbeom.server.domain.settings.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
@@ -18,6 +19,7 @@ public record UpdateSettingsRequest(
         @NotNull @Min(0) @Max(59) Integer bedtimeMinute,
         @NotNull @Min(1) @Max(1000) Integer referenceDoseMg,
         @NotNull Boolean isLearningEnabled,
+        @NotNull @Valid NotificationSettingsRequest notifications,
         Double learnedMean,
         Double learnedVariance,
         LocalDate lastLearnedDate

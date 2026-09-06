@@ -1,6 +1,6 @@
 # API 명세
 
-카페인 트래커 서버 REST API. (서버 구현 기준, 2026-09-03)
+카페인 트래커 서버 REST API. (서버 구현 기준, 2026-09-06)
 
 - 기계용 명세: [`openapi.yaml`](openapi.yaml) — OpenAPI 3.0.3. Swagger Editor·Redoc·Postman에서 열 수 있다.
 - 화면별 기능 목록은 [`features.md`](features.md), DB 스키마는 [`db-schema.md`](db-schema.md).
@@ -95,6 +95,7 @@ HTTP 상태 코드는 그대로 의미를 가진다(201 생성, 400/401/404/409 
 | (화면 없음 — 자동 실행) | 반감기 학습 실행 | `POST` | `/api/learning/run` | Bearer |
 | 학습 대시보드 화면 | 학습 관측 이력 조회 | `GET` | `/api/learning/observations` | Bearer |
 | 학습 대시보드 화면 | 학습 대시보드 | `GET` | `/api/learning/dashboard` | Bearer |
+| (화면 없음 — 로컬 알림) | 알림 계획 조회 | `GET` | `/api/notifications/plan` | Bearer |
 
 ## 인증
 
@@ -219,9 +220,13 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | `lastLearnedDate` | string(date) · null | 마지막 학습 날짜(로컬). 학습 전이면 null |
 | `inferredBaseHalfLife` | number | 학습 ON이면 `learnedMean`, OFF면 `halfLife` |
 | `effectiveHalfLifeHours` | number | `inferredBaseHalfLife × 배수`. 잔량·마감시각 연산에 실제로 쓰는 값 |
+| `notifications` | object | 알림 종류별 on/off. 알림 계획 조회에서 꺼진 종류는 생략된다 |
+| `notifications.cutoff` | boolean | 섭취 마감 알림. 기본 true |
+| `notifications.bedtimeResidual` | boolean | 취침 잔량 예고. 기본 true |
+| `notifications.recordReminder` | boolean | 기록 리마인더. 기본 true |
 
 ```json
-{ "success": true, "data": { "halfLife": 5.0, "condition": 0, "bedtimeHour": 23, "bedtimeMinute": 0, "referenceDoseMg": 75, "isLearningEnabled": true, "learnedMean": 5.0, "learnedVariance": 2.25, "lastLearnedDate": null, "inferredBaseHalfLife": 5.0, "effectiveHalfLifeHours": 5.0 }, "error": null, "message": null }
+{ "success": true, "data": { "halfLife": 5.0, "condition": 0, "bedtimeHour": 23, "bedtimeMinute": 0, "referenceDoseMg": 75, "isLearningEnabled": true, "learnedMean": 5.0, "learnedVariance": 2.25, "lastLearnedDate": null, "inferredBaseHalfLife": 5.0, "effectiveHalfLifeHours": 5.0, "notifications": { "cutoff": true, "bedtimeResidual": true, "recordReminder": true } }, "error": null, "message": null }
 ```
 
 ### PUT /api/settings — 설정 변경
@@ -238,6 +243,10 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | `bedtimeMinute` | integer | ✔ | 0~59 | |
 | `referenceDoseMg` | integer | ✔ | 1~1000 | |
 | `isLearningEnabled` | boolean | ✔ | | |
+| `notifications` | object | ✔ | | 알림 종류별 on/off. 세 필드 모두 필수 |
+| `notifications.cutoff` | boolean | ✔ | | |
+| `notifications.bedtimeResidual` | boolean | ✔ | | |
+| `notifications.recordReminder` | boolean | ✔ | | |
 | `learnedMean` | number | | | `learnedVariance`와 함께 보내면 학습 상태를 1회 시드(기존 기기의 학습값 이전용). 둘 중 하나만 있으면 무시 |
 | `learnedVariance` | number | | | 위와 같음 |
 | `lastLearnedDate` | string(date) | | | 시드 시 함께 저장. 생략하면 null |
@@ -497,4 +506,39 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
   "residualHistogram": [ { "lower": 114.87, "upper": 114.87, "count": 1 } ],
   "solHistogram": [ { "lower": 30.0, "upper": 30.0, "count": 1 } ]
 }, "error": null, "message": null }
+```
+
+## 알림
+
+서버는 푸시를 보내지 않는다. 앱이 예약할 **로컬 알림 계획**을 서버가 계산해 내려주고, iOS가 로컬 알림으로 예약한다.
+운영 EC2가 외부 인터넷이 안 되어 APNs를 쓰지 않으며, 계산 로직은 나중에 푸시로 바꿔도 그대로 쓴다.
+
+### GET /api/notifications/plan — 알림 계획 조회
+
+`now` 이후에 울려야 할 알림 목록을 돌려준다. 설정(`notifications.*`)에서 꺼진 종류는 생략한다.
+
+- 앱은 기존에 예약한 알림을 **전부 취소하고** 이 목록대로 다시 예약한다.
+- 재조회 시점: 카페인 기록 추가·수정·삭제 후, 설정 변경 후, 학습 실행 후, 앱 포그라운드 진입 시.
+- 현재 생성되는 종류는 없다(`items`는 항상 `[]`). 종류별 생성 조건·문구는 구현할 때 아래 표에 추가한다.
+
+**쿼리**
+
+| 파라미터 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `now` | string(date-time) | ✔ | 기기 현재 시각, 오프셋 포함 |
+| `tz` | string | ✔ | IANA 타임존 |
+
+**응답 200** `data: NotificationPlanResponse`
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `now` | string(date-time) | 요청 `now`(UTC) |
+| `items` | NotificationItem[] | 예약할 알림. `fireAt` 오름차순. 없으면 `[]` |
+| `items[].type` | string | `CUTOFF`(섭취 마감 알림) · `BEDTIME_RESIDUAL`(취침 잔량 예고) · `RECORD_REMINDER`(기록 리마인더) |
+| `items[].fireAt` | string(date-time) | 울릴 시각(UTC). 항상 `now` 이후 |
+| `items[].title` | string | 알림 제목(한국어) |
+| `items[].body` | string | 알림 본문(한국어) |
+
+```json
+{ "success": true, "data": { "now": "2026-06-01T05:00:00Z", "items": [] }, "error": null, "message": null }
 ```

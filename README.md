@@ -111,12 +111,13 @@ DB_URL=jdbc:mysql://localhost:3306/caffeine_tracker?serverTimezone=UTC&character
 | `POST` | `/api/auth/logout` | 로그아웃 | Bearer |
 | `GET`  | `/api/me` | 내 정보 조회 | Bearer |
 
-**설정 · 카페인** (전부 Bearer)
+**설정 · 카페인 · 알림** (전부 Bearer)
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | `GET`/`PUT` | `/api/settings` | 설정·학습 상태 조회/갱신(없으면 기본값 생성) |
 | `POST`/`PUT`/`DELETE` | `/api/caffeine-records[/{id}]` | 카페인 기록 CRUD |
 | `GET` | `/api/caffeine/today?now=&tz=` | **서버 계산**: 잔류량 차트·현재/취침 잔량·마감시각 |
+| `GET` | `/api/notifications/plan?now=&tz=` | **서버 계산**: 로컬 알림 계획(종류·시각·문구), 앱이 예약. 현재는 빈 목록 |
 
 **수면 · 학습** (전부 Bearer)
 | 메서드 | 경로 | 설명 |
@@ -191,6 +192,7 @@ src/main/java/com/jongbeom/server/
 │   │   ├── controller/ │ service/ │ repository/ │ entity/ │ dto/ │ exception/
 │   ├── sleep/          # 수면 원시 샘플 업로드 + 병합/요약
 │   ├── learning/       # 베이지안 반감기 학습 + 대시보드
+│   ├── notification/   # 로컬 알림 계획 (서버가 종류·시각·문구 계산, iOS 가 예약)
 │   └── calc/           # 순수 연산(iOS Swift 포팅): 약동학·수면병합·베이지안·타임존 — 레이어 없음
 ├── global/
 │   ├── config/         # SecurityConfig, JwtConfig(+JwtProperties), ClockConfig

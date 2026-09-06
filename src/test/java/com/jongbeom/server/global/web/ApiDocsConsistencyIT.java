@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.jongbeom.server.domain.calc.Pharmacokinetics;
 import com.jongbeom.server.domain.learning.LearningSkipReason;
+import com.jongbeom.server.domain.notification.NotificationType;
 import com.jongbeom.server.global.error.ErrorCode;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -33,7 +34,7 @@ import org.yaml.snakeyaml.Yaml;
  * <ul>
  *   <li>엔드포인트 목록: 핸들러 매핑 == api.md 목록 표 == openapi.yaml paths</li>
  *   <li>DTO 필드: domain/*&#47;dto 와 global/error 의 record 필드 == openapi.yaml components.schemas 의 properties</li>
- *   <li>enum 목록: ErrorCode, LearningSkipReason, CutoffResult.Status == openapi.yaml 의 enum</li>
+ *   <li>enum 목록: ErrorCode, LearningSkipReason, CutoffResult.Status, NotificationType == openapi.yaml 의 enum</li>
  * </ul>
  * 설명·제약 문구는 검사하지 않는다(사람이 맞춘다). 문서 파일은 build.gradle 의 processTestResources 가 docs/ 로 복사한다.
  */
@@ -84,6 +85,8 @@ class ApiDocsConsistencyIT {
                 .containsExactlyInAnyOrderElementsOf(names(LearningSkipReason.values()));
         assertThat(enumOf(schemas, "CutoffResponse", "status"))
                 .containsExactlyInAnyOrderElementsOf(names(Pharmacokinetics.CutoffResult.Status.values()));
+        assertThat(enumOf(schemas, "NotificationItem", "type"))
+                .containsExactlyInAnyOrderElementsOf(names(NotificationType.values()));
     }
 
     /** 컨트롤러에 등록된 "METHOD /api/..." 집합. /error 등 메서드 미지정 매핑은 제외. */

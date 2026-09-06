@@ -28,6 +28,8 @@ tags:
     description: HealthKit 수면 샘플 업로드 + 요약(서버 병합)
   - name: learning
     description: 베이지안 반감기 학습 + 대시보드
+  - name: notification
+    description: 로컬 알림 계획(서버 계산, iOS 가 예약)
 
 paths:
   /api/auth/signup:
@@ -502,6 +504,41 @@ paths:
                 message: null
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /api/notifications/plan:
+    get:
+      tags: [notification]
+      summary: 알림 계획 조회(서버 계산)
+      description: |
+        now 이후에 울려야 할 로컬 알림 목록. 설정(notifications.*)에서 꺼진 종류는 생략한다.
+        앱은 기존 예약을 전부 취소하고 목록대로 다시 예약한다. 재조회 시점: 기록 추가·수정·삭제 후, 설정 변경 후,
+        학습 실행 후, 앱 포그라운드 진입. 서버는 푸시를 보내지 않는다. 현재 생성되는 종류는 없다(items 는 항상 []).
+      operationId: notificationPlan
+      parameters:
+        - $ref: '#/components/parameters/now'
+        - $ref: '#/components/parameters/tz'
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/NotificationPlanResponse'
+              example:
+                success: true
+                data:
+                  now: '2026-06-01T05:00:00Z'
+                  items: []
+                error: null
+                message: null
+        '400':
+          $ref: '#/components/responses/InvalidParameter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
 components:
   securitySchemes:
@@ -577,7 +614,7 @@ components:
                     $ref: '#/components/schemas/SettingsResponse'
           example:
             success: true
-            data: { halfLife: 5.0, condition: 0, bedtimeHour: 23, bedtimeMinute: 0, referenceDoseMg: 75, isLearningEnabled: true, learnedMean: 5.0, learnedVariance: 2.25, lastLearnedDate: null, inferredBaseHalfLife: 5.0, effectiveHalfLifeHours: 5.0 }
+            data: { halfLife: 5.0, condition: 0, bedtimeHour: 23, bedtimeMinute: 0, referenceDoseMg: 75, isLearningEnabled: true, learnedMean: 5.0, learnedVariance: 2.25, lastLearnedDate: null, inferredBaseHalfLife: 5.0, effectiveHalfLifeHours: 5.0, notifications: { cutoff: true, bedtimeResidual: true, recordReminder: true } }
             error: null
             message: null
     CaffeineRecordResult:
@@ -856,7 +893,8 @@ components:
     SettingsResponse:
       type: object
       required: [halfLife, condition, bedtimeHour, bedtimeMinute, referenceDoseMg, isLearningEnabled,
-                 learnedMean, learnedVariance, lastLearnedDate, inferredBaseHalfLife, effectiveHalfLifeHours]
+                 learnedMean, learnedVariance, lastLearnedDate, inferredBaseHalfLife, effectiveHalfLifeHours,
+                 notifications]
       properties:
         halfLife:
           type: number
@@ -900,9 +938,11 @@ components:
           type: number
           format: double
           description: inferredBaseHalfLife × 건강 상태 배수. 잔량·마감시각 연산에 쓰는 값
+        notifications:
+          $ref: '#/components/schemas/NotificationSettingsResponse'
     UpdateSettingsRequest:
       type: object
-      required: [halfLife, condition, bedtimeHour, bedtimeMinute, referenceDoseMg, isLearningEnabled]
+      required: [halfLife, condition, bedtimeHour, bedtimeMinute, referenceDoseMg, isLearningEnabled, notifications]
       properties:
         halfLife:
           type: number
@@ -927,6 +967,8 @@ components:
           maximum: 1000
         isLearningEnabled:
           type: boolean
+        notifications:
+          $ref: '#/components/schemas/NotificationSettingsRequest'
         learnedMean:
           type: number
           format: double
@@ -938,6 +980,30 @@ components:
           type: string
           format: date
           description: 시드 시 함께 저장. 생략하면 null
+    NotificationSettingsResponse:
+      type: object
+      description: 알림 종류별 on/off. 알림 계획 조회에서 꺼진 종류는 생략된다
+      required: [cutoff, bedtimeResidual, recordReminder]
+      properties:
+        cutoff:
+          type: boolean
+          description: 섭취 마감 알림. 기본 true
+        bedtimeResidual:
+          type: boolean
+          description: 취침 잔량 예고. 기본 true
+        recordReminder:
+          type: boolean
+          description: 기록 리마인더. 기본 true
+    NotificationSettingsRequest:
+      type: object
+      required: [cutoff, bedtimeResidual, recordReminder]
+      properties:
+        cutoff:
+          type: boolean
+        bedtimeResidual:
+          type: boolean
+        recordReminder:
+          type: boolean
 
     # ---------- caffeine ----------
     CreateCaffeineRecordRequest:
@@ -1319,3 +1385,36 @@ components:
           description: 마지막 빈은 상한 포함
         count:
           type: integer
+
+    # ---------- notification ----------
+    NotificationPlanResponse:
+      type: object
+      required: [now, items]
+      properties:
+        now:
+          type: string
+          format: date-time
+          description: 요청 now(UTC)
+        items:
+          type: array
+          description: 예약할 알림. fireAt 오름차순. 없으면 []
+          items:
+            $ref: '#/components/schemas/NotificationItem'
+    NotificationItem:
+      type: object
+      required: [type, fireAt, title, body]
+      properties:
+        type:
+          type: string
+          enum: [CUTOFF, BEDTIME_RESIDUAL, RECORD_REMINDER]
+          description: CUTOFF=섭취 마감 알림, BEDTIME_RESIDUAL=취침 잔량 예고, RECORD_REMINDER=기록 리마인더
+        fireAt:
+          type: string
+          format: date-time
+          description: 울릴 시각(UTC). 항상 now 이후
+        title:
+          type: string
+          description: 알림 제목(한국어)
+        body:
+          type: string
+          description: 알림 본문(한국어)

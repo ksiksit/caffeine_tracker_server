@@ -120,7 +120,8 @@ class LearningControllerIT extends AbstractIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"halfLife":5.0,"condition":0,"bedtimeHour":23,"bedtimeMinute":0,\
-                        "referenceDoseMg":75,"isLearningEnabled":false}"""))
+                        "referenceDoseMg":75,"isLearningEnabled":false,\
+                        "notifications":{"cutoff":true,"bedtimeResidual":true,"recordReminder":true}}"""))
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/learning/run").header("Authorization", "Bearer " + accessToken)

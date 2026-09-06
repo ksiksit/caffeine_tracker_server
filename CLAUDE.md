@@ -43,6 +43,8 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 - JSON 날짜: 입력은 ISO-8601+오프셋(`OffsetDateTime`), 응답은 UTC `Instant`(`...Z`).
 - learning: 오래된→최신 순 순차 prior 체이닝(매 night마다 settings의 갱신 prior 재사용).
   `half_life_observations`는 `UNIQUE(user_id, obs_date)`. 관측 저장 성공 후에만 settings 반영.
+- 알림: 서버는 푸시를 보내지 않는다(운영 EC2 외부 인터넷 불가 → APNs 미사용). `GET /api/notifications/plan`이 `now` 이후에
+  울릴 항목(종류·시각·문구)만 계산해 내려주고 iOS가 로컬 알림으로 예약한다. 설정 `notifications.*`가 꺼진 종류는 생략.
 - 시간 의존 로직은 주입 `Clock`(`ClockConfig`) 사용, 테스트는 `@MockBean Clock`으로 고정.
 
 ## 환경

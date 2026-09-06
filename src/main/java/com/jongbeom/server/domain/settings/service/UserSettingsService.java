@@ -1,5 +1,6 @@
 package com.jongbeom.server.domain.settings.service;
 
+import com.jongbeom.server.domain.settings.dto.NotificationSettingsRequest;
 import com.jongbeom.server.domain.settings.dto.UpdateSettingsRequest;
 import com.jongbeom.server.domain.settings.entity.UserSettings;
 import com.jongbeom.server.domain.settings.repository.UserSettingsRepository;
@@ -26,6 +27,9 @@ public class UserSettingsService {
         UserSettings settings = getOrCreate(userId);
         settings.update(request.halfLife(), request.condition(), request.bedtimeHour(),
                 request.bedtimeMinute(), request.referenceDoseMg(), request.isLearningEnabled());
+        NotificationSettingsRequest notifications = request.notifications();
+        settings.updateNotifications(
+                notifications.cutoff(), notifications.bedtimeResidual(), notifications.recordReminder());
         // learned 3종이 모두 온 경우에만 1회 시드 — 부분 제공 규칙은 UpdateSettingsRequest javadoc 참조
         if (request.hasLearnedSeed()) {
             settings.seedLearned(request.learnedMean(), request.learnedVariance(), request.lastLearnedDate());

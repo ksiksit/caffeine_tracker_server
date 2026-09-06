@@ -30,17 +30,52 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.isLearningEnabled").value(true))
                 .andExpect(jsonPath("$.data.learnedMean").value(5.0))
                 .andExpect(jsonPath("$.data.learnedVariance").value(2.25))
-                .andExpect(jsonPath("$.data.effectiveHalfLifeHours").value(5.0));
+                .andExpect(jsonPath("$.data.effectiveHalfLifeHours").value(5.0))
+                .andExpect(jsonPath("$.data.notifications.cutoff").value(true))
+                .andExpect(jsonPath("$.data.notifications.bedtimeResidual").value(true))
+                .andExpect(jsonPath("$.data.notifications.recordReminder").value(true));
 
         // 반감기 6.0 + 흡연(×0.5): prior 리셋 → learnedMean=6.0, effective=6.0*0.5=3.0
         mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"halfLife":6.0,"condition":1,"bedtimeHour":1,"bedtimeMinute":30,\
-                        "referenceDoseMg":75,"isLearningEnabled":true}"""))
+                        "referenceDoseMg":75,"isLearningEnabled":true,\
+                        "notifications":{"cutoff":true,"bedtimeResidual":true,"recordReminder":true}}"""))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.learnedMean").value(6.0))
                 .andExpect(jsonPath("$.data.effectiveHalfLifeHours").value(3.0));
+    }
+
+    @Test
+    void settings_알림토글_갱신_그리고_누락시_400() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"halfLife":5.0,"condition":0,"bedtimeHour":23,"bedtimeMinute":0,\
+                        "referenceDoseMg":75,"isLearningEnabled":true,\
+                        "notifications":{"cutoff":false,"bedtimeResidual":true,"recordReminder":false}}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.notifications.cutoff").value(false))
+                .andExpect(jsonPath("$.data.notifications.bedtimeResidual").value(true))
+                .andExpect(jsonPath("$.data.notifications.recordReminder").value(false));
+
+        mockMvc.perform(get("/api/settings").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.notifications.cutoff").value(false))
+                .andExpect(jsonPath("$.data.notifications.recordReminder").value(false));
+
+        // notifications 는 전체 교체의 일부라 필수 — 누락 시 VALIDATION_FAILED
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"halfLife":5.0,"condition":0,"bedtimeHour":23,"bedtimeMinute":0,\
+                        "referenceDoseMg":75,"isLearningEnabled":true}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value("notifications"));
     }
 
     @Test

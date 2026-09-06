@@ -14,12 +14,14 @@ public record SettingsResponse(
         double learnedVariance,
         LocalDate lastLearnedDate,
         double inferredBaseHalfLife,
-        double effectiveHalfLifeHours
+        double effectiveHalfLifeHours,
+        NotificationSettingsResponse notifications
 ) {
     public static SettingsResponse from(UserSettings s) {
         return new SettingsResponse(
                 s.getHalfLife(), s.getCondition(), s.getBedtimeHour(), s.getBedtimeMinute(),
                 s.getReferenceDoseMg(), s.isLearningEnabled(), s.getLearnedMean(), s.getLearnedVariance(),
-                s.getLastLearnedDate(), s.inferredBaseHalfLife(), s.effectiveHalfLifeHours());
+                s.getLastLearnedDate(), s.inferredBaseHalfLife(), s.effectiveHalfLifeHours(),
+                NotificationSettingsResponse.from(s));
     }
 }
