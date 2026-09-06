@@ -511,7 +511,8 @@ paths:
       description: |
         now 이후에 울려야 할 로컬 알림 목록. 설정(notifications.*)에서 꺼진 종류는 생략한다.
         앱은 기존 예약을 전부 취소하고 목록대로 다시 예약한다. 재조회 시점: 기록 추가·수정·삭제 후, 설정 변경 후,
-        학습 실행 후, 앱 포그라운드 진입. 서버는 푸시를 보내지 않는다. 현재 생성되는 종류는 없다(items 는 항상 []).
+        학습 실행 후, 앱 포그라운드 진입. 서버는 푸시를 보내지 않는다.
+        종류별 생성 규칙은 api.md 알림 절. CUTOFF: 오늘 현황 cutoff.status 가 CUTOFF 이고 cutoff−30분이 now 이후일 때 fireAt=cutoff−30분.
       operationId: notificationPlan
       parameters:
         - $ref: '#/components/parameters/now'
@@ -532,7 +533,8 @@ paths:
                 success: true
                 data:
                   now: '2026-06-01T05:00:00Z'
-                  items: []
+                  items:
+                    - { type: CUTOFF, fireAt: '2026-06-01T10:34:30.675Z', title: '섭취 마감 30분 전', body: '23:00 취침 기준, 75mg를 마실 수 있는 마지막 시각은 20:04이에요.' }
                 error: null
                 message: null
         '400':

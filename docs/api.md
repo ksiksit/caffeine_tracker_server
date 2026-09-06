@@ -519,7 +519,6 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 
 - 앱은 기존에 예약한 알림을 **전부 취소하고** 이 목록대로 다시 예약한다.
 - 재조회 시점: 카페인 기록 추가·수정·삭제 후, 설정 변경 후, 학습 실행 후, 앱 포그라운드 진입 시.
-- 현재 생성되는 종류는 없다(`items`는 항상 `[]`). 종류별 생성 조건·문구는 구현할 때 아래 표에 추가한다.
 
 **쿼리**
 
@@ -539,6 +538,18 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | `items[].title` | string | 알림 제목(한국어) |
 | `items[].body` | string | 알림 본문(한국어) |
 
+**종류별 생성 규칙** — 조건을 만족하지 않는 종류는 목록에서 빠진다.
+
+| 종류 | 생성 조건 | `fireAt` | 문구 |
+|---|---|---|---|
+| `CUTOFF` | `notifications.cutoff` 켜짐 · 오늘 현황의 `cutoff.status`가 `CUTOFF` · `cutoff − 30분`이 `now` 이후 | `cutoff − 30분` | 제목 `섭취 마감 30분 전`. 본문 `{취침 HH:mm} 취침 기준, {referenceDoseMg}mg를 마실 수 있는 마지막 시각은 {마감 HH:mm}이에요.` (HH:mm은 `tz` 로컬) |
+| `BEDTIME_RESIDUAL` | 미구현 | | |
+| `RECORD_REMINDER` | 미구현 | | |
+
+`SAFE_ANYTIME`(마감 없음)·`ALREADY_EXCEEDED`(취침 잔량 이미 초과)·마감까지 30분 미만 남음이면 `CUTOFF` 항목은 없다. 홈 화면이 마감시각을 이미 보여주므로 중복 안내하지 않는다.
+
 ```json
-{ "success": true, "data": { "now": "2026-06-01T05:00:00Z", "items": [] }, "error": null, "message": null }
+{ "success": true, "data": { "now": "2026-06-01T05:00:00Z", "items": [
+  { "type": "CUTOFF", "fireAt": "2026-06-01T10:34:30.675Z", "title": "섭취 마감 30분 전", "body": "23:00 취침 기준, 75mg를 마실 수 있는 마지막 시각은 20:04이에요." }
+] }, "error": null, "message": null }
 ```
