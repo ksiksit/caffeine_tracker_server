@@ -1,6 +1,6 @@
 # DB 스키마
 
-카페인 트래커 서버의 MySQL 8 테이블 스키마. (2026-09-03)
+카페인 트래커 서버의 MySQL 8 테이블 스키마. (2026-09-06)
 
 DDL 원본은 [`db-schema.sql`](db-schema.sql) 하나이며, **애플리케이션은 스키마를 만들거나 바꾸지 않는다.**
 사용자가 DB에 직접 실행하고, 서버는 기동 시 엔티티와 대조만 한다(`ddl-auto: validate`).
@@ -62,3 +62,4 @@ erDiagram
 | 날짜 | 내용 | 기존 DB에 적용할 SQL |
 |---|---|---|
 | 2026-09-03 | 초기 스키마. 구 Flyway 마이그레이션 V1~V6를 통합했고 테이블 구조는 동일 | 없음. Flyway로 만든 DB는 그대로 사용 가능하며, 남아 있는 `flyway_schema_history`는 무해하다 (정리: `DROP TABLE flyway_schema_history;`) |
+| 2026-09-06 | `user_settings`에 알림 종류별 on/off 컬럼 3개 추가 (`notify_cutoff`·`notify_bedtime_residual`·`notify_record_reminder`). 기존 행은 전부 1(켜짐) | `ALTER TABLE user_settings ADD COLUMN notify_cutoff BIT(1) NOT NULL DEFAULT 1 AFTER is_learning_enabled, ADD COLUMN notify_bedtime_residual BIT(1) NOT NULL DEFAULT 1 AFTER notify_cutoff, ADD COLUMN notify_record_reminder BIT(1) NOT NULL DEFAULT 1 AFTER notify_bedtime_residual;` 롤백: `ALTER TABLE user_settings DROP COLUMN notify_cutoff, DROP COLUMN notify_bedtime_residual, DROP COLUMN notify_record_reminder;` |

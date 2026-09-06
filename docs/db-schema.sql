@@ -42,18 +42,21 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 
 -- user_settings: 유저 설정 + 베이지안 학습 상태 (users 와 1:1, PK 공유)
 CREATE TABLE IF NOT EXISTS user_settings (
-    user_id             BIGINT       NOT NULL,  -- users.id 와 동일 (공유 PK, 1:1)
-    half_life           DOUBLE       NOT NULL,  -- 수동 설정 반감기(시간). 기본 5.0, 연산 시 3.0~7.0 clamp
-    health_condition    INT          NOT NULL,  -- 건강 상태: 0=NONE, 1=SMOKER, 2=ORAL_CONTRACEPTIVE, 3=PREGNANT
-    bedtime_hour        INT          NOT NULL,  -- 취침 시각(로컬). 기본 23
-    bedtime_minute      INT          NOT NULL,  -- 기본 0
-    reference_dose_mg   INT          NOT NULL,  -- 기준 용량(mg). 기본 75
-    is_learning_enabled BIT(1)       NOT NULL,  -- 자동 학습 여부. 기본 1
-    learned_mean        DOUBLE       NOT NULL,  -- 학습 반감기 평균(시간). 기본 5.0, 반감기 수동 변경 시 그 값으로 리셋
-    learned_variance    DOUBLE       NOT NULL,  -- 학습 반감기 분산(시간²). 기본 2.25(모집단 1.5²), 반감기 수동 변경 시 리셋
-    last_learned_date   DATE         NULL,      -- 마지막 학습 날짜(로컬). 반감기 수동 변경 시 NULL 로 리셋
-    created_at          DATETIME(6)  NOT NULL,
-    updated_at          DATETIME(6)  NOT NULL,
+    user_id                 BIGINT       NOT NULL,  -- users.id 와 동일 (공유 PK, 1:1)
+    half_life               DOUBLE       NOT NULL,  -- 수동 설정 반감기(시간). 기본 5.0, 연산 시 3.0~7.0 clamp
+    health_condition        INT          NOT NULL,  -- 건강 상태: 0=NONE, 1=SMOKER, 2=ORAL_CONTRACEPTIVE, 3=PREGNANT
+    bedtime_hour            INT          NOT NULL,  -- 취침 시각(로컬). 기본 23
+    bedtime_minute          INT          NOT NULL,  -- 기본 0
+    reference_dose_mg       INT          NOT NULL,  -- 기준 용량(mg). 기본 75
+    is_learning_enabled     BIT(1)       NOT NULL,  -- 자동 학습 여부. 기본 1
+    notify_cutoff           BIT(1)       NOT NULL,  -- 섭취 마감 알림 on/off. 기본 1
+    notify_bedtime_residual BIT(1)       NOT NULL,  -- 취침 잔량 예고 on/off. 기본 1
+    notify_record_reminder  BIT(1)       NOT NULL,  -- 기록 리마인더 on/off. 기본 1
+    learned_mean            DOUBLE       NOT NULL,  -- 학습 반감기 평균(시간). 기본 5.0, 반감기 수동 변경 시 그 값으로 리셋
+    learned_variance        DOUBLE       NOT NULL,  -- 학습 반감기 분산(시간²). 기본 2.25(모집단 1.5²), 반감기 수동 변경 시 리셋
+    last_learned_date       DATE         NULL,      -- 마지막 학습 날짜(로컬). 반감기 수동 변경 시 NULL 로 리셋
+    created_at              DATETIME(6)  NOT NULL,
+    updated_at              DATETIME(6)  NOT NULL,
     PRIMARY KEY (user_id),
     CONSTRAINT fk_user_settings_user_id
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
