@@ -9,6 +9,6 @@ public enum NotificationType {
     CUTOFF,
     /** 취침 잔량 예고 — 취침시각 60분 전, 취침 시 예상 잔량 50mg 이상일 때. */
     BEDTIME_RESIDUAL,
-    /** 기록 리마인더 — 평소 기록 패턴에서 벗어나 기록이 없을 때. (예정) */
+    /** 기록 리마인더 — 오늘 기록이 없고 평소 첫 기록 시각(최근 14일 일별 중앙값) + 2시간이 지나기 전. */
     RECORD_REMINDER
 }

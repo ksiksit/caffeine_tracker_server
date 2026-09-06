@@ -544,11 +544,16 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 |---|---|---|---|
 | `CUTOFF` | `notifications.cutoff` 켜짐 · 오늘 현황의 `cutoff.status`가 `CUTOFF` · `cutoff − 30분`이 `now` 이후 | `cutoff − 30분` | 제목 `섭취 마감 30분 전`. 본문 `{취침 HH:mm} 취침 기준, {referenceDoseMg}mg를 마실 수 있는 마지막 시각은 {마감 HH:mm}이에요.` (HH:mm은 `tz` 로컬) |
 | `BEDTIME_RESIDUAL` | `notifications.bedtimeResidual` 켜짐 · 오늘 현황의 `predictedAtBedtime`이 50mg 이상 · `bedtime − 60분`이 `now` 이후 | `bedtime − 60분` | 제목 `취침 60분 전 잔량 예고`. 본문 `{취침 HH:mm} 취침 시 카페인이 약 {반올림 mg}mg 남아 있을 것으로 보여요.` |
-| `RECORD_REMINDER` | 미구현 | | |
+| `RECORD_REMINDER` | `notifications.recordReminder` 켜짐 · 오늘(05:00 경계) 기록 없음 · 최근 14일 중 기록 있는 날 5일 이상 · `평소 첫 기록 시각 + 2시간`이 `now` 이후이고 오늘 창(05:00부터 24시간) 안 | `평소 첫 기록 시각 + 2시간` | 제목 `오늘 카페인 기록이 없어요`. 본문 `평소 {HH:mm}쯤 첫 잔을 기록했어요. 마셨다면 잊지 말고 기록해 주세요.` |
 
 `SAFE_ANYTIME`(마감 없음)·`ALREADY_EXCEEDED`(취침 잔량 이미 초과)·마감까지 30분 미만 남음이면 `CUTOFF` 항목은 없다. 홈 화면이 마감시각을 이미 보여주므로 중복 안내하지 않는다.
 기록이 없거나(잔량 0) 예상 잔량이 50mg 미만이거나 취침 60분 전이 지났으면 `BEDTIME_RESIDUAL` 항목은 없다.
 예상 잔량 50mg 이상은 곧 `ALREADY_EXCEEDED`이므로 `CUTOFF`와 `BEDTIME_RESIDUAL`은 같은 계획에 함께 나오지 않는다(여유 있으면 마감 알림, 초과면 잔량 예고).
+`RECORD_REMINDER`는 `CUTOFF`와 함께 나올 수 있다(둘 다 오늘 기록이 없을 때 생기며 `fireAt` 오름차순).
+
+**평소 첫 기록 시각** = 최근 14일(`오늘 05:00 − 14일 ≤ timestamp < 오늘 05:00`)의 기록을 로컬 하루(05:00 경계, 05:00 이전은 전날)로 묶어
+날마다 첫 기록이 그날 05:00으로부터 얼마나 뒤인지 구한 뒤, 그 중앙값(짝수면 가운데 둘의 평균)을 오늘 05:00에 더한 시각.
+기록이 오늘 생기면 앱이 재조회하고 항목이 사라진다.
 
 ```json
 { "success": true, "data": { "now": "2026-06-01T05:00:00Z", "items": [

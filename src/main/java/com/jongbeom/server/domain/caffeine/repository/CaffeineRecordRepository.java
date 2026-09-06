@@ -10,7 +10,7 @@ public interface CaffeineRecordRepository extends JpaRepository<CaffeineRecord, 
 
     Optional<CaffeineRecord> findByIdAndUserId(Long id, Long userId);
 
-    /** [start, ∞) 기록을 시간 오름차순으로. 오늘 기록(차트 시작 5시 이후) 조회용. */
+    /** [start, ∞) 기록을 시간 오름차순으로. 오늘 기록(차트 시작 5시 이후) 조회용. 알림 계획의 최근 14일 조회에도 쓴다. */
     List<CaffeineRecord> findByUserIdAndTimestampGreaterThanEqualOrderByTimestampAsc(
             Long userId, Instant start);
 

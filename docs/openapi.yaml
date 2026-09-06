@@ -514,6 +514,7 @@ paths:
         학습 실행 후, 앱 포그라운드 진입. 서버는 푸시를 보내지 않는다.
         종류별 생성 규칙은 api.md 알림 절. CUTOFF: 오늘 현황 cutoff.status 가 CUTOFF 이고 cutoff−30분이 now 이후일 때 fireAt=cutoff−30분.
         BEDTIME_RESIDUAL: 오늘 현황 predictedAtBedtime 이 50mg 이상이고 bedtime−60분이 now 이후일 때 fireAt=bedtime−60분. 두 종류는 함께 나오지 않는다.
+        RECORD_REMINDER: 오늘(05:00 경계) 기록이 없고 최근 14일 중 기록 있는 날이 5일 이상이면 fireAt=일별 첫 기록 시각 중앙값+2시간(오늘 창 안). CUTOFF 와 함께 나올 수 있다.
       operationId: notificationPlan
       parameters:
         - $ref: '#/components/parameters/now'
