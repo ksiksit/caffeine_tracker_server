@@ -99,33 +99,39 @@ DB_URL=jdbc:mysql://localhost:3306/caffeine_tracker?serverTimezone=UTC&character
 
 ## API 엔드포인트
 
-> 상세 명세: [`docs/api.md`](docs/api.md) (요청·응답 필드, 예시, 에러 코드) · [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.0.3 — Swagger Editor·Postman에서 열기).
+> 원본은 아래 표가 아니라 [`docs/api.md`](docs/api.md)입니다 (요청·응답 필드, 예시, 에러 코드) ·
+> 기계용은 [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.0.3 — Swagger Editor·Postman에서 열기).
 > 엔드포인트 목록·DTO 필드·에러 코드는 `ApiDocsConsistencyIT`가 코드와 대조한다.
+>
+> **아래 표에는 경로와 기능 이름만 적는다.** 동작 조건·임계값 같은 세부를 여기 옮겨 적으면,
+> 이 표는 테스트가 대조하지 않는 유일한 사본이라 조용히 낡는다.
 
 **인증**
-| 메서드 | 경로 | 설명 | 인증 |
+| 메서드 | 경로 | 기능 | 인증 |
 |---|---|---|---|
 | `POST` | `/api/auth/signup` | 회원가입 | 불필요 |
-| `POST` | `/api/auth/login` | 로그인 (JWT 발급) | 불필요 |
-| `POST` | `/api/auth/refresh` | 토큰 갱신(로테이션) | 불필요 |
+| `POST` | `/api/auth/login` | 로그인 | 불필요 |
+| `POST` | `/api/auth/refresh` | 토큰 재발급 | 불필요 |
 | `POST` | `/api/auth/logout` | 로그아웃 | Bearer |
 | `GET`  | `/api/me` | 내 정보 조회 | Bearer |
 
 **설정 · 카페인 · 알림** (전부 Bearer)
-| 메서드 | 경로 | 설명 |
+| 메서드 | 경로 | 기능 |
 |---|---|---|
-| `GET`/`PUT` | `/api/settings` | 설정·학습 상태 조회/갱신(없으면 기본값 생성) |
-| `POST`/`PUT`/`DELETE` | `/api/caffeine-records[/{id}]` | 카페인 기록 CRUD |
-| `GET` | `/api/caffeine/today?now=&tz=` | **서버 계산**: 잔류량 차트·현재/취침 잔량·마감시각 |
-| `GET` | `/api/notifications/plan?now=&tz=` | **서버 계산**: 로컬 알림 계획(종류·시각·문구), 앱이 예약. 섭취 마감 30분 전·취침 60분 전 잔량 예고·기록 리마인더 |
+| `GET`/`PUT` | `/api/settings` | 설정 조회 · 설정 변경 |
+| `POST`/`PUT`/`DELETE` | `/api/caffeine-records[/{id}]` | 카페인 기록 추가 · 수정 · 삭제 |
+| `GET` | `/api/caffeine-records` | 오늘 기록 조회 |
+| `GET` | `/api/caffeine/today?now=&tz=` | 오늘의 카페인 현황 (서버 계산) |
+| `GET` | `/api/notifications/plan?now=&tz=` | 알림 계획 조회 (서버 계산) |
 
 **수면 · 학습** (전부 Bearer)
-| 메서드 | 경로 | 설명 |
+| 메서드 | 경로 | 기능 |
 |---|---|---|
-| `POST` | `/api/sleep/samples` | HealthKit 원시 수면 샘플 업로드(client_uuid 멱등) |
-| `GET` | `/api/sleep/summary?date=&tz=` | **서버 계산**: 병합·총수면·효율·SOL·단계별 시간 |
-| `POST` | `/api/learning/run?tz=` | **서버 계산**: 미학습 night 베이지안 배치 학습 |
-| `GET` | `/api/learning/observations` · `/api/learning/dashboard` | 관측 이력 · 대시보드 통계(CI·R²·RMSE·히스토그램) |
+| `POST` | `/api/sleep/samples` | 수면 샘플 업로드 |
+| `GET` | `/api/sleep/summary?date=&tz=` | 수면 요약 조회 (서버 계산) |
+| `POST` | `/api/learning/run?tz=` | 반감기 학습 실행 (서버 계산) |
+| `GET` | `/api/learning/observations` | 학습 관측 이력 조회 |
+| `GET` | `/api/learning/dashboard` | 학습 대시보드 (서버 계산) |
 
 > 연산 엔드포인트는 기기 로컬 타임존 재현을 위해 `tz`(IANA, 예 `Asia/Seoul`)와 필요 시 `now`(ISO-8601+오프셋)를 받는다.
 

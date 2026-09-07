@@ -29,6 +29,9 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 - 엔티티/테이블 → `docs/db-schema.sql`의 CREATE 갱신 + `docs/db-schema.md` 변경 이력에 ALTER 기록.
   앱은 스키마를 만들지 않고(`ddl-auto: validate`) 테스트가 같은 DDL을 H2에 적용해 대조하므로 안 고치면 빌드 실패.
 - 엔드포인트/DTO/ErrorCode → `docs/api.md` + `docs/openapi.yaml` 둘 다. `ApiDocsConsistencyIT`가 누락을 잡는다(설명 문구는 못 잡음).
+- 사용자에게 보이는 기능 → `docs/features.md` 표. 동작 조건·임계값은 여기 적는다 — 그 괄호가 그대로 테스트 케이스 목록이다.
+- 새 엔드포인트 → `README.md` API 표에도 한 줄. **경로와 `features.md`의 기능 이름만** 적고 동작 세부는 옮기지 않는다.
+  테스트가 대조하지 않는 유일한 사본이라, 세부를 적으면 낡아도 빌드가 통과한다.
 
 ## 절대 규칙
 - `domain/calc/` 상수(반감기 clamp 3~7h, alpha 0.15/beta 0.10/sigmaObs 10, trust region 0.5h 등)는 도메인 근거값 — 변경 금지.
