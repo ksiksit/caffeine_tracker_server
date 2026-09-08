@@ -29,6 +29,6 @@
 
 ## 예정
 
-이름만 기록한다. API 형태·스키마는 착수할 때 `api.md`·`openapi.yaml`·`db-schema.sql`에 적고 구현과 함께 머지한다.
+이름만 기록한다. API 형태·스키마는 착수할 때 `api/api.md`·`api/openapi.yaml`·`db/db-schema.sql`에 적고 구현과 함께 머지한다.
 
 현재 예정 항목 없음.

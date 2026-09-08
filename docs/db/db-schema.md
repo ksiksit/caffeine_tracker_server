@@ -11,7 +11,7 @@ DDL 원본은 [`db-schema.sql`](db-schema.sql) 하나이며, **애플리케이�
 데이터베이스·계정 생성은 README "로컬 실행 방법" 참조. 그 다음 프로젝트 루트에서 실행한다.
 
 ```bash
-mysql -u caffeine -p caffeine_tracker < docs/db-schema.sql
+mysql -u caffeine -p caffeine_tracker < docs/db/db-schema.sql
 ```
 
 - 모든 문장이 `CREATE TABLE IF NOT EXISTS`라 여러 번 실행해도 안전하다 (이미 있는 테이블은 건너뜀).

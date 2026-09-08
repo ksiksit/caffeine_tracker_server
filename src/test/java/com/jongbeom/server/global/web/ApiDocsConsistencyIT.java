@@ -38,7 +38,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * API 문서 정합성 — 서버 코드와 docs/api.md, docs/openapi.yaml 이 어긋나면 빌드가 실패한다.
+ * API 문서 정합성 — 서버 코드와 docs/api/api.md, docs/api/openapi.yaml 이 어긋나면 빌드가 실패한다.
  * <ul>
  *   <li>엔드포인트 목록: 핸들러 매핑 == api.md 목록 표 == openapi.yaml paths</li>
  *   <li>DTO 필드: domain/*&#47;dto 와 global/error 의 record 필드 == openapi.yaml components.schemas 의 properties</li>
@@ -46,7 +46,7 @@ import org.yaml.snakeyaml.Yaml;
  *   <li>필드 표를 생략한 "추가와 동일" 참조: UpdateCaffeineRecordRequest == CreateCaffeineRecordRequest</li>
  *   <li>enum 목록: ErrorCode, LearningSkipReason, CutoffResult.Status, NotificationType == openapi.yaml 의 enum</li>
  * </ul>
- * 설명·제약 문구는 검사하지 않는다(사람이 맞춘다). 문서 파일은 build.gradle 의 processTestResources 가 docs/ 로 복사한다.
+ * 설명·제약 문구는 검사하지 않는다(사람이 맞춘다). 문서 파일은 build.gradle 의 processTestResources 가 docs/api/ 로 복사한다.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -71,8 +71,8 @@ class ApiDocsConsistencyIT {
     void 엔드포인트_목록은_코드_apimd_openapi_세곳이_같다() throws Exception {
         Set<String> code = codeEndpoints();
         assertThat(code).isNotEmpty();
-        assertThat(markdownEndpoints()).as("docs/api.md 엔드포인트 목록 표").containsExactlyInAnyOrderElementsOf(code);
-        assertThat(openapiEndpoints()).as("docs/openapi.yaml paths").containsExactlyInAnyOrderElementsOf(code);
+        assertThat(markdownEndpoints()).as("docs/api/api.md 엔드포인트 목록 표").containsExactlyInAnyOrderElementsOf(code);
+        assertThat(openapiEndpoints()).as("docs/api/openapi.yaml paths").containsExactlyInAnyOrderElementsOf(code);
     }
 
     @Test
@@ -96,11 +96,11 @@ class ApiDocsConsistencyIT {
         Map<String, Set<String>> tables = markdownFieldTables();
         Map<String, Class<?>> records = documentedRecords().stream()
                 .collect(Collectors.toMap(Class::getSimpleName, cls -> cls, (first, second) -> first));
-        assertThat(tables).as("docs/api.md 필드 표").isNotEmpty();
+        assertThat(tables).as("docs/api/api.md 필드 표").isNotEmpty();
         for (Map.Entry<String, Set<String>> table : tables.entrySet()) {
             Class<?> record = records.get(table.getKey());
-            assertThat(record).as("docs/api.md 가 참조하는 DTO %s 를 코드에서 못 찾음", table.getKey()).isNotNull();
-            assertThat(expandWildcards(table.getValue(), record)).as("docs/api.md %s 필드 표", table.getKey())
+            assertThat(record).as("docs/api/api.md 가 참조하는 DTO %s 를 코드에서 못 찾음", table.getKey()).isNotNull();
+            assertThat(expandWildcards(table.getValue(), record)).as("docs/api/api.md %s 필드 표", table.getKey())
                     .containsExactlyInAnyOrderElementsOf(fieldPaths(record, "", tables.keySet()));
         }
     }
@@ -112,7 +112,7 @@ class ApiDocsConsistencyIT {
     @Test
     void 수정_요청_DTO는_추가_요청과_필드_제약이_같다() {
         assertThat(fieldsWithConstraints(UpdateCaffeineRecordRequest.class))
-                .as("docs/api.md 의 \"추가와 동일한 필드·제약\"")
+                .as("docs/api/api.md 의 \"추가와 동일한 필드·제약\"")
                 .isEqualTo(fieldsWithConstraints(CreateCaffeineRecordRequest.class));
     }
 
@@ -149,7 +149,7 @@ class ApiDocsConsistencyIT {
 
     private static Set<String> markdownEndpoints() throws Exception {
         Set<String> result = new TreeSet<>();
-        for (String line : read("docs/api.md").split("\n")) {
+        for (String line : read("docs/api/api.md").split("\n")) {
             Matcher matcher = MD_ENDPOINT_ROW.matcher(line);
             if (matcher.find()) {
                 result.add(matcher.group(1) + " " + matcher.group(2));
@@ -168,7 +168,7 @@ class ApiDocsConsistencyIT {
         Map<String, Set<String>> result = new LinkedHashMap<>();
         String dto = null;
         boolean inTable = false;
-        for (String line : read("docs/api.md").split("\n")) {
+        for (String line : read("docs/api/api.md").split("\n")) {
             Matcher anchor = MD_TABLE_ANCHOR.matcher(line);
             if (anchor.find()) {
                 dto = anchor.group(1);
@@ -294,7 +294,7 @@ class ApiDocsConsistencyIT {
     }
 
     private static Map<String, Object> loadYaml() throws Exception {
-        try (InputStream in = new ClassPathResource("docs/openapi.yaml").getInputStream()) {
+        try (InputStream in = new ClassPathResource("docs/api/openapi.yaml").getInputStream()) {
             return new Yaml().load(in);
         }
     }

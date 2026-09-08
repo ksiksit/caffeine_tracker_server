@@ -26,9 +26,9 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 - Lombok: `@Getter`, `@RequiredArgsConstructor`, `@Slf4j`.
 
 ## 바꾸면 같이 바꿀 것
-- 엔티티/테이블 → `docs/db-schema.sql`의 CREATE 갱신 + `docs/db-schema.md` 변경 이력에 ALTER 기록.
+- 엔티티/테이블 → `docs/db/db-schema.sql`의 CREATE 갱신 + `docs/db/db-schema.md` 변경 이력에 ALTER 기록.
   앱은 스키마를 만들지 않고(`ddl-auto: validate`) 테스트가 같은 DDL을 H2에 적용해 대조하므로 안 고치면 빌드 실패.
-- 엔드포인트/DTO/ErrorCode → `docs/api.md` + `docs/openapi.yaml` 둘 다. `ApiDocsConsistencyIT`가 엔드포인트 목록·
+- 엔드포인트/DTO/ErrorCode → `docs/api/api.md` + `docs/api/openapi.yaml` 둘 다. `ApiDocsConsistencyIT`가 엔드포인트 목록·
   api.md 필드 표·openapi 스키마·enum을 코드와 대조한다. **이름은 잡고 설명 문구는 못 잡는다.**
   api.md 필드 표의 경로 표기(`a[].b`·`*Suffix[]` 등)는 파서가 읽으므로 api.md "필드 표 표기" 절을 따른다.
 - 사용자에게 보이는 기능 → `docs/features.md` 표. 동작 조건·임계값은 여기 적는다 — 그 괄호가 그대로 테스트 케이스 목록이다.
@@ -58,4 +58,4 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 
 ## 배포
 - 수동 배포. "배포 준비 됐냐"는 이 레포의 준비 상태만 답한다. EC2·RDS는 사용자 관리 인프라 — 준비된 것으로 간주, 재검증 금지.
-- 절차·체크리스트·현재 상태: `docs/운영-가이드.md`.
+- 절차·체크리스트·현재 상태: `docs/ops/운영-가이드.md`.

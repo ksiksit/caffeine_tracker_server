@@ -41,13 +41,13 @@ GRANT ALL PRIVILEGES ON caffeine_tracker.* TO 'caffeine'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-테이블은 애플리케이션이 만들지 않습니다. DDL 원본 `docs/db-schema.sql`을 직접 실행합니다 (모든 문장이 `CREATE TABLE IF NOT EXISTS`라 재실행해도 안전).
+테이블은 애플리케이션이 만들지 않습니다. DDL 원본 `docs/db/db-schema.sql`을 직접 실행합니다 (모든 문장이 `CREATE TABLE IF NOT EXISTS`라 재실행해도 안전).
 
 ```bash
-mysql -u caffeine -p caffeine_tracker < docs/db-schema.sql
+mysql -u caffeine -p caffeine_tracker < docs/db/db-schema.sql
 ```
 
-스키마 설명·변경 절차·변경 이력은 `docs/db-schema.md` 참조. 스키마가 없거나 엔티티와 다르면 서버가 기동 시 `Schema-validation` 오류로 즉시 실패합니다.
+스키마 설명·변경 절차·변경 이력은 `docs/db/db-schema.md` 참조. 스키마가 없거나 엔티티와 다르면 서버가 기동 시 `Schema-validation` 오류로 즉시 실패합니다.
 
 ### 2. 환경변수 설정
 
@@ -99,8 +99,8 @@ DB_URL=jdbc:mysql://localhost:3306/caffeine_tracker?serverTimezone=UTC&character
 
 ## API 엔드포인트
 
-> 원본은 아래 표가 아니라 [`docs/api.md`](docs/api.md)입니다 (요청·응답 필드, 예시, 에러 코드) ·
-> 기계용은 [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.0.3 — Swagger Editor·Postman에서 열기).
+> 원본은 아래 표가 아니라 [`docs/api/api.md`](docs/api/api.md)입니다 (요청·응답 필드, 예시, 에러 코드) ·
+> 기계용은 [`docs/api/openapi.yaml`](docs/api/openapi.yaml) (OpenAPI 3.0.3 — Swagger Editor·Postman에서 열기).
 > 엔드포인트 목록·DTO 필드·에러 코드는 `ApiDocsConsistencyIT`가 코드와 대조한다.
 >
 > **아래 표에는 경로와 기능 이름만 적는다.** 동작 조건·임계값 같은 세부를 여기 옮겨 적으면,
@@ -207,10 +207,17 @@ src/main/java/com/jongbeom/server/
 │   └── entity/         # BaseTimeEntity
 └── ServerApplication.java   # 패키지 루트 고정 — 컴포넌트 스캔 베이스
 
-docs/db-schema.sql                 # DB 스키마 DDL 원본 — 사용자가 직접 실행, 테스트는 H2 에 적용해 엔티티와 대조
-docs/db-schema.md                  # 스키마 설명 · 변경 절차 · 변경 이력
-docs/api.md                        # API 명세(사람용) — 필드 표 · 예시 · 에러 코드
-docs/openapi.yaml                  # API 명세(기계용, OpenAPI 3.0.3) — 테스트가 코드와 대조
+docs/
+├── README.md           # 문서 색인 — 어떤 문서가 어디에 있는지
+├── features.md         # 화면별 기능 목록 — 동작 조건·임계값의 기준점
+├── api/
+│   ├── api.md          # API 명세(사람용) — 필드 표 · 예시 · 에러 코드
+│   └── openapi.yaml    # API 명세(기계용, OpenAPI 3.0.3) — 테스트가 코드와 대조
+├── db/
+│   ├── db-schema.sql   # DB 스키마 DDL 원본 — 사용자가 직접 실행, 테스트는 H2 에 적용해 엔티티와 대조
+│   └── db-schema.md    # 스키마 설명 · 변경 절차 · 변경 이력
+└── ops/
+    └── 운영-가이드.md    # 수동 배포 절차 · 준비 상태 체크리스트
 ```
 
 > 각 도메인 내부는 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/` 레이어 패키지로 구성한다.

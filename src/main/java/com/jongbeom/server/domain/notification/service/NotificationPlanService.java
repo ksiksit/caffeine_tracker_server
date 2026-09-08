@@ -27,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 로컬 알림 계획 계산. 서버는 푸시를 보내지 않고(운영 EC2 외부 인터넷 불가) 계획만 내려준다 — CLAUDE.md 도메인 계약.
- * 종류별 생성 규칙의 계약은 docs/api.md 알림 절이며, 여기의 상수·문구를 바꾸면 그 표도 같이 바꾼다.
+ * 종류별 생성 규칙의 계약은 docs/api/api.md 알림 절이며, 여기의 상수·문구를 바꾸면 그 표도 같이 바꾼다.
  * 종류 세 개(CUTOFF·BEDTIME_RESIDUAL·RECORD_REMINDER) 모두 구현.
  */
 @Service

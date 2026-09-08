@@ -3,7 +3,7 @@
 카페인 트래커 서버 REST API. (서버 구현 기준, 2026-09-06)
 
 - 기계용 명세: [`openapi.yaml`](openapi.yaml) — OpenAPI 3.0.3. Swagger Editor·Redoc·Postman에서 열 수 있다.
-- 화면별 기능 목록은 [`features.md`](features.md), DB 스키마는 [`db-schema.md`](db-schema.md).
+- 화면별 기능 목록은 [`features.md`](../features.md), DB 스키마는 [`db-schema.md`](../db/db-schema.md).
 - 이 문서·`openapi.yaml`·서버 코드의 **엔드포인트 목록, DTO 필드, 에러 코드**는 `ApiDocsConsistencyIT`가 대조한다.
   설명·제약 문구는 검사하지 않으므로 사람이 맞춘다.
 
