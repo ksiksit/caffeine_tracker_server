@@ -2,13 +2,12 @@ package com.jongbeom.server.global.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.jongbeom.server.domain.caffeine.dto.CreateCaffeineRecordRequest;
-import com.jongbeom.server.domain.caffeine.dto.UpdateCaffeineRecordRequest;
 import com.jongbeom.server.domain.calc.Pharmacokinetics;
 import com.jongbeom.server.domain.learning.LearningSkipReason;
 import com.jongbeom.server.domain.notification.NotificationType;
 import com.jongbeom.server.global.error.ErrorCode;
 import java.io.InputStream;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
@@ -25,6 +24,7 @@ import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -43,7 +43,7 @@ import org.yaml.snakeyaml.Yaml;
  *   <li>엔드포인트 목록: 핸들러 매핑 == api.md 목록 표 == openapi.yaml paths</li>
  *   <li>DTO 필드: domain/*&#47;dto 와 global/error 의 record 필드 == openapi.yaml components.schemas 의 properties</li>
  *   <li>DTO 필드: 같은 record == api.md 의 "| 필드 |" 표(중첩 record 는 경로로 전개)</li>
- *   <li>필드 표를 생략한 "추가와 동일" 참조: UpdateCaffeineRecordRequest == CreateCaffeineRecordRequest</li>
+ *   <li>필드 표를 생략한 앵커: 반드시 "…와 동일" 참조여야 하고, 그 참조가 가리키는 DTO 와 필드·제약이 같아야 한다</li>
  *   <li>enum 목록: ErrorCode, LearningSkipReason, CutoffResult.Status, NotificationType == openapi.yaml 의 enum</li>
  * </ul>
  * 설명·제약 문구는 검사하지 않는다(사람이 맞춘다). 문서 파일은 build.gradle 의 processTestResources 가 docs/api/ 로 복사한다.
@@ -60,6 +60,8 @@ class ApiDocsConsistencyIT {
     /** api.md 필드 표의 앵커: {@code **요청 바디** `Dto`} / {@code **응답 200** `data: Dto`} (배열 표기 포함). */
     private static final Pattern MD_TABLE_ANCHOR = Pattern.compile(
             "^\\*\\*(?:요청 바디|응답 \\d{3})\\*\\*\\s+`(?:data:\\s*)?([A-Z][A-Za-z0-9]*)(?:\\[])?`");
+    /** 앵커 줄의 필드 표 생략 참조: {@code `CreateCaffeineRecordRequest`)와 동일한 필드·제약} 의 DTO 이름. */
+    private static final Pattern MD_TABLE_MIRROR = Pattern.compile("`([A-Z][A-Za-z0-9]*)`[^`]*와 동일");
     private static final Pattern BACKTICKED = Pattern.compile("`([^`]+)`");
     private static final String BASE_PACKAGE = "com.jongbeom.server";
 
@@ -93,27 +95,38 @@ class ApiDocsConsistencyIT {
 
     @Test
     void api_md_필드_표는_DTO_레코드와_같다() throws Exception {
-        Map<String, Set<String>> tables = markdownFieldTables();
-        Map<String, Class<?>> records = documentedRecords().stream()
-                .collect(Collectors.toMap(Class::getSimpleName, cls -> cls, (first, second) -> first));
+        Map<String, Set<String>> tables = markdownApi().tables();
+        Map<String, Class<?>> records = recordsByName();
         assertThat(tables).as("docs/api/api.md 필드 표").isNotEmpty();
         for (Map.Entry<String, Set<String>> table : tables.entrySet()) {
-            Class<?> record = records.get(table.getKey());
-            assertThat(record).as("docs/api/api.md 가 참조하는 DTO %s 를 코드에서 못 찾음", table.getKey()).isNotNull();
+            Class<?> record = lookup(records, table.getKey());
             assertThat(expandWildcards(table.getValue(), record)).as("docs/api/api.md %s 필드 표", table.getKey())
                     .containsExactlyInAnyOrderElementsOf(fieldPaths(record, "", tables.keySet()));
         }
     }
 
     /**
-     * api.md 는 UpdateCaffeineRecordRequest 의 필드 표를 생략하고 "추가와 동일한 필드·제약"이라고만 적는다.
-     * 그 한 문장이 참인지 — 필드 이름·순서와 검증 애노테이션까지 — 여기서 지킨다.
+     * 앵커는 있는데 필드 표가 없으면 — 문서화를 빠뜨렸거나 "…와 동일"로 생략했거나 둘 중 하나다. 후자만 허용하고,
+     * 그 한 문장이 참인지(필드 이름·순서와 검증 애노테이션까지) 여기서 지킨다. 표기는 api.md "필드 표 표기" 절 참조.
      */
     @Test
-    void 수정_요청_DTO는_추가_요청과_필드_제약이_같다() {
-        assertThat(fieldsWithConstraints(UpdateCaffeineRecordRequest.class))
-                .as("docs/api/api.md 의 \"추가와 동일한 필드·제약\"")
-                .isEqualTo(fieldsWithConstraints(CreateCaffeineRecordRequest.class));
+    void 필드_표를_생략한_앵커는_동일_참조이고_그_참조가_참이다() throws Exception {
+        ApiMd md = markdownApi();
+        Map<String, Class<?>> records = recordsByName();
+        assertThat(md.anchors()).as("docs/api/api.md 필드 표 앵커").isNotEmpty();
+        for (Anchor anchor : md.anchors()) {
+            if (md.tables().containsKey(anchor.dto())) {
+                continue;
+            }
+            assertThat(anchor.mirror())
+                    .as("docs/api/api.md %s: 필드 표가 없다. 표를 쓰거나 `다른DTO`…와 동일 로 참조하라", anchor.dto())
+                    .isNotNull();
+            assertThat(md.tables()).as("docs/api/api.md %s 가 참조하는 %s 의 필드 표", anchor.dto(), anchor.mirror())
+                    .containsKey(anchor.mirror());
+            assertThat(fieldsWithConstraints(lookup(records, anchor.dto())))
+                    .as("docs/api/api.md \"%s …와 동일\"", anchor.mirror())
+                    .isEqualTo(fieldsWithConstraints(lookup(records, anchor.mirror())));
+        }
     }
 
     @Test
@@ -158,14 +171,22 @@ class ApiDocsConsistencyIT {
         return result;
     }
 
+    /** api.md 파싱 결과: DTO 이름 → 필드 경로 표, 그리고 필드 표 앵커 목록. */
+    private record ApiMd(Map<String, Set<String>> tables, List<Anchor> anchors) {
+    }
+
+    /** 필드 표 앵커 한 줄. {@code mirror} 는 표를 생략하고 "…와 동일"로 가리킨 DTO (없으면 null). */
+    private record Anchor(String dto, String mirror) {
+    }
+
     /**
-     * api.md 의 "| 필드 |" 표를 DTO 이름 → 필드 경로로 읽는다. 표가 없는 앵커(<code>data: null</code>,
-     * "로그인과 동일" 같은 참조)는 건너뛴다. 경로 표기는 <code>a</code> · <code>a.b</code> ·
-     * <code>a[].b</code>(→ <code>a.b</code>) · 슬래시 병기 · 타입 칸의 인라인 객체
-     * <code>{ `x`, `y` }</code>(→ <code>a.x</code>, <code>a.y</code>).
+     * api.md 의 "| 필드 |" 표를 DTO 이름 → 필드 경로로 읽고, 앵커 줄도 함께 모은다. 경로 표기는
+     * <code>a</code> · <code>a.b</code> · <code>a[].b</code>(→ <code>a.b</code>) · 슬래시 병기 ·
+     * 타입 칸의 인라인 객체 <code>{ `x`, `y` }</code>(→ <code>a.x</code>, <code>a.y</code>).
      */
-    private static Map<String, Set<String>> markdownFieldTables() throws Exception {
+    private static ApiMd markdownApi() throws Exception {
         Map<String, Set<String>> result = new LinkedHashMap<>();
+        List<Anchor> anchors = new ArrayList<>();
         String dto = null;
         boolean inTable = false;
         for (String line : read("docs/api/api.md").split("\n")) {
@@ -173,6 +194,8 @@ class ApiDocsConsistencyIT {
             if (anchor.find()) {
                 dto = anchor.group(1);
                 inTable = false;
+                Matcher mirror = MD_TABLE_MIRROR.matcher(line.substring(anchor.end()));
+                anchors.add(new Anchor(dto, mirror.find() ? mirror.group(1) : null));
             } else if (line.startsWith("#")) {
                 dto = null;
                 inTable = false;
@@ -189,7 +212,7 @@ class ApiDocsConsistencyIT {
                 result.computeIfAbsent(dto, key -> new LinkedHashSet<>()).addAll(rowPaths(line));
             }
         }
-        return result;
+        return new ApiMd(result, anchors);
     }
 
     /** 표 한 행 → 필드 경로들. 첫 칸의 백틱 토큰 + 타입 칸이 인라인 객체면 그 자식들. */
@@ -226,8 +249,8 @@ class ApiDocsConsistencyIT {
                 continue;
             }
             int dot = path.indexOf('.');
-            String suffix = path.substring(1, dot);
-            String rest = path.substring(dot);
+            String suffix = dot < 0 ? path.substring(1) : path.substring(1, dot);
+            String rest = dot < 0 ? "" : path.substring(dot);
             top.stream().filter(name -> name.endsWith(suffix)).forEach(name -> result.add(name + rest));
         }
         return result;
@@ -250,8 +273,21 @@ class ApiDocsConsistencyIT {
     /** "필드명 [@애노테이션...]" 목록 (선언 순서). */
     private static List<String> fieldsWithConstraints(Class<?> record) {
         return Arrays.stream(record.getRecordComponents())
-                .map(component -> component.getName() + " " + Arrays.toString(component.getDeclaredAnnotations()))
+                .map(component -> component.getName() + " " + constraints(component))
                 .toList();
+    }
+
+    /**
+     * 컴포넌트에 붙은 애노테이션 (정렬·중복 제거). Jakarta Validation 은 {@code @Target} 에 RECORD_COMPONENT 가 없어
+     * {@code getDeclaredAnnotations()} 에 안 잡히고 접근자 메서드와 타입에만 남는다 — 세 곳을 합쳐야 실제로 비교된다.
+     */
+    private static Set<String> constraints(RecordComponent component) {
+        return Stream.of(component.getDeclaredAnnotations(),
+                        component.getAccessor().getDeclaredAnnotations(),
+                        component.getAnnotatedType().getAnnotations())
+                .flatMap(Arrays::stream)
+                .map(Annotation::toString)
+                .collect(Collectors.toCollection(TreeSet::new));
     }
 
     /** {@code List<T>} 면 T, 아니면 선언 타입. */
@@ -317,6 +353,18 @@ class ApiDocsConsistencyIT {
             }
         }
         return result;
+    }
+
+    /** 이름 → DTO record. api.md 표·앵커가 이름으로 가리키므로 조회 실패는 문서 오타로 본다. */
+    private static Map<String, Class<?>> recordsByName() throws Exception {
+        return documentedRecords().stream()
+                .collect(Collectors.toMap(Class::getSimpleName, cls -> cls, (first, second) -> first));
+    }
+
+    private static Class<?> lookup(Map<String, Class<?>> records, String name) {
+        Class<?> record = records.get(name);
+        assertThat(record).as("docs/api/api.md 가 참조하는 DTO %s 를 코드에서 못 찾음", name).isNotNull();
+        return record;
     }
 
     private static List<String> names(Enum<?>[] values) {

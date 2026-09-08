@@ -23,8 +23,11 @@
 | 타입 칸의 `{ x, y }` | 그 필드의 자식을 인라인으로 적은 것 (별도 행 불필요) |
 
 - 자체 필드 표가 있는 DTO(예: `CaffeineRecordResponse`)를 참조하는 필드는 그 행 하나만 적고 내부를 펼치지 않는다.
-- 표를 통째로 생략하고 "…와 동일"이라고만 쓸 수도 있다. 그 문장이 참인지는 테스트가 따로 지킨다
-  (현재 `UpdateCaffeineRecordRequest` == `CreateCaffeineRecordRequest`).
+- 표를 통째로 생략하려면 앵커 줄에 **가리키는 DTO를 백틱으로 적고 "…와 동일"** 이라고 쓴다
+  (예: **요청 바디** `UpdateCaffeineRecordRequest` — 추가(`CreateCaffeineRecordRequest`)와 동일한 필드·제약).
+  테스트가 그 참조를 따라가 필드 이름·순서와 검증 애노테이션까지 대조한다.
+- 같은 DTO를 다른 절에서 다시 앵커할 때는 그 DTO의 표가 이미 있으므로 "(조회와 동일)"처럼 참조 없이 써도 된다.
+  **표도 참조도 없으면 빌드가 실패한다** — 필드 표를 빠뜨린 채로는 넘어갈 수 없다.
 
 ### 기본
 
@@ -304,7 +307,7 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 
 **경로** `id` integer — 기록 id
 
-**요청 바디** `UpdateCaffeineRecordRequest` — 추가와 동일한 필드·제약
+**요청 바디** `UpdateCaffeineRecordRequest` — 추가(`CreateCaffeineRecordRequest`)와 동일한 필드·제약
 
 **응답 200** `data: CaffeineRecordResponse`
 

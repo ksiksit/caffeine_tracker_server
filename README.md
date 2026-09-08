@@ -120,18 +120,18 @@ DB_URL=jdbc:mysql://localhost:3306/caffeine_tracker?serverTimezone=UTC&character
 |---|---|---|
 | `GET`/`PUT` | `/api/settings` | 설정 조회 · 설정 변경 |
 | `POST`/`PUT`/`DELETE` | `/api/caffeine-records[/{id}]` | 카페인 기록 추가 · 수정 · 삭제 |
-| `GET` | `/api/caffeine-records` | 오늘 기록 조회 |
-| `GET` | `/api/caffeine/today?now=&tz=` | 오늘의 카페인 현황 (서버 계산) |
-| `GET` | `/api/notifications/plan?now=&tz=` | 알림 계획 조회 (서버 계산) |
+| `GET` | `/api/caffeine-records?now=&tz=` | 오늘 기록 조회 |
+| `GET` | `/api/caffeine/today?now=&tz=` | 오늘의 카페인 현황 |
+| `GET` | `/api/notifications/plan?now=&tz=` | 알림 계획 조회 |
 
 **수면 · 학습** (전부 Bearer)
 | 메서드 | 경로 | 기능 |
 |---|---|---|
 | `POST` | `/api/sleep/samples` | 수면 샘플 업로드 |
-| `GET` | `/api/sleep/summary?date=&tz=` | 수면 요약 조회 (서버 계산) |
-| `POST` | `/api/learning/run?tz=` | 반감기 학습 실행 (서버 계산) |
+| `GET` | `/api/sleep/summary?date=&tz=` | 수면 요약 조회 |
+| `POST` | `/api/learning/run?tz=` | 반감기 학습 실행 |
 | `GET` | `/api/learning/observations` | 학습 관측 이력 조회 |
-| `GET` | `/api/learning/dashboard` | 학습 대시보드 (서버 계산) |
+| `GET` | `/api/learning/dashboard` | 학습 대시보드 |
 
 > 연산 엔드포인트는 기기 로컬 타임존 재현을 위해 `tz`(IANA, 예 `Asia/Seoul`)와 필요 시 `now`(ISO-8601+오프셋)를 받는다.
 
