@@ -1,8 +1,8 @@
 -- =====================================================================
 -- 카페인 트래커 서버 DB 스키마 (MySQL 8) — 사용자가 직접 실행하는 DDL 원본
 --
--- 적용: mysql -u caffeine -p caffeine_tracker < docs/db-schema.sql
--- 설명: docs/db-schema.md (공통 규칙 · 관계 · 변경 절차 · 변경 이력)
+-- 적용: mysql -u caffeine -p caffeine_tracker < docs/db/db-schema.sql
+-- 설명: docs/db/db-schema.md (공통 규칙 · 관계 · 변경 절차 · 변경 이력)
 --
 -- * 애플리케이션은 이 파일을 실행하지 않는다. 기동 시 엔티티와 대조만 한다(ddl-auto: validate).
 -- * 테스트는 이 파일을 H2(MODE=MySQL)에 그대로 적용해 엔티티와 대조한다

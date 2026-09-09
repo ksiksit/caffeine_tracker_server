@@ -2,7 +2,7 @@ package com.jongbeom.server.domain.notification;
 
 /**
  * 로컬 알림 종류. 응답 {@code NotificationItem.type} 의 값이며 설정 {@code notifications.*} 토글과 1:1.
- * 종류별 생성 조건·문구는 {@code NotificationPlanService}(코드)와 docs/api.md 알림 절(계약)에 있다.
+ * 종류별 생성 조건·문구는 {@code NotificationPlanService}(코드)와 docs/api/api.md 알림 절(계약)에 있다.
  */
 public enum NotificationType {
     /** 섭취 마감 알림 — 섭취 마감시각 30분 전. */

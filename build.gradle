@@ -39,15 +39,15 @@ tasks.named('test') {
 	useJUnitPlatform()
 }
 
-// 테스트는 사용자가 직접 실행하는 DDL 원본(docs/db-schema.sql)을 그대로 H2 에 적용해 엔티티와 대조한다.
+// 테스트는 사용자가 직접 실행하는 DDL 원본(docs/db/db-schema.sql)을 그대로 H2 에 적용해 엔티티와 대조한다.
 // 앱 jar 에는 포함되지 않는다 — 스키마 적용은 사용자 몫.
 tasks.named('processTestResources') {
-	from('docs/db-schema.sql') {
+	from('docs/db/db-schema.sql') {
 		into 'db'
 	}
-	// API 문서 정합성 테스트(ApiDocsConsistencyIT)가 docs/ 원본을 그대로 읽는다.
-	from('docs') {
+	// API 문서 정합성 테스트(ApiDocsConsistencyIT)가 docs/api/ 원본을 그대로 읽는다 (클래스패스 경로도 레포와 같게 유지).
+	from('docs/api') {
 		include 'api.md', 'openapi.yaml'
-		into 'docs'
+		into 'docs/api'
 	}
 }

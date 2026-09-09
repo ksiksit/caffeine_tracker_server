@@ -3,11 +3,31 @@
 카페인 트래커 서버 REST API. (서버 구현 기준, 2026-09-06)
 
 - 기계용 명세: [`openapi.yaml`](openapi.yaml) — OpenAPI 3.0.3. Swagger Editor·Redoc·Postman에서 열 수 있다.
-- 화면별 기능 목록은 [`features.md`](features.md), DB 스키마는 [`db-schema.md`](db-schema.md).
+- 화면별 기능 목록은 [`features.md`](../features.md), DB 스키마는 [`db-schema.md`](../db/db-schema.md).
 - 이 문서·`openapi.yaml`·서버 코드의 **엔드포인트 목록, DTO 필드, 에러 코드**는 `ApiDocsConsistencyIT`가 대조한다.
   설명·제약 문구는 검사하지 않으므로 사람이 맞춘다.
 
 ## 공통 규칙
+
+### 필드 표 표기
+
+아래 필드 표는 테스트가 DTO record 와 대조하므로 표기를 지킨다.
+
+| 표기 | 뜻 |
+|---|---|
+| `field` | 그 DTO 의 필드 |
+| `parent.child` | 중첩 객체의 필드 |
+| `parent[].child` | 배열 원소의 필드 (`parent[]`와 `parent.`는 같게 취급) |
+| `a` / `b` | 두 필드를 한 행에. **양쪽 다 전체 경로로 적는다** |
+| `*Suffix[].x` | 이름이 `Suffix`로 끝나는 최상위 필드 전부 (예: `*Histogram[]` = `residualHistogram[]`·`solHistogram[]`) |
+| 타입 칸의 `{ x, y }` | 그 필드의 자식을 인라인으로 적은 것 (별도 행 불필요) |
+
+- 자체 필드 표가 있는 DTO(예: `CaffeineRecordResponse`)를 참조하는 필드는 그 행 하나만 적고 내부를 펼치지 않는다.
+- 표를 통째로 생략하려면 앵커 줄에 **가리키는 DTO를 백틱으로 적고 "…와 동일"** 이라고 쓴다
+  (예: **요청 바디** `UpdateCaffeineRecordRequest` — 추가(`CreateCaffeineRecordRequest`)와 동일한 필드·제약).
+  테스트가 그 참조를 따라가 필드 이름·순서와 검증 애노테이션까지 대조한다.
+- 같은 DTO를 다른 절에서 다시 앵커할 때는 그 DTO의 표가 이미 있으므로 "(조회와 동일)"처럼 참조 없이 써도 된다.
+  **표도 참조도 없으면 빌드가 실패한다** — 필드 표를 빠뜨린 채로는 넘어갈 수 없다.
 
 ### 기본
 
@@ -287,7 +307,7 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 
 **경로** `id` integer — 기록 id
 
-**요청 바디** `UpdateCaffeineRecordRequest` — 추가와 동일한 필드·제약
+**요청 바디** `UpdateCaffeineRecordRequest` — 추가(`CreateCaffeineRecordRequest`)와 동일한 필드·제약
 
 **응답 200** `data: CaffeineRecordResponse`
 
@@ -492,10 +512,10 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | `calibration.points[]` | { `predicted`, `observed` } | 분 |
 | `calibration.rSquared` | number · null | 결정계수. 관측이 적거나 분산이 0이면 null |
 | `calibration.rmse` | number | 분 |
-| `calibration.domainLower` / `domainUpper` | number | 산점도 양 축 공통 범위(분) |
+| `calibration.domainLower` / `calibration.domainUpper` | number | 산점도 양 축 공통 범위(분) |
 | `residualHistogram` | HistogramBinItem[] | 취침 잔량 분포, 최대 6개 빈 |
 | `solHistogram` | HistogramBinItem[] | 관측 SOL 분포, 최대 6개 빈 |
-| `*Histogram[].lower` / `upper` | number | 빈 구간(마지막 빈 상한 포함) |
+| `*Histogram[].lower` / `*Histogram[].upper` | number | 빈 구간(마지막 빈 상한 포함) |
 | `*Histogram[].count` | integer | |
 
 ```json

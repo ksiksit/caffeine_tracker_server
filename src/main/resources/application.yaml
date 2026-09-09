@@ -9,7 +9,7 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
 
-  # ---- JPA: 스키마는 앱이 만들지 않는다. docs/db-schema.sql 을 사용자가 직접 실행하고, 엔티티는 검증만(validate) ----
+  # ---- JPA: 스키마는 앱이 만들지 않는다. docs/db/db-schema.sql 을 사용자가 직접 실행하고, 엔티티는 검증만(validate) ----
   jpa:
     hibernate:
       ddl-auto: validate
@@ -18,7 +18,7 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
-  # ---- SQL 스크립트 초기화 끔: 스키마 적용은 사용자 몫 (테스트 프로파일만 docs/db-schema.sql 을 H2 에 적용) ----
+  # ---- SQL 스크립트 초기화 끔: 스키마 적용은 사용자 몫 (테스트 프로파일만 docs/db/db-schema.sql 을 H2 에 적용) ----
   sql:
     init:
       mode: never
