@@ -1,6 +1,6 @@
 # API 명세
 
-카페인 트래커 서버 REST API. (서버 구현 기준, 2026-09-06)
+카페인 트래커 서버 REST API. (서버 구현 기준, 2026-09-25)
 
 - 기계용 명세: [`openapi.yaml`](openapi.yaml) — OpenAPI 3.0.3. Swagger Editor·Redoc·Postman에서 열 수 있다.
 - 화면별 기능 목록은 [`features.md`](../features.md), DB 스키마는 [`db-schema.md`](../db/db-schema.md).
@@ -245,9 +245,10 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | `notifications.cutoff` | boolean | 섭취 마감 알림. 기본 true |
 | `notifications.bedtimeResidual` | boolean | 취침 잔량 예고. 기본 true |
 | `notifications.recordReminder` | boolean | 기록 리마인더. 기본 true |
+| `notifications.cafeNearby` | boolean | 카페 근처 알림. 기본 false (동 선택·'항상' 위치 권한이 있어야 동작) |
 
 ```json
-{ "success": true, "data": { "halfLife": 5.0, "condition": 0, "bedtimeHour": 23, "bedtimeMinute": 0, "referenceDoseMg": 75, "isLearningEnabled": true, "learnedMean": 5.0, "learnedVariance": 2.25, "lastLearnedDate": null, "inferredBaseHalfLife": 5.0, "effectiveHalfLifeHours": 5.0, "notifications": { "cutoff": true, "bedtimeResidual": true, "recordReminder": true } }, "error": null, "message": null }
+{ "success": true, "data": { "halfLife": 5.0, "condition": 0, "bedtimeHour": 23, "bedtimeMinute": 0, "referenceDoseMg": 75, "isLearningEnabled": true, "learnedMean": 5.0, "learnedVariance": 2.25, "lastLearnedDate": null, "inferredBaseHalfLife": 5.0, "effectiveHalfLifeHours": 5.0, "notifications": { "cutoff": true, "bedtimeResidual": true, "recordReminder": true, "cafeNearby": false } }, "error": null, "message": null }
 ```
 
 ### PUT /api/settings — 설정 변경
@@ -264,10 +265,11 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | `bedtimeMinute` | integer | ✔ | 0~59 | |
 | `referenceDoseMg` | integer | ✔ | 1~1000 | |
 | `isLearningEnabled` | boolean | ✔ | | |
-| `notifications` | object | ✔ | | 알림 종류별 on/off. 세 필드 모두 필수 |
+| `notifications` | object | ✔ | | 알림 종류별 on/off. `cafeNearby` 외 세 필드는 필수 |
 | `notifications.cutoff` | boolean | ✔ | | |
 | `notifications.bedtimeResidual` | boolean | ✔ | | |
 | `notifications.recordReminder` | boolean | ✔ | | |
+| `notifications.cafeNearby` | boolean | | | 생략하면 기존 값 유지(이 필드를 모르는 이전 버전 앱 호환) |
 | `learnedMean` | number | | | `learnedVariance`와 함께 보내면 학습 상태를 1회 시드(기존 기기의 학습값 이전용). 둘 중 하나만 있으면 무시 |
 | `learnedVariance` | number | | | 위와 같음 |
 | `lastLearnedDate` | string(date) | | | 시드 시 함께 저장. 생략하면 null |
@@ -534,6 +536,9 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 서버는 푸시를 보내지 않는다. 앱이 예약할 **로컬 알림 계획**을 서버가 계산해 내려주고, iOS가 로컬 알림으로 예약한다.
 운영 EC2가 외부 인터넷이 안 되어 APNs를 쓰지 않으며, 계산 로직은 나중에 푸시로 바꿔도 그대로 쓴다.
 
+카페 근처 알림은 시각이 아니라 **구간**으로 내려간다. 서버는 "언제 울려야 하는지"만 알고 "어디"(카페 좌표·사용자 위치)는 모른다.
+앱은 받은 구간을 기기에 저장해 두고, 카페 구역 지오펜스에 들어서는 순간 `activeFrom ≤ 지금 < activeUntil`인지 네트워크 없이 판정해 울린다.
+
 ### GET /api/notifications/plan — 알림 계획 조회
 
 `now` 이후에 울려야 할 알림 목록을 돌려준다. 설정(`notifications.*`)에서 꺼진 종류는 생략한다.
@@ -558,6 +563,12 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | `items[].fireAt` | string(date-time) | 울릴 시각(UTC). 항상 `now` 이후 |
 | `items[].title` | string | 알림 제목(한국어) |
 | `items[].body` | string | 알림 본문(한국어) |
+| `cafeNearbyWindows` | CafeNearbyWindow[] | 카페 근처 알림 금지 구간. 설정 `notifications.cafeNearby`가 꺼져 있으면 `[]`. 오늘 구간, 기록 없는 다음 날의 기본 구간 순 |
+| `cafeNearbyWindows[].reason` | string | `ALREADY_EXCEEDED`(취침 잔량 이미 초과) · `DAILY_LIMIT_EXCEEDED`(하루 400mg 초과) · `CUTOFF_PASSED`(섭취 마감 지남) |
+| `cafeNearbyWindows[].activeFrom` | string(date-time) | 구간 시작(UTC). 과거일 수 있다 |
+| `cafeNearbyWindows[].activeUntil` | string(date-time) | 구간 끝(UTC, 미포함). 그날 하루 경계(다음 05:00 `tz`) |
+| `cafeNearbyWindows[].title` | string | 알림 제목(한국어) |
+| `cafeNearbyWindows[].body` | string | 알림 본문(한국어) |
 
 **종류별 생성 규칙** — 조건을 만족하지 않는 종류는 목록에서 빠진다.
 
@@ -576,8 +587,26 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 날마다 첫 기록이 그날 05:00으로부터 얼마나 뒤인지 구한 뒤, 그 중앙값(짝수면 가운데 둘의 평균)을 오늘 05:00에 더한 시각.
 기록이 오늘 생기면 앱이 재조회하고 항목이 사라진다.
 
+**카페 근처 금지 구간 규칙** — `notifications.cafeNearby`가 켜져 있을 때만. 하루에 한 구간이며, 사유가 겹치면 위의 것이 이긴다.
+끝(`activeUntil`)은 항상 그날 하루 경계(다음 05:00 `tz`)다 — 취침 뒤 새벽 섭취도 막고 "오늘" 경계와 맞춘다.
+
+| `reason` | 조건 | `activeFrom` | 문구 |
+|---|---|---|---|
+| `ALREADY_EXCEEDED` | 오늘 현황의 `cutoff.status`가 `ALREADY_EXCEEDED` | `now` | 제목 `카페 근처예요`. 본문 `지금도 취침 때 카페인이 약 {반올림 mg}mg 남을 것 같아요. 오늘은 디카페인으로 골라 주세요.` |
+| `DAILY_LIMIT_EXCEEDED` | 오늘 현황의 `overDailyLimit`이 true | `now` | 제목 같음. 본문 `오늘 이미 {todayTotal}mg를 마셨어요(하루 권장 400mg). 오늘은 디카페인으로 골라 주세요.` |
+| `CUTOFF_PASSED` | 오늘 현황의 `cutoff.status`가 `CUTOFF` | `cutoff` | 제목 같음. 본문 `오늘 마감 {마감 HH:mm}이 지났어요. 지금 {referenceDoseMg}mg 한 잔이면 취침 때 기준(50mg)을 넘어요. 들어간다면 디카페인으로!` |
+
+`SAFE_ANYTIME`(마감 없음)이고 400mg 이하면 구간이 없다.
+마감 시각이 지나면 기준 용량 한 잔이 곧 취침 시 50mg 초과이므로 `CUTOFF_PASSED` 문구는 진입 순간 계산 없이 참이다.
+
+**기록 없는 다음 날의 기본 구간** — 같은 규칙을 다음 하루 경계 시각(`now`가 속한 날의 다음 05:00)에 기록이 없다고 보고 한 번 더 계산해 두 번째 원소로 붙인다.
+앱을 하루 종일 열지 않은 날에도 동작하게 하기 위해서다. 다음 날 기록은 앱에서만 생기고 그때 앱이 재조회하므로 가정이 틀리는 순간 교체된다.
+
 ```json
 { "success": true, "data": { "now": "2026-06-01T05:00:00Z", "items": [
   { "type": "CUTOFF", "fireAt": "2026-06-01T10:34:30.675Z", "title": "섭취 마감 30분 전", "body": "23:00 취침 기준, 75mg를 마실 수 있는 마지막 시각은 20:04이에요." }
+], "cafeNearbyWindows": [
+  { "reason": "CUTOFF_PASSED", "activeFrom": "2026-06-01T11:04:30.675Z", "activeUntil": "2026-06-01T20:00:00Z", "title": "카페 근처예요", "body": "오늘 마감 20:04이 지났어요. 지금 75mg 한 잔이면 취침 때 기준(50mg)을 넘어요. 들어간다면 디카페인으로!" },
+  { "reason": "CUTOFF_PASSED", "activeFrom": "2026-06-02T11:04:30.675Z", "activeUntil": "2026-06-02T20:00:00Z", "title": "카페 근처예요", "body": "오늘 마감 20:04이 지났어요. 지금 75mg 한 잔이면 취침 때 기준(50mg)을 넘어요. 들어간다면 디카페인으로!" }
 ] }, "error": null, "message": null }
 ```

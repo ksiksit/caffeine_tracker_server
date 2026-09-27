@@ -71,6 +71,13 @@ public class UserSettings extends BaseTimeEntity {
     @Column(name = "notify_record_reminder", nullable = false)
     private boolean notifyRecordReminder;
 
+    /**
+     * 카페 근처 알림 on/off. 다른 세 종류와 달리 시각이 아니라 구간(알림 계획 cafeNearbyWindows)으로 내려가고,
+     * 울릴지는 앱이 지오펜스 진입 순간에 판정한다. 동 선택·'항상' 위치 권한이 있어야 동작하므로 기본은 꺼짐.
+     */
+    @Column(name = "notify_cafe_nearby", nullable = false)
+    private boolean notifyCafeNearby;
+
     @Column(name = "learned_mean", nullable = false)
     private double learnedMean;
 
@@ -91,6 +98,7 @@ public class UserSettings extends BaseTimeEntity {
         this.notifyCutoff = true;
         this.notifyBedtimeResidual = true;
         this.notifyRecordReminder = true;
+        this.notifyCafeNearby = false;
         this.learnedMean = Pharmacokinetics.DEFAULT_HALF_LIFE_HOURS;
         this.learnedVariance = POPULATION_PRIOR_VARIANCE;
         this.lastLearnedDate = null;
@@ -121,11 +129,18 @@ public class UserSettings extends BaseTimeEntity {
         this.learningEnabled = learningEnabled;
     }
 
-    /** 알림 종류별 on/off 갱신. prior 리셋과 무관하므로 {@link #update}와 분리. */
-    public void updateNotifications(boolean notifyCutoff, boolean notifyBedtimeResidual, boolean notifyRecordReminder) {
+    /**
+     * 알림 종류별 on/off 갱신. prior 리셋과 무관하므로 {@link #update}와 분리.
+     * {@code notifyCafeNearby} 가 null 이면 기존 값을 유지한다 — 이 필드를 모르는 이전 버전 앱의 PUT 이 값을 끄지 않게.
+     */
+    public void updateNotifications(boolean notifyCutoff, boolean notifyBedtimeResidual, boolean notifyRecordReminder,
+                                    Boolean notifyCafeNearby) {
         this.notifyCutoff = notifyCutoff;
         this.notifyBedtimeResidual = notifyBedtimeResidual;
         this.notifyRecordReminder = notifyRecordReminder;
+        if (notifyCafeNearby != null) {
+            this.notifyCafeNearby = notifyCafeNearby;
+        }
     }
 
     /** 학습값 1회 시드(기존 기기의 누적 학습 상태 이전용). 동작은 {@link #applyLearning}과 동일 — 호출 의도만 다르다. */

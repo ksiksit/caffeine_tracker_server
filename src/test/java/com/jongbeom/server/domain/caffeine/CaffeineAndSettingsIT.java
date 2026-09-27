@@ -33,7 +33,8 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.effectiveHalfLifeHours").value(5.0))
                 .andExpect(jsonPath("$.data.notifications.cutoff").value(true))
                 .andExpect(jsonPath("$.data.notifications.bedtimeResidual").value(true))
-                .andExpect(jsonPath("$.data.notifications.recordReminder").value(true));
+                .andExpect(jsonPath("$.data.notifications.recordReminder").value(true))
+                .andExpect(jsonPath("$.data.notifications.cafeNearby").value(false)); // 동 선택·위치 권한이 필요해 기본 꺼짐
 
         // 반감기 6.0 + 흡연(×0.5): prior 리셋 → learnedMean=6.0, effective=6.0*0.5=3.0
         mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
@@ -45,6 +46,28 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.learnedMean").value(6.0))
                 .andExpect(jsonPath("$.data.effectiveHalfLifeHours").value(3.0));
+    }
+
+    @Test
+    void settings_카페근처_토글은_생략하면_기존값_유지() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        String base = """
+                {"halfLife":5.0,"condition":0,"bedtimeHour":23,"bedtimeMinute":0,\
+                "referenceDoseMg":75,"isLearningEnabled":true,\
+                "notifications":{"cutoff":true,"bedtimeResidual":true,"recordReminder":true%s}}""";
+
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(base.formatted(",\"cafeNearby\":true")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.notifications.cafeNearby").value(true));
+
+        // 이 필드를 모르는 이전 버전 앱의 PUT — 켜 둔 값을 끄면 안 된다
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(base.formatted("")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.notifications.cafeNearby").value(true));
     }
 
     @Test

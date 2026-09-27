@@ -22,6 +22,9 @@ import org.springframework.test.web.servlet.ResultActions;
  *   <li>100mg @ 09:00 KST: 취침 시 14.36mg &lt; 50 → 잔량 예고 없음, 마감 17:37:59.848 KST → 알림 08:07:59.848Z</li>
  *   <li>기록 리마인더: 과거 5일(05-27~31) 09:00 KST → 오프셋 4h 중앙값 → 평소 09:00, 알림 11:00 KST = 02:00Z.
  *       오늘 07:00 KST 100mg 이 있으면 리마인더 없음, 취침 시 10.88mg → 마감 18:18:17.035 KST → 알림 08:48:17.035Z</li>
+ *   <li>카페 근처 금지 구간: 끝은 하루 경계 = 06-02 05:00 KST(2026-06-01T20:00:00Z). 기록 없는 다음 날 기본 구간은
+ *       06-02 20:04:30.675 KST(11:04:30.675Z) ~ 06-03 05:00 KST(06-02T20:00:00Z)</li>
+ *   <li>450mg @ 05:30 KST: 취침 시 450·2^-3.5 = 39.77mg &lt; 50 → 마감은 있으나(이미 지남) 하루 400mg 초과 → 지금부터</li>
  * </ul>
  */
 class NotificationControllerIT extends AbstractIntegrationTest {
@@ -47,6 +50,17 @@ class NotificationControllerIT extends AbstractIntegrationTest {
                         "referenceDoseMg":%d,"isLearningEnabled":true,\
                         "notifications":{"cutoff":%b,"bedtimeResidual":%b,"recordReminder":%b}}"""
                         .formatted(referenceDoseMg, notifyCutoff, notifyBedtimeResidual, notifyRecordReminder)))
+                .andExpect(status().isOk());
+    }
+
+    /** 카페 근처 알림만 켜고 나머지 알림 토글은 끈 설정. */
+    private void enableOnlyCafeNearby(String accessToken) throws Exception {
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"halfLife":5.0,"condition":0,"bedtimeHour":23,"bedtimeMinute":0,\
+                        "referenceDoseMg":75,"isLearningEnabled":true,\
+                        "notifications":{"cutoff":false,"bedtimeResidual":false,"recordReminder":false,"cafeNearby":true}}"""))
                 .andExpect(status().isOk());
     }
 
@@ -227,6 +241,84 @@ class NotificationControllerIT extends AbstractIntegrationTest {
         plan(accessToken, NOW_14_KST)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items").isEmpty());
+    }
+
+    @Test
+    void 카페근처_기본값은_꺼짐이라_구간없음() throws Exception {
+        String accessToken = authToken("n@b.com", "알림");
+
+        plan(accessToken, NOW_14_KST)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.cafeNearbyWindows").isEmpty());
+    }
+
+    @Test
+    void 카페근처_기록없음_오늘은_마감부터_하루경계까지_내일_기본구간도() throws Exception {
+        String accessToken = authToken("n@b.com", "알림");
+        enableOnlyCafeNearby(accessToken);
+
+        plan(accessToken, NOW_14_KST)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isEmpty())
+                .andExpect(jsonPath("$.data.cafeNearbyWindows.length()").value(2))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].reason").value("CUTOFF_PASSED"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].activeFrom").value("2026-06-01T11:04:30.675Z"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].activeUntil").value("2026-06-01T20:00:00Z"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].title").value("카페 근처예요"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].body", containsString("20:04")))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].body", containsString("75mg")))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].body", containsString("50mg")))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[1].reason").value("CUTOFF_PASSED"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[1].activeFrom").value("2026-06-02T11:04:30.675Z"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[1].activeUntil").value("2026-06-02T20:00:00Z"));
+    }
+
+    @Test
+    void 카페근처_취침잔량_초과면_지금부터_ALREADY_EXCEEDED() throws Exception {
+        String accessToken = authToken("n@b.com", "알림");
+        enableOnlyCafeNearby(accessToken);
+        addRecord(accessToken, 400, "2026-06-01T13:00:00+09:00");
+
+        plan(accessToken, NOW_14_KST)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].reason").value("ALREADY_EXCEEDED"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].activeFrom").value("2026-06-01T05:00:00Z"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].activeUntil").value("2026-06-01T20:00:00Z"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].body", containsString("100mg")))
+                // 다음 날은 오늘 기록과 무관한 기본 구간
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[1].reason").value("CUTOFF_PASSED"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[1].activeFrom").value("2026-06-02T11:04:30.675Z"));
+    }
+
+    @Test
+    void 카페근처_하루권장량_초과면_지금부터_DAILY_LIMIT_EXCEEDED() throws Exception {
+        String accessToken = authToken("n@b.com", "알림");
+        enableOnlyCafeNearby(accessToken);
+        addRecord(accessToken, 450, "2026-06-01T05:30:00+09:00");
+
+        plan(accessToken, NOW_14_KST)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].reason").value("DAILY_LIMIT_EXCEEDED"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].activeFrom").value("2026-06-01T05:00:00Z"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].body", containsString("450mg")))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].body", containsString("400mg")));
+    }
+
+    @Test
+    void 카페근처_기준용량이_헤드룸_이하면_구간없음() throws Exception {
+        String accessToken = authToken("n@b.com", "알림");
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"halfLife":5.0,"condition":0,"bedtimeHour":23,"bedtimeMinute":0,\
+                        "referenceDoseMg":40,"isLearningEnabled":true,\
+                        "notifications":{"cutoff":true,"bedtimeResidual":true,"recordReminder":true,"cafeNearby":true}}"""))
+                .andExpect(status().isOk());
+
+        // 40mg ≤ 취침 헤드룸 50mg → 마감 없음(SAFE_ANYTIME)이고 400mg 이하 → 오늘도 내일도 구간 없음
+        plan(accessToken, NOW_14_KST)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.cafeNearbyWindows").isEmpty());
     }
 
     @Test

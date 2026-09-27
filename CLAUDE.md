@@ -50,6 +50,8 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
   `half_life_observations`는 `UNIQUE(user_id, obs_date)`. 관측 저장 성공 후에만 settings 반영.
 - 알림: 서버는 푸시를 보내지 않는다(운영 EC2 외부 인터넷 불가 → APNs 미사용). `GET /api/notifications/plan`이 `now` 이후에
   울릴 항목(종류·시각·문구)만 계산해 내려주고 iOS가 로컬 알림으로 예약한다. 설정 `notifications.*`가 꺼진 종류는 생략.
+  카페 근처 알림은 시각이 아니라 금지 구간(`cafeNearbyWindows`)으로 내려준다 — 서버는 "언제"만, 앱이 "어디"(지오펜스)와
+  진입 순간 판정을 맡는다. 카페 좌표·사용자 위치는 서버로 받지 않는다.
 - 시간 의존 로직은 주입 `Clock`(`ClockConfig`) 사용, 테스트는 `@MockBean Clock`으로 고정.
 
 ## 환경
