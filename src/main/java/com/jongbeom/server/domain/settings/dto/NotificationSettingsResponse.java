@@ -6,10 +6,11 @@ import com.jongbeom.server.domain.settings.entity.UserSettings;
 public record NotificationSettingsResponse(
         boolean cutoff,
         boolean bedtimeResidual,
-        boolean recordReminder
+        boolean recordReminder,
+        boolean cafeNearby
 ) {
     public static NotificationSettingsResponse from(UserSettings s) {
         return new NotificationSettingsResponse(
-                s.isNotifyCutoff(), s.isNotifyBedtimeResidual(), s.isNotifyRecordReminder());
+                s.isNotifyCutoff(), s.isNotifyBedtimeResidual(), s.isNotifyRecordReminder(), s.isNotifyCafeNearby());
     }
 }

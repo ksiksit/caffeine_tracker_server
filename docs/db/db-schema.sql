@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     notify_cutoff           BIT(1)       NOT NULL,  -- 섭취 마감 알림 on/off. 기본 1
     notify_bedtime_residual BIT(1)       NOT NULL,  -- 취침 잔량 예고 on/off. 기본 1
     notify_record_reminder  BIT(1)       NOT NULL,  -- 기록 리마인더 on/off. 기본 1
+    notify_cafe_nearby      BIT(1)       NOT NULL,  -- 카페 근처 알림 on/off. 기본 0(동 선택·위치 권한 필요)
     learned_mean            DOUBLE       NOT NULL,  -- 학습 반감기 평균(시간). 기본 5.0, 반감기 수동 변경 시 그 값으로 리셋
     learned_variance        DOUBLE       NOT NULL,  -- 학습 반감기 분산(시간²). 기본 2.25(모집단 1.5²), 반감기 수동 변경 시 리셋
     last_learned_date       DATE         NULL,      -- 마지막 학습 날짜(로컬). 반감기 수동 변경 시 NULL 로 리셋
