@@ -515,6 +515,8 @@ paths:
         종류별 생성 규칙은 api.md 알림 절. CUTOFF: 오늘 현황 cutoff.status 가 CUTOFF 이고 cutoff−30분이 now 이후일 때 fireAt=cutoff−30분.
         BEDTIME_RESIDUAL: 오늘 현황 predictedAtBedtime 이 50mg 이상이고 bedtime−60분이 now 이후일 때 fireAt=bedtime−60분. 두 종류는 함께 나오지 않는다.
         RECORD_REMINDER: 오늘(05:00 경계) 기록이 없고 최근 14일 중 기록 있는 날이 5일 이상이면 fireAt=일별 첫 기록 시각 중앙값+2시간(오늘 창 안). CUTOFF 와 함께 나올 수 있다.
+        cafeNearbyWindows: notifications.cafeNearby 가 켜져 있을 때 카페 근처 알림 금지 구간. 끝은 그날 하루 경계(다음 05:00).
+        ALREADY_EXCEEDED·DAILY_LIMIT_EXCEEDED 는 now 부터, CUTOFF_PASSED 는 cutoff 부터, 마감 없음·400mg 이하면 없음. 기록 없는 다음 날의 기본 구간도 함께.
       operationId: notificationPlan
       parameters:
         - $ref: '#/components/parameters/now'
@@ -537,6 +539,9 @@ paths:
                   now: '2026-06-01T05:00:00Z'
                   items:
                     - { type: CUTOFF, fireAt: '2026-06-01T10:34:30.675Z', title: '섭취 마감 30분 전', body: '23:00 취침 기준, 75mg를 마실 수 있는 마지막 시각은 20:04이에요.' }
+                  cafeNearbyWindows:
+                    - { reason: CUTOFF_PASSED, activeFrom: '2026-06-01T11:04:30.675Z', activeUntil: '2026-06-01T20:00:00Z', title: '카페 근처예요', body: '오늘 마감 20:04이 지났어요. 지금 75mg 한 잔이면 취침 때 기준(50mg)을 넘어요. 들어간다면 디카페인으로!' }
+                    - { reason: CUTOFF_PASSED, activeFrom: '2026-06-02T11:04:30.675Z', activeUntil: '2026-06-02T20:00:00Z', title: '카페 근처예요', body: '오늘 마감 20:04이 지났어요. 지금 75mg 한 잔이면 취침 때 기준(50mg)을 넘어요. 들어간다면 디카페인으로!' }
                 error: null
                 message: null
         '400':
@@ -987,7 +992,7 @@ components:
     NotificationSettingsResponse:
       type: object
       description: 알림 종류별 on/off. 알림 계획 조회에서 꺼진 종류는 생략된다
-      required: [cutoff, bedtimeResidual, recordReminder]
+      required: [cutoff, bedtimeResidual, recordReminder, cafeNearby]
       properties:
         cutoff:
           type: boolean
@@ -998,6 +1003,9 @@ components:
         recordReminder:
           type: boolean
           description: 기록 리마인더. 기본 true
+        cafeNearby:
+          type: boolean
+          description: 카페 근처 알림. 기본 false (동 선택·'항상' 위치 권한이 있어야 동작)
     NotificationSettingsRequest:
       type: object
       required: [cutoff, bedtimeResidual, recordReminder]
@@ -1008,6 +1016,9 @@ components:
           type: boolean
         recordReminder:
           type: boolean
+        cafeNearby:
+          type: boolean
+          description: 선택. 생략하면 기존 값 유지(이전 버전 앱 호환)
 
     # ---------- caffeine ----------
     CreateCaffeineRecordRequest:
@@ -1393,7 +1404,7 @@ components:
     # ---------- notification ----------
     NotificationPlanResponse:
       type: object
-      required: [now, items]
+      required: [now, items, cafeNearbyWindows]
       properties:
         now:
           type: string
@@ -1404,6 +1415,11 @@ components:
           description: 예약할 알림. fireAt 오름차순. 없으면 []
           items:
             $ref: '#/components/schemas/NotificationItem'
+        cafeNearbyWindows:
+          type: array
+          description: 카페 근처 알림 금지 구간. notifications.cafeNearby 가 꺼져 있으면 []. 오늘 구간, 기록 없는 다음 날의 기본 구간 순
+          items:
+            $ref: '#/components/schemas/CafeNearbyWindow'
     NotificationItem:
       type: object
       required: [type, fireAt, title, body]
@@ -1416,6 +1432,29 @@ components:
           type: string
           format: date-time
           description: 울릴 시각(UTC). 항상 now 이후
+        title:
+          type: string
+          description: 알림 제목(한국어)
+        body:
+          type: string
+          description: 알림 본문(한국어)
+    CafeNearbyWindow:
+      type: object
+      description: 이 구간 [activeFrom, activeUntil) 에 카페 구역에 들어서면 앱이 울린다. 판정은 앱이 지오펜스 진입 순간에 한다
+      required: [reason, activeFrom, activeUntil, title, body]
+      properties:
+        reason:
+          type: string
+          enum: [ALREADY_EXCEEDED, DAILY_LIMIT_EXCEEDED, CUTOFF_PASSED]
+          description: ALREADY_EXCEEDED=취침 잔량 이미 50mg 이상(now부터), DAILY_LIMIT_EXCEEDED=하루 400mg 초과(now부터), CUTOFF_PASSED=섭취 마감 지남(cutoff부터). 겹치면 앞의 것
+        activeFrom:
+          type: string
+          format: date-time
+          description: 구간 시작(UTC). 과거일 수 있다
+        activeUntil:
+          type: string
+          format: date-time
+          description: 구간 끝(UTC, 미포함). 그날 하루 경계(다음 05:00 tz)
         title:
           type: string
           description: 알림 제목(한국어)
