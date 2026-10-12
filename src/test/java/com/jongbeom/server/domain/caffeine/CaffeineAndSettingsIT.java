@@ -131,6 +131,35 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void caffeine_today_건강상태_배수가_잔량에_반영된다() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        createCaffeineRecord(accessToken, 100, "2026-06-01T09:00:00+09:00"); // now 14:00 → 5h 경과
+        String settings = """
+                {"halfLife":5.0,"condition":%d,"bedtimeHour":23,"bedtimeMinute":0,                "referenceDoseMg":75,"isLearningEnabled":true,                "notifications":{"cutoff":true,"bedtimeResidual":true,"recordReminder":true}}""";
+
+        // 유효 반감기 = 5h × 배수 → 잔량 = 100·2^(-5/유효반감기)
+        Object[][] cases = {
+                {0, 5.0, 50.0},                // 없음 ×1.0
+                {1, 2.5, 25.0},                // 흡연 ×0.5
+                {2, 10.0, 70.71067811865476},  // 경구피임약 ×2.0
+                {3, 12.5, 75.7858283255199},   // 임신 ×2.5
+        };
+        for (Object[] c : cases) {
+            mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(settings.formatted((int) c[0])))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.effectiveHalfLifeHours").value((double) c[1]));
+
+            mockMvc.perform(get("/api/caffeine/today").header("Authorization", "Bearer " + accessToken)
+                            .param("now", "2026-06-01T14:00:00+09:00")
+                            .param("tz", "Asia/Seoul"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.currentResidual", Matchers.closeTo((double) c[2], 1e-6)));
+        }
+    }
+
+    @Test
     void caffeine_today_기록없으면_잔량0_차트빈배열() throws Exception {
         String accessToken = authToken("c@b.com", "테스터");
         mockMvc.perform(get("/api/caffeine/today").header("Authorization", "Bearer " + accessToken)
@@ -171,10 +200,150 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void caffeine_오늘기록목록은_05시이후만_시각오름차순_UTC로() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        createCaffeineRecord(accessToken, 50, "2026-06-01T04:30:00+09:00");  // 05:00 이전 → 어제 하루
+        createCaffeineRecord(accessToken, 200, "2026-06-01T10:00:00+09:00");
+        createCaffeineRecord(accessToken, 100, "2026-06-01T08:00:00+09:00");
+
+        mockMvc.perform(get("/api/caffeine-records").header("Authorization", "Bearer " + accessToken)
+                        .param("now", "2026-06-01T14:00:00+09:00")
+                        .param("tz", "Asia/Seoul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", Matchers.hasSize(2)))
+                .andExpect(jsonPath("$.data[0].amount").value(100))
+                .andExpect(jsonPath("$.data[0].timestamp").value("2026-05-31T23:00:00Z")) // 응답은 UTC Instant
+                .andExpect(jsonPath("$.data[1].amount").value(200))
+                .andExpect(jsonPath("$.data[1].drinkName").value("커피"))
+                .andExpect(jsonPath("$.data[1].id").isNumber());
+    }
+
+    @Test
+    void caffeine_오늘기록목록_기록없으면_빈배열() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        mockMvc.perform(get("/api/caffeine-records").header("Authorization", "Bearer " + accessToken)
+                        .param("now", "2026-06-01T14:00:00+09:00")
+                        .param("tz", "Asia/Seoul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    void caffeine_기록_검증_카페인량은_1에서_10000() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        String body = """
+                {"amount":%d,"drinkName":"커피","timestamp":"2026-06-01T09:00:00+09:00"}""";
+
+        for (int invalid : new int[]{0, 10001}) {
+            mockMvc.perform(post("/api/caffeine-records").header("Authorization", "Bearer " + accessToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body.formatted(invalid)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                    .andExpect(jsonPath("$.error.fieldErrors[0].field").value("amount"));
+        }
+        for (int valid : new int[]{1, 10000}) {
+            mockMvc.perform(post("/api/caffeine-records").header("Authorization", "Bearer " + accessToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body.formatted(valid)))
+                    .andExpect(status().isCreated());
+        }
+    }
+
+    @Test
+    void caffeine_기록_검증_음료명_필수_시각_필수() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        mockMvc.perform(post("/api/caffeine-records").header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":100,"drinkName":" ","timestamp":"2026-06-01T09:00:00+09:00"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value("drinkName"));
+
+        mockMvc.perform(post("/api/caffeine-records").header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":100,"drinkName":"커피"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value("timestamp"));
+    }
+
+    @Test
+    void caffeine_수정_검증실패면_400이고_원본은_그대로() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        long id = createCaffeineRecord(accessToken, 150, "2026-06-01T09:00:00+09:00");
+
+        mockMvc.perform(put("/api/caffeine-records/" + id).header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":0,"drinkName":"콜라","timestamp":"2026-06-01T10:00:00+09:00"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+
+        mockMvc.perform(get("/api/caffeine-records").header("Authorization", "Bearer " + accessToken)
+                        .param("now", "2026-06-01T14:00:00+09:00").param("tz", "Asia/Seoul"))
+                .andExpect(jsonPath("$.data[0].amount").value(150));
+    }
+
+    @Test
+    void caffeine_없는기록_수정은_404() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        mockMvc.perform(put("/api/caffeine-records/999999").header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":80,"drinkName":"콜라","timestamp":"2026-06-01T10:00:00+09:00"}"""))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("CAFFEINE_RECORD_NOT_FOUND"));
+    }
+
+    @Test
+    void settings_검증_경계값() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        String body = """
+                {"halfLife":%s,"condition":%d,"bedtimeHour":%d,"bedtimeMinute":0,                "referenceDoseMg":%d,"isLearningEnabled":true,                "notifications":{"cutoff":true,"bedtimeResidual":true,"recordReminder":true}}""";
+
+        // 필드별 범위 밖 값 → 그 필드로 VALIDATION_FAILED
+        Object[][] invalid = {
+                {"2.9", 0, 23, 75, "halfLife"},
+                {"7.1", 0, 23, 75, "halfLife"},
+                {"5.0", 4, 23, 75, "condition"},
+                {"5.0", 0, 24, 75, "bedtimeHour"},
+                {"5.0", 0, 23, 0, "referenceDoseMg"},
+                {"5.0", 0, 23, 1001, "referenceDoseMg"},
+        };
+        for (Object[] c : invalid) {
+            mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body.formatted(c[0], c[1], c[2], c[3])))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                    .andExpect(jsonPath("$.error.fieldErrors[0].field").value(c[4]));
+        }
+
+        // 경계값 자체는 허용(반감기 3.0·7.0, 건강상태 3, 기준용량 1000)
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted("3.0", 3, 0, 1000)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.halfLife").value(3.0));
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted("7.0", 0, 23, 1)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.halfLife").value(7.0));
+    }
+
+    @Test
     void 인증없이_접근하면_401() throws Exception {
         mockMvc.perform(get("/api/settings")).andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/caffeine/today")
                 .param("now", "2026-06-01T14:00:00+09:00").param("tz", "Asia/Seoul"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/caffeine-records")
+                .param("now", "2026-06-01T14:00:00+09:00").param("tz", "Asia/Seoul"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(delete("/api/caffeine-records/1"))
                 .andExpect(status().isUnauthorized());
     }
 }

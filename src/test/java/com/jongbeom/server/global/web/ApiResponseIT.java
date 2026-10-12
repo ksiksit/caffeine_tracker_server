@@ -3,12 +3,14 @@ package com.jongbeom.server.global.web;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jongbeom.server.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 
 /** 공통 응답 봉투 통합 테스트 — 성공 형태, 시큐리티 401, 프레임워크 400/404/405 가 전부 같은 봉투인지. */
 class ApiResponseIT extends AbstractIntegrationTest {
@@ -41,6 +43,46 @@ class ApiResponseIT extends AbstractIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void 깨진_JSON은_400_MALFORMED_JSON_봉투() throws Exception {
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.error.code").value("MALFORMED_JSON"));
+    }
+
+    @Test
+    void 타입이_맞지않는_JSON값도_400_MALFORMED_JSON() throws Exception {
+        String accessToken = authToken("env@b.com", "봉투");
+        mockMvc.perform(post("/api/caffeine-records").header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount":"많이","drinkName":"커피","timestamp":"2026-06-01T09:00:00+09:00"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("MALFORMED_JSON"));
+    }
+
+    @Test
+    void 지원하지않는_ContentType은_415_UNSUPPORTED_MEDIA_TYPE_봉투() throws Exception {
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("email=a@b.com"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("UNSUPPORTED_MEDIA_TYPE"));
+    }
+
+    @Test
+    void 경로변수_타입불일치는_400_INVALID_PARAMETER() throws Exception {
+        String accessToken = authToken("env@b.com", "봉투");
+        mockMvc.perform(delete("/api/caffeine-records/abc").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_PARAMETER"));
     }
 
     @Test

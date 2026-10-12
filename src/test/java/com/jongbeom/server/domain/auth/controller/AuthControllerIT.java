@@ -63,6 +63,56 @@ class AuthControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void signup_중복이메일이면_409_EMAIL_ALREADY_EXISTS() throws Exception {
+        signup("a@b.com", "password1!", "테스터");
+
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"a@b.com","password":"password2!","nickname":"다른사람"}"""))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("EMAIL_ALREADY_EXISTS"));
+    }
+
+    @Test
+    void signup_검증_경계값() throws Exception {
+        String body = """
+                {"email":"%s","password":"%s","nickname":"%s"}""";
+        String[][] invalid = {
+                {"not-an-email", "password1!", "테스터", "email"},
+                {"a@b.com", "1234567", "테스터", "password"},        // 8자 미만
+                {"a@b.com", "x".repeat(73), "테스터", "password"},   // 72자 초과(BCrypt 입력 한계)
+                {"a@b.com", "password1!", "한", "nickname"},          // 2자 미만
+                {"a@b.com", "password1!", "가".repeat(21), "nickname"}, // 20자 초과
+        };
+        for (String[] c : invalid) {
+            mockMvc.perform(post("/api/auth/signup")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body.formatted(c[0], c[1], c[2])))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                    .andExpect(jsonPath("$.error.fieldErrors[0].field").value(c[3]));
+        }
+
+        // 경계값 자체(비밀번호 8자·닉네임 2자)는 허용
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted("a@b.com", "12345678", "테스")))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void login_존재하지않는이메일도_401_INVALID_CREDENTIALS() throws Exception {
+        // 이메일 존재 여부를 노출하지 않도록 비밀번호 불일치와 같은 응답
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"nobody@b.com","password":"password1!"}"""))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS"));
+    }
+
+    @Test
     void refresh_성공시_새토큰_발급_그리고_회전이없어_기존토큰도_유효() throws Exception {
         signup("a@b.com", "password1!", "테스터");
         JsonNode initial = login("a@b.com", "password1!");
