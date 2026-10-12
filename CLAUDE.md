@@ -12,7 +12,7 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 ## 배치 규칙
 - `com.jongbeom.server.domain.<도메인>/` 아래 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/`.
   테스트도 같은 구조로 미러링, 통합 테스트는 `*IT` 접미사.
-- 레이어가 아닌 컴포넌트(`JwtTokenProvider`, `LearningSkipReason`)와 하위 모듈(`auth/refresh/`)은 도메인 루트.
+- 레이어가 아닌 컴포넌트(`JwtTokenProvider`, `RefreshTokenVerifier`, `LearningSkipReason`)는 도메인 루트.
 - 인프라는 `global/`(config·error·web·entity). `ServerApplication`은 패키지 루트 고정(컴포넌트 스캔 베이스).
 - 새 엔드포인트는 `SecurityConfig.authorizeHttpRequests`에 등록 (미등록 = authenticated).
 

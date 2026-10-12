@@ -36,7 +36,7 @@
 | Base URL | 로컬 `http://localhost:8080`. 운영은 EC2 주소(배포 환경에 따름) |
 | 인증 | `Authorization: Bearer <accessToken>` 헤더. 공개 엔드포인트는 회원가입·로그인·토큰 재발급 3개뿐 |
 | Content-Type | 요청·응답 모두 `application/json` (UTF-8) |
-| 토큰 | access 토큰(JWT) 1시간, refresh 토큰 14일. refresh는 1회용 — 재발급 시 새 쌍이 나오고 기존 refresh는 폐기된다(재사용 시 401). 로그아웃은 그 사용자의 refresh를 전부 폐기한다 |
+| 토큰 | access 토큰(JWT) 1시간, refresh 토큰(JWT) 14일. 서버는 토큰을 저장하지 않는다. 재발급 시 새 쌍이 나오며 기존 refresh도 만료 전까지 유효하다(회전 없음). 로그아웃은 그 사용자의 refresh를 전부 무효화한다. refresh 토큰으로 일반 API를 호출하면 401 |
 
 ### 날짜·시간·타임존
 
@@ -76,7 +76,7 @@ HTTP 상태 코드는 그대로 의미를 가진다(201 생성, 400/401/404/409 
 |---|---|---|---|
 | `EMAIL_ALREADY_EXISTS` | 409 | 이미 사용 중인 이메일입니다. | 회원가입 이메일 중복 |
 | `INVALID_CREDENTIALS` | 401 | 이메일 또는 비밀번호가 올바르지 않습니다. | 로그인 실패(없는 이메일 포함, 구분하지 않음) |
-| `INVALID_REFRESH_TOKEN` | 401 | RefreshToken 이 유효하지 않습니다. | 토큰 재발급: 없음·만료·폐기·재사용 |
+| `INVALID_REFRESH_TOKEN` | 401 | RefreshToken 이 유효하지 않습니다. | 토큰 재발급: 서명 불일치·만료·access 토큰 사용·사용자 없음·로그아웃으로 무효화됨 |
 | `UNAUTHORIZED` | 401 | 인증이 필요합니다. | Bearer 토큰 없음·만료·위조(시큐리티 단계) |
 | `FORBIDDEN` | 403 | 접근 권한이 없습니다. | 권한 부족(현재 발생 경로 없음, 예비) |
 | `VALIDATION_FAILED` | 400 | 입력값이 올바르지 않습니다. | 바디 필드 검증 실패. `error.fieldErrors` 포함 |
@@ -162,20 +162,20 @@ HTTP 상태 코드는 그대로 의미를 가진다(201 생성, 400/401/404/409 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `accessToken` | string | JWT. `Authorization: Bearer` 헤더에 사용 |
-| `refreshToken` | string | 불투명 문자열. 재발급 전용, 1회용 |
+| `refreshToken` | string | JWT. 재발급 전용(일반 API 호출 불가) |
 | `tokenType` | string | 항상 `Bearer` |
 | `expiresIn` | integer | access 토큰 유효 시간(초). 3600 |
 | `refreshExpiresIn` | integer | refresh 토큰 유효 시간(초). 1209600 |
 
 ```json
-{ "success": true, "data": { "accessToken": "eyJhbGciOiJIUzI1NiJ9...", "refreshToken": "9f3c...", "tokenType": "Bearer", "expiresIn": 3600, "refreshExpiresIn": 1209600 }, "error": null, "message": null }
+{ "success": true, "data": { "accessToken": "eyJhbGciOiJIUzI1NiJ9...", "refreshToken": "eyJhbGciOiJIUzI1NiJ9...", "tokenType": "Bearer", "expiresIn": 3600, "refreshExpiresIn": 1209600 }, "error": null, "message": null }
 ```
 
 **에러**: 401 `INVALID_CREDENTIALS`
 
 ### POST /api/auth/refresh — 토큰 재발급
 
-refresh 토큰으로 새 access/refresh 쌍을 발급한다(회전). 기존 refresh는 즉시 폐기되며 다시 쓰면 401. 인증 불필요.
+refresh 토큰으로 새 access/refresh 쌍을 발급한다. 회전하지 않으므로 기존 refresh도 만료·로그아웃 전까지 유효하다. 인증 불필요.
 
 **요청 바디** `RefreshTokenRequest`
 
@@ -185,17 +185,17 @@ refresh 토큰으로 새 access/refresh 쌍을 발급한다(회전). 기존 refr
 
 **응답 200** `data: TokenResponse` (로그인과 동일)
 
-**에러**: 401 `INVALID_REFRESH_TOKEN` — 없음·만료·폐기·재사용
+**에러**: 401 `INVALID_REFRESH_TOKEN` — 서명 불일치·만료·access 토큰 사용·사용자 없음·로그아웃으로 무효화됨
 
 ### POST /api/auth/logout — 로그아웃
 
-토큰의 사용자에 속한 refresh 토큰을 전부 폐기한다(모든 기기 로그아웃). access 토큰은 만료 전까지 유효하므로 앱이 폐기한다.
+토큰의 사용자에 속한 refresh 토큰을 전부 무효화한다(모든 기기 로그아웃, `users.token_version` +1). access 토큰은 만료 전까지 유효하므로 앱이 폐기한다.
 
 **요청 바디** `LogoutRequest`
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|---|---|---|
-| `refreshToken` | string | ✔ | | 클라이언트 계약 호환용. 서버는 값과 무관하게 토큰의 사용자 기준으로 폐기 |
+| `refreshToken` | string | ✔ | | 클라이언트 계약 호환용. 서버는 값과 무관하게 토큰의 사용자 기준으로 무효화 |
 
 **응답 200** `data: null`
 

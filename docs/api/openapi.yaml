@@ -7,7 +7,7 @@ info:
 
     - 모든 응답은 봉투 `{ success, data, error, message }` 형태이며 키 4개는 null 이어도 항상 존재한다.
     - 시각: 요청은 ISO-8601 + 오프셋, 응답은 UTC(Z). 날짜는 YYYY-MM-DD. `tz`는 IANA 타임존.
-    - 인증: Bearer JWT(access 1시간, refresh 14일·1회용 회전). 공개 엔드포인트는 signup/login/refresh.
+    - 인증: Bearer JWT(access 1시간, refresh 14일·JWT·회전 없음, refresh 로 API 호출 불가). 공개 엔드포인트는 signup/login/refresh.
     - 공통 에러: 인증 필요 엔드포인트 401 UNAUTHORIZED, 바디 있는 엔드포인트 400 VALIDATION_FAILED/MALFORMED_JSON,
       파라미터 있는 엔드포인트 400 INVALID_PARAMETER. 그 외 404 NOT_FOUND, 405 METHOD_NOT_ALLOWED, 415 UNSUPPORTED_MEDIA_TYPE, 500 INTERNAL_ERROR.
 servers:
@@ -90,8 +90,8 @@ paths:
   /api/auth/refresh:
     post:
       tags: [auth]
-      summary: 토큰 재발급(회전)
-      description: refresh 토큰으로 새 access/refresh 쌍을 발급한다. 기존 refresh는 즉시 폐기되며 재사용 시 401.
+      summary: 토큰 재발급
+      description: refresh 토큰으로 새 access/refresh 쌍을 발급한다. 회전하지 않으므로 기존 refresh도 만료·로그아웃 전까지 유효하다.
       operationId: refreshToken
       security: []
       requestBody:
@@ -112,7 +112,7 @@ paths:
     post:
       tags: [auth]
       summary: 로그아웃
-      description: 토큰의 사용자에 속한 refresh 토큰을 전부 폐기한다(모든 기기). access 토큰은 만료 전까지 유효하므로 앱이 폐기한다.
+      description: 토큰의 사용자에 속한 refresh 토큰을 전부 무효화한다(모든 기기, users.token_version +1). access 토큰은 만료 전까지 유효하므로 앱이 폐기한다.
       operationId: logout
       requestBody:
         required: true
@@ -607,7 +607,7 @@ components:
                     $ref: '#/components/schemas/TokenResponse'
           example:
             success: true
-            data: { accessToken: eyJhbGciOiJIUzI1NiJ9..., refreshToken: 9f3c..., tokenType: Bearer, expiresIn: 3600, refreshExpiresIn: 1209600 }
+            data: { accessToken: eyJhbGciOiJIUzI1NiJ9..., refreshToken: eyJhbGciOiJIUzI1NiJ9..., tokenType: Bearer, expiresIn: 3600, refreshExpiresIn: 1209600 }
             error: null
             message: null
     SettingsResult:
@@ -717,7 +717,7 @@ components:
             error: { code: INVALID_CREDENTIALS }
             message: 이메일 또는 비밀번호가 올바르지 않습니다.
     InvalidRefreshToken:
-      description: refresh 토큰 없음·만료·폐기·재사용 (INVALID_REFRESH_TOKEN)
+      description: refresh 토큰 서명 불일치·만료·access 토큰 사용·사용자 없음·로그아웃으로 무효화됨 (INVALID_REFRESH_TOKEN)
       content:
         application/json:
           schema:
@@ -851,7 +851,7 @@ components:
       properties:
         refreshToken:
           type: string
-          description: 클라이언트 계약 호환용. 서버는 값과 무관하게 토큰의 사용자 기준으로 전부 폐기
+          description: 클라이언트 계약 호환용. 서버는 값과 무관하게 토큰의 사용자 기준으로 전부 무효화
     SignupResponse:
       type: object
       required: [userId, email, nickname]
@@ -872,7 +872,7 @@ components:
           description: JWT. Authorization Bearer 헤더에 사용
         refreshToken:
           type: string
-          description: 불투명 문자열. 재발급 전용·1회용
+          description: JWT. 재발급 전용(일반 API 호출 불가)
         tokenType:
           type: string
           enum: [Bearer]

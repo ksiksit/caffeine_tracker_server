@@ -8,6 +8,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.jongbeom.server.domain.auth.JwtTokenProvider;
+import com.jongbeom.server.domain.auth.RefreshTokenVerifier;
+import com.jongbeom.server.domain.auth.RefreshTokenVerifier.RefreshClaims;
 import com.jongbeom.server.domain.auth.dto.LoginRequest;
 import com.jongbeom.server.domain.auth.dto.RefreshTokenRequest;
 import com.jongbeom.server.domain.auth.dto.SignupRequest;
@@ -16,9 +18,6 @@ import com.jongbeom.server.domain.auth.dto.TokenResponse;
 import com.jongbeom.server.domain.auth.exception.DuplicateEmailException;
 import com.jongbeom.server.domain.auth.exception.InvalidCredentialsException;
 import com.jongbeom.server.domain.auth.exception.InvalidRefreshTokenException;
-import com.jongbeom.server.domain.auth.refresh.RefreshTokenService;
-import com.jongbeom.server.domain.auth.refresh.RefreshTokenService.IssuedRefreshToken;
-import com.jongbeom.server.domain.auth.refresh.RefreshTokenService.RotationResult;
 import com.jongbeom.server.support.UserFixture;
 import com.jongbeom.server.domain.user.entity.User;
 import com.jongbeom.server.domain.user.repository.UserRepository;
@@ -40,7 +39,7 @@ class AuthServiceTest {
     @Mock
     JwtTokenProvider jwtTokenProvider;
     @Mock
-    RefreshTokenService refreshTokenService;
+    RefreshTokenVerifier refreshTokenVerifier;
 
     @InjectMocks
     AuthService authService;
@@ -77,13 +76,13 @@ class AuthServiceTest {
         given(passwordEncoder.matches("password1!", "hashed")).willReturn(true);
         given(jwtTokenProvider.createAccessToken(user))
                 .willReturn(new JwtTokenProvider.IssuedToken("access.jwt", 3600));
-        given(refreshTokenService.issue(7L))
-                .willReturn(new IssuedRefreshToken("refresh-raw", 1209600));
+        given(jwtTokenProvider.createRefreshToken(user))
+                .willReturn(new JwtTokenProvider.IssuedToken("refresh.jwt", 1209600));
 
         TokenResponse response = authService.login(new LoginRequest("a@b.com", "password1!"));
 
         assertThat(response.accessToken()).isEqualTo("access.jwt");
-        assertThat(response.refreshToken()).isEqualTo("refresh-raw");
+        assertThat(response.refreshToken()).isEqualTo("refresh.jwt");
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresIn()).isEqualTo(3600);
         assertThat(response.refreshExpiresIn()).isEqualTo(1209600);
@@ -95,7 +94,7 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("a@b.com", "password1!")))
                 .isInstanceOf(InvalidCredentialsException.class);
-        verify(refreshTokenService, never()).issue(any());
+        verify(jwtTokenProvider, never()).createRefreshToken(any());
     }
 
     @Test
@@ -106,38 +105,72 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("a@b.com", "wrong")))
                 .isInstanceOf(InvalidCredentialsException.class);
-        verify(refreshTokenService, never()).issue(any());
+        verify(jwtTokenProvider, never()).createRefreshToken(any());
     }
 
     @Test
     void refresh_성공시_새_AccessToken과_새_RefreshToken을_반환한다() {
         User user = UserFixture.withId(7L);
-        given(refreshTokenService.rotate("old-refresh"))
-                .willReturn(new RotationResult(7L, new IssuedRefreshToken("new-refresh", 1209600)));
+        given(refreshTokenVerifier.verify("old.refresh.jwt")).willReturn(new RefreshClaims(7L, 0));
         given(userRepository.findById(7L)).willReturn(Optional.of(user));
         given(jwtTokenProvider.createAccessToken(user))
                 .willReturn(new JwtTokenProvider.IssuedToken("new.access.jwt", 3600));
+        given(jwtTokenProvider.createRefreshToken(user))
+                .willReturn(new JwtTokenProvider.IssuedToken("new.refresh.jwt", 1209600));
 
-        TokenResponse response = authService.refresh(new RefreshTokenRequest("old-refresh"));
+        TokenResponse response = authService.refresh(new RefreshTokenRequest("old.refresh.jwt"));
 
         assertThat(response.accessToken()).isEqualTo("new.access.jwt");
-        assertThat(response.refreshToken()).isEqualTo("new-refresh");
+        assertThat(response.refreshToken()).isEqualTo("new.refresh.jwt");
+        assertThat(response.refreshExpiresIn()).isEqualTo(1209600);
     }
 
     @Test
     void refresh_사용자가_존재하지않으면_InvalidRefreshTokenException() {
-        given(refreshTokenService.rotate("old-refresh"))
-                .willReturn(new RotationResult(7L, new IssuedRefreshToken("new-refresh", 1209600)));
+        given(refreshTokenVerifier.verify("old.refresh.jwt")).willReturn(new RefreshClaims(7L, 0));
         given(userRepository.findById(7L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> authService.refresh(new RefreshTokenRequest("old-refresh")))
+        assertThatThrownBy(() -> authService.refresh(new RefreshTokenRequest("old.refresh.jwt")))
                 .isInstanceOf(InvalidRefreshTokenException.class);
     }
 
     @Test
-    void logout_은_RefreshTokenService의_revokeAllForUser를_호출한다() {
+    void refresh_토큰버전이_사용자버전과_다르면_InvalidRefreshTokenException() {
+        User user = UserFixture.withId(7L);
+        user.invalidateTokens(); // 로그아웃으로 버전 0 → 1
+        given(refreshTokenVerifier.verify("old.refresh.jwt")).willReturn(new RefreshClaims(7L, 0));
+        given(userRepository.findById(7L)).willReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> authService.refresh(new RefreshTokenRequest("old.refresh.jwt")))
+                .isInstanceOf(InvalidRefreshTokenException.class);
+        verify(jwtTokenProvider, never()).createAccessToken(any());
+    }
+
+    @Test
+    void refresh_토큰검증에_실패하면_예외를_그대로_전파하고_사용자를_조회하지_않는다() {
+        given(refreshTokenVerifier.verify("bad")).willThrow(new InvalidRefreshTokenException());
+
+        assertThatThrownBy(() -> authService.refresh(new RefreshTokenRequest("bad")))
+                .isInstanceOf(InvalidRefreshTokenException.class);
+        verify(userRepository, never()).findById(any());
+    }
+
+    @Test
+    void logout_은_사용자의_토큰버전을_올린다() {
+        User user = UserFixture.withId(7L);
+        given(userRepository.findById(7L)).willReturn(Optional.of(user));
+
         authService.logout(7L);
 
-        verify(refreshTokenService).revokeAllForUser(7L);
+        assertThat(user.getTokenVersion()).isEqualTo(1);
+    }
+
+    @Test
+    void logout_사용자가_없어도_예외없이_끝난다() {
+        given(userRepository.findById(7L)).willReturn(Optional.empty());
+
+        authService.logout(7L);
+
+        verify(userRepository).findById(7L);
     }
 }

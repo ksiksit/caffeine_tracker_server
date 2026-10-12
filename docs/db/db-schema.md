@@ -22,7 +22,7 @@ mysql -u caffeine -p caffeine_tracker < docs/db/db-schema.sql
 
 - 엔진·문자셋: `InnoDB`, `utf8mb4` / `utf8mb4_unicode_ci`
 - 시각 컬럼은 `DATETIME(6)`. 도메인 시각(`timestamp`·`start_at`·`end_at`)은 UTC 절대시각(`Instant`)으로 저장하고,
-  감사·토큰 시각(`created_at`·`updated_at`·`expires_at`·`revoked_at`)은 서버 JVM 시각(`LocalDateTime`)이다.
+  감사 시각(`created_at`·`updated_at`)은 서버 JVM 시각(`LocalDateTime`)이다.
 - `DATE` 컬럼(`last_learned_date`·`obs_date`)은 요청 `tz` 기준 로컬 날짜.
 - 모든 테이블에 `created_at` / `updated_at` — JPA Auditing(`BaseTimeEntity`)이 채운다.
 - 사용자 종속 테이블은 `users(id)`를 참조하며 `ON DELETE CASCADE`.
@@ -33,7 +33,6 @@ mysql -u caffeine -p caffeine_tracker < docs/db/db-schema.sql
 | 테이블 | 도메인 | 설명 |
 |---|---|---|
 | `users` | user · auth | 계정 |
-| `refresh_tokens` | auth | 리프레시 토큰 (SHA-256 해시만 저장) |
 | `user_settings` | settings | 유저 설정 + 베이지안 학습 상태 (`users`와 1:1, PK 공유) |
 | `caffeine_records` | caffeine | 카페인 섭취 기록 |
 | `sleep_samples` | sleep | HealthKit 원시 수면 샘플 |
@@ -44,7 +43,6 @@ mysql -u caffeine -p caffeine_tracker < docs/db/db-schema.sql
 ```mermaid
 erDiagram
     users ||--o| user_settings : "1:1 (PK 공유)"
-    users ||--o{ refresh_tokens : "1:N"
     users ||--o{ caffeine_records : "1:N"
     users ||--o{ sleep_samples : "1:N"
     users ||--o{ half_life_observations : "1:N"
@@ -64,3 +62,4 @@ erDiagram
 | 2026-09-03 | 초기 스키마. 구 Flyway 마이그레이션 V1~V6를 통합했고 테이블 구조는 동일 | 없음. Flyway로 만든 DB는 그대로 사용 가능하며, 남아 있는 `flyway_schema_history`는 무해하다 (정리: `DROP TABLE flyway_schema_history;`) |
 | 2026-09-06 | `user_settings`에 알림 종류별 on/off 컬럼 3개 추가 (`notify_cutoff`·`notify_bedtime_residual`·`notify_record_reminder`). 기존 행은 전부 1(켜짐) | `ALTER TABLE user_settings ADD COLUMN notify_cutoff BIT(1) NOT NULL DEFAULT 1 AFTER is_learning_enabled, ADD COLUMN notify_bedtime_residual BIT(1) NOT NULL DEFAULT 1 AFTER notify_cutoff, ADD COLUMN notify_record_reminder BIT(1) NOT NULL DEFAULT 1 AFTER notify_bedtime_residual;` 롤백: `ALTER TABLE user_settings DROP COLUMN notify_cutoff, DROP COLUMN notify_bedtime_residual, DROP COLUMN notify_record_reminder;` |
 | 2026-09-25 | `user_settings`에 카페 근처 알림 on/off 컬럼 추가 (`notify_cafe_nearby`). 기존 행은 전부 0(꺼짐) | `ALTER TABLE user_settings ADD COLUMN notify_cafe_nearby BIT(1) NOT NULL DEFAULT 0 AFTER notify_record_reminder;` 롤백: `ALTER TABLE user_settings DROP COLUMN notify_cafe_nearby;` |
+| 2026-10-12 | 리프레시 토큰을 JWT로 전환. `users`에 `token_version` 추가(로그아웃 시 +1로 이전 리프레시 토큰 무효화), `refresh_tokens` 테이블 제거. 배포 후 기존 리프레시 토큰은 무효라 전 사용자 재로그인 필요 | 배포 전: `ALTER TABLE users ADD COLUMN token_version INT NOT NULL DEFAULT 0 AFTER role;` 배포·동작 확인 후: `DROP TABLE refresh_tokens;` 롤백(테이블 삭제 전): `ALTER TABLE users DROP COLUMN token_version;` |

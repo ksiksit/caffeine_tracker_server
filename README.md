@@ -191,7 +191,7 @@ curl -X POST http://localhost:8080/api/auth/login \
 ```
 src/main/java/com/jongbeom/server/
 ├── domain/
-│   ├── auth/           # 회원가입, 로그인, JWT 발급 (+refresh/ 리프레시 토큰 하위 모듈)
+│   ├── auth/           # 회원가입, 로그인, JWT(access·refresh) 발급·검증
 │   ├── user/           # 사용자 정보 조회
 │   ├── settings/       # 유저 설정 + 학습 상태 (연산 입력값)
 │   ├── caffeine/       # 카페인 기록 CRUD + 잔류량/마감시각 계산 — 레이어 구성 예시:
@@ -221,7 +221,7 @@ docs/
 ```
 
 > 각 도메인 내부는 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/` 레이어 패키지로 구성한다.
-> 레이어가 아닌 도메인 컴포넌트(`domain/auth/JwtTokenProvider`, `domain/learning/LearningSkipReason` 등)와
-> 하위 기능 모듈(`auth/refresh/`)은 도메인 루트에 둔다.
+> 레이어가 아닌 도메인 컴포넌트(`domain/auth/JwtTokenProvider`, `domain/auth/RefreshTokenVerifier`, `domain/learning/LearningSkipReason` 등)는
+> 도메인 루트에 둔다.
 
 > `domain/calc/`의 도메인 수식은 iOS Swift에서 포팅했으며, Swift 단위테스트의 입력→기대값을 **골든 테스트**로 복제해 부동소수 정합을 검증한다.
