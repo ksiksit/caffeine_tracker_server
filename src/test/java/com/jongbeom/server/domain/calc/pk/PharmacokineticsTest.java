@@ -58,12 +58,18 @@ class PharmacokineticsTest {
     }
 
     @Test
+    void remainingAmount_nonPositiveHalfLife_returnsZero() {
+        assertThat(Pharmacokinetics.remainingAmount(100, 1, 0)).isZero();
+        assertThat(Pharmacokinetics.remainingAmount(100, 1, -5.0)).isZero();
+    }
+
+    @Test
     void totalRemaining_superpositionAddsDoses() {
         Dose d1 = new Dose(NOW.minusSeconds(3600), 100);
         Dose d2 = new Dose(NOW.minusSeconds(1800), 100);
         double combined = Pharmacokinetics.totalRemaining(NOW, List.of(d1, d2), 5.0);
-        double single = Pharmacokinetics.totalRemaining(NOW, List.of(d1), 5.0);
-        assertThat(combined).isGreaterThan(single);
+        // 골든값: 100·2^(-1/5) + 100·2^(-0.5/5) — 프로덕션(exp·ln2)과 다른 형태로 독립 산출
+        assertThat(combined).isCloseTo(180.35835548329317, within(1e-9));
     }
 
     @Test
@@ -108,6 +114,60 @@ class PharmacokineticsTest {
         }
     }
 
+    @Test
+    void generateTimeSeries_doseInRange_addsPointsJustBeforeAndAtDose() {
+        // 15분 간격 틱 5개 + 섭취(00:15) 직전(00:14:59)·직후(00:15:00) 점 2개 = 7점
+        Dose dose = new Dose(NOW.plusSeconds(900), 100);
+        List<DataPoint> points = Pharmacokinetics.generateTimeSeries(
+                List.of(dose), NOW, NOW.plusSeconds(3600), 15, 5.0);
+
+        assertThat(points).extracting(DataPoint::time).containsExactly(
+                NOW,
+                NOW.plusSeconds(899),   // 섭취 1초 전
+                NOW.plusSeconds(900),   // 섭취 시점(sharp transition)
+                NOW.plusSeconds(900),   // 같은 시각의 정규 틱
+                NOW.plusSeconds(1800),
+                NOW.plusSeconds(2700),
+                NOW.plusSeconds(3600));
+        // 골든값: 100·2^(-t/5) (t = 섭취 후 시간)
+        double[] expectedMg = {0.0, 0.0, 100.0, 100.0, 96.59363289248456, 93.30329915368074, 90.12504626108301};
+        for (int i = 0; i < expectedMg.length; i++) {
+            assertThat(points.get(i).concentrationMg()).as("point %d", i).isCloseTo(expectedMg[i], within(1e-9));
+        }
+    }
+
+    @Test
+    void generateTimeSeries_doseExactlyAtStart_noTransitionPoints() {
+        // (start, end] 에 엄격히 포함된 dose 만 직전/직후 점을 만든다 — start 정각은 제외(iOS 동일)
+        Dose dose = new Dose(NOW, 100);
+        List<DataPoint> points = Pharmacokinetics.generateTimeSeries(
+                List.of(dose), NOW, NOW.plusSeconds(3600), 15, 5.0);
+        assertThat(points).hasSize(5);
+        assertThat(points.get(0).concentrationMg()).isCloseTo(100.0, within(1e-9));
+    }
+
+    @Test
+    void generateTimeSeries_doseAfterEnd_noTransitionPoints() {
+        Dose dose = new Dose(NOW.plusSeconds(7200), 100);
+        List<DataPoint> points = Pharmacokinetics.generateTimeSeries(
+                List.of(dose), NOW, NOW.plusSeconds(3600), 15, 5.0);
+        assertThat(points).hasSize(5).allMatch(p -> p.concentrationMg() == 0);
+    }
+
+    @Test
+    void generateTimeSeries_nonPositiveInterval_empty() {
+        assertThat(Pharmacokinetics.generateTimeSeries(List.of(), NOW, NOW.plusSeconds(3600), 0, 5.0)).isEmpty();
+        assertThat(Pharmacokinetics.generateTimeSeries(List.of(), NOW, NOW.plusSeconds(3600), -15, 5.0)).isEmpty();
+    }
+
+    @Test
+    void generateTimeSeries_endIsInclusive() {
+        List<DataPoint> points = Pharmacokinetics.generateTimeSeries(
+                List.of(), NOW, NOW.plusSeconds(1800), 15, 5.0);
+        assertThat(points).extracting(DataPoint::time)
+                .containsExactly(NOW, NOW.plusSeconds(900), NOW.plusSeconds(1800));
+    }
+
     // ---- cutoffTime (← CaffeineHelpers.caffeineCutoffTime) ----
 
     @Test
@@ -124,7 +184,8 @@ class PharmacokineticsTest {
         // 자기충족 단언이 되므로 리터럴로 고정한다.
         double expectedHoursBefore = 2.9248125036057813;
         double actualHoursBefore = (NOW.toEpochMilli() - result.cutoff().toEpochMilli()) / 3_600_000.0;
-        assertThat(actualHoursBefore).isCloseTo(expectedHoursBefore, within(0.001));
+        // 허용 오차 1e-6h(≈3.6ms): cutoff 는 밀리초 절단이라 1ms(≈2.8e-7h) 미만 차이만 허용
+        assertThat(actualHoursBefore).isCloseTo(expectedHoursBefore, within(1e-6));
     }
 
     @Test
@@ -133,5 +194,28 @@ class PharmacokineticsTest {
         CutoffResult result = Pharmacokinetics.cutoffTime(List.of(bigDose), NOW, 75, 5.0, 50.0);
         assertThat(result.status()).isEqualTo(CutoffResult.Status.ALREADY_EXCEEDED);
         assertThat(result.existingAtBedtime()).isCloseTo(100.0, within(0.01));
+    }
+
+    @Test
+    void cutoff_headroomExactlyEqualsReferenceDose_safeAnytime() {
+        // 기존 잔량 0, 안전선 50 → 여유 50 == 기준 용량 50 → 언제 마셔도 안전(경계 포함)
+        CutoffResult result = Pharmacokinetics.cutoffTime(List.of(), NOW, 50, 5.0, 50.0);
+        assertThat(result.status()).isEqualTo(CutoffResult.Status.SAFE_ANYTIME);
+    }
+
+    @Test
+    void cutoff_bedtimeResidualExactlyAtThreshold_alreadyExceeded() {
+        // 취침 시각 정각에 50mg → 취침 잔량 50 == 안전선 → 여유 0 → 이미 초과(경계 포함)
+        CutoffResult result = Pharmacokinetics.cutoffTime(List.of(new Dose(NOW, 50)), NOW, 75, 5.0, 50.0);
+        assertThat(result.status()).isEqualTo(CutoffResult.Status.ALREADY_EXCEEDED);
+        assertThat(result.existingAtBedtime()).isCloseTo(50.0, within(1e-9));
+    }
+
+    @Test
+    void cutoff_invalidArguments_safeAnytime() {
+        assertThat(Pharmacokinetics.cutoffTime(List.of(), NOW, 0, 5.0, 50.0).status())
+                .isEqualTo(CutoffResult.Status.SAFE_ANYTIME);
+        assertThat(Pharmacokinetics.cutoffTime(List.of(), NOW, 75, 0, 50.0).status())
+                .isEqualTo(CutoffResult.Status.SAFE_ANYTIME);
     }
 }
