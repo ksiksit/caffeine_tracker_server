@@ -39,6 +39,33 @@ tasks.named('test') {
 	useJUnitPlatform()
 }
 
+// E2E: 실제 앱 이미지 + 실제 MySQL 에 바깥에서 HTTP 를 보낸다(src/e2eTest). 블랙박스라 main 코드에 의존하지 않는다.
+// build·check·CI 에는 묶지 않는다 — Docker 가 필요하고 느리므로 필요할 때만: ./gradlew e2eTest
+//   -Pe2e.baseUrl=http://host:port 를 주면 컨테이너를 띄우지 않고 그 서버에 스모크만 돌린다(계정은 E2E_EMAIL·E2E_PASSWORD).
+testing {
+	suites {
+		e2eTest(JvmTestSuite) {
+			useJUnitJupiter()
+			dependencies {
+				implementation 'io.rest-assured:rest-assured'
+				implementation 'org.testcontainers:testcontainers'
+				implementation 'org.assertj:assertj-core'
+			}
+			targets.all {
+				testTask.configure {
+					shouldRunAfter(tasks.named('test'))
+					systemProperty 'e2e.projectDir', projectDir.absolutePath
+					if (project.hasProperty('e2e.baseUrl')) {
+						systemProperty 'e2e.baseUrl', project.property('e2e.baseUrl')
+					}
+					outputs.upToDateWhen { false } // 외부 환경을 검증하므로 입력이 같아도 매번 실행
+					testLogging { events 'passed', 'failed', 'skipped' }
+				}
+			}
+		}
+	}
+}
+
 // 테스트는 사용자가 직접 실행하는 DDL 원본(docs/db/db-schema.sql)을 그대로 H2 에 적용해 엔티티와 대조한다.
 // 앱 jar 에는 포함되지 않는다 — 스키마 적용은 사용자 몫.
 tasks.named('processTestResources') {
