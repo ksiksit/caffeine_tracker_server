@@ -29,7 +29,8 @@ public class UserSettingsService {
                 request.bedtimeMinute(), request.referenceDoseMg(), request.isLearningEnabled());
         NotificationSettingsRequest notifications = request.notifications();
         settings.updateNotifications(
-                notifications.cutoff(), notifications.bedtimeResidual(), notifications.recordReminder());
+                notifications.cutoff(), notifications.bedtimeResidual(), notifications.recordReminder(),
+                notifications.cafeNearby());
         // learned 3종이 모두 온 경우에만 1회 시드 — 부분 제공 규칙은 UpdateSettingsRequest javadoc 참조
         if (request.hasLearnedSeed()) {
             settings.seedLearned(request.learnedMean(), request.learnedVariance(), request.lastLearnedDate());

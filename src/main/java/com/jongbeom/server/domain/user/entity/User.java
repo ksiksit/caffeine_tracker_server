@@ -36,6 +36,10 @@ public class User extends BaseTimeEntity {
     @Column(nullable = false, length = 20)
     private UserRole role;
 
+    /** 리프레시 토큰 버전. 리프레시 JWT 의 ver 클레임과 같아야 재발급된다. */
+    @Column(name = "token_version", nullable = false)
+    private int tokenVersion;
+
     private User(String email, String passwordHash, String nickname, UserRole role) {
         this.email = email;
         this.passwordHash = passwordHash;
@@ -45,5 +49,10 @@ public class User extends BaseTimeEntity {
 
     public static User create(String email, String passwordHash, String nickname) {
         return new User(email, passwordHash, nickname, UserRole.USER);
+    }
+
+    /** 버전을 올려 지금까지 발급된 리프레시 토큰을 전부 무효화한다(전 기기 로그아웃). */
+    public void invalidateTokens() {
+        this.tokenVersion++;
     }
 }

@@ -18,26 +18,11 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,                 -- BCrypt 해시 (평문 미저장)
     nickname      VARCHAR(50)  NOT NULL,
     role          VARCHAR(20)  NOT NULL DEFAULT 'USER',  -- 'USER' | 'ADMIN'
+    token_version INT          NOT NULL DEFAULT 0,       -- 리프레시 토큰(JWT ver 클레임) 버전. 로그아웃 시 +1 → 이전 리프레시 토큰 전부 무효
     created_at    DATETIME(6)  NOT NULL,
     updated_at    DATETIME(6)  NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uk_users_email (email)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- refresh_tokens: 리프레시 토큰 (SHA-256 해시만 저장)
-CREATE TABLE IF NOT EXISTS refresh_tokens (
-    id          BIGINT       NOT NULL AUTO_INCREMENT,
-    user_id     BIGINT       NOT NULL,
-    token_hash  VARCHAR(64)  NOT NULL,  -- 토큰 원문의 SHA-256 소문자 hex (평문 미저장)
-    expires_at  DATETIME(6)  NOT NULL,  -- 만료 시각 (기본 발급 + 14일)
-    revoked_at  DATETIME(6)  NULL,      -- 폐기 시각. NULL 이면 유효 (로그아웃·회전 시 기록)
-    created_at  DATETIME(6)  NOT NULL,
-    updated_at  DATETIME(6)  NOT NULL,
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_refresh_tokens_token_hash (token_hash),
-    KEY idx_refresh_tokens_user_id_revoked (user_id, revoked_at),  -- 사용자 토큰 일괄 폐기 조회용
-    CONSTRAINT fk_refresh_tokens_user_id
-        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- user_settings: 유저 설정 + 베이지안 학습 상태 (users 와 1:1, PK 공유)
@@ -52,6 +37,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     notify_cutoff           BIT(1)       NOT NULL,  -- 섭취 마감 알림 on/off. 기본 1
     notify_bedtime_residual BIT(1)       NOT NULL,  -- 취침 잔량 예고 on/off. 기본 1
     notify_record_reminder  BIT(1)       NOT NULL,  -- 기록 리마인더 on/off. 기본 1
+    notify_cafe_nearby      BIT(1)       NOT NULL,  -- 카페 근처 알림 on/off. 기본 0(동 선택·위치 권한 필요)
     learned_mean            DOUBLE       NOT NULL,  -- 학습 반감기 평균(시간). 기본 5.0, 반감기 수동 변경 시 그 값으로 리셋
     learned_variance        DOUBLE       NOT NULL,  -- 학습 반감기 분산(시간²). 기본 2.25(모집단 1.5²), 반감기 수동 변경 시 리셋
     last_learned_date       DATE         NULL,      -- 마지막 학습 날짜(로컬). 반감기 수동 변경 시 NULL 로 리셋

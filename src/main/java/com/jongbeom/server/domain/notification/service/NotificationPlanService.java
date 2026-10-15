@@ -7,9 +7,11 @@ import com.jongbeom.server.domain.caffeine.service.CaffeineService;
 import com.jongbeom.server.domain.calc.LocalCalendar;
 import com.jongbeom.server.domain.calc.Pharmacokinetics;
 import com.jongbeom.server.domain.calc.Pharmacokinetics.CutoffResult;
+import com.jongbeom.server.domain.notification.CafeNearbyReason;
 import com.jongbeom.server.domain.notification.NotificationType;
 import com.jongbeom.server.domain.notification.UsualFirstRecordTime;
 import com.jongbeom.server.domain.notification.dto.NotificationPlanResponse;
+import com.jongbeom.server.domain.notification.dto.NotificationPlanResponse.CafeNearbyWindow;
 import com.jongbeom.server.domain.notification.dto.NotificationPlanResponse.NotificationItem;
 import com.jongbeom.server.domain.settings.entity.UserSettings;
 import com.jongbeom.server.domain.settings.service.UserSettingsService;
@@ -28,7 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 로컬 알림 계획 계산. 서버는 푸시를 보내지 않고(운영 EC2 외부 인터넷 불가) 계획만 내려준다 — CLAUDE.md 도메인 계약.
  * 종류별 생성 규칙의 계약은 docs/api/api.md 알림 절이며, 여기의 상수·문구를 바꾸면 그 표도 같이 바꾼다.
- * 종류 세 개(CUTOFF·BEDTIME_RESIDUAL·RECORD_REMINDER) 모두 구현.
+ * 종류 세 개(CUTOFF·BEDTIME_RESIDUAL·RECORD_REMINDER) 모두 구현. 카페 근처 알림은 시각이 아니라 금지 구간으로 내려준다.
  */
 @Service
 @RequiredArgsConstructor
@@ -44,6 +46,8 @@ public class NotificationPlanService {
     static final int RECORD_REMINDER_MIN_DAYS = 5;
     /** 기록 리마인더: 평소 첫 기록 시각에서 이만큼 지나도 기록이 없을 때. */
     static final Duration RECORD_REMINDER_DELAY = Duration.ofHours(2);
+    /** 카페 근처 알림 제목. 사유와 무관하게 같다 — 사용자가 알아야 할 건 "지금 카페 앞"이라는 사실. */
+    static final String CAFE_NEARBY_TITLE = "카페 근처예요";
     private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm");
 
     private final UserSettingsService settingsService;
@@ -56,7 +60,8 @@ public class NotificationPlanService {
     public NotificationPlanResponse plan(Long userId, Instant now, ZoneId zone) {
         UserSettings settings = settingsService.getOrCreate(userId);
         List<NotificationItem> items = new ArrayList<>();
-        if (settings.isNotifyCutoff() || settings.isNotifyBedtimeResidual()) {
+        List<CafeNearbyWindow> windows = new ArrayList<>();
+        if (settings.isNotifyCutoff() || settings.isNotifyBedtimeResidual() || settings.isNotifyCafeNearby()) {
             CaffeineTodayResponse today = caffeineService.today(userId, now, zone);
             if (settings.isNotifyCutoff()) {
                 cutoffItem(today, now, zone).ifPresent(items::add);
@@ -64,13 +69,57 @@ public class NotificationPlanService {
             if (settings.isNotifyBedtimeResidual()) {
                 bedtimeResidualItem(today, now, zone).ifPresent(items::add);
             }
+            if (settings.isNotifyCafeNearby()) {
+                cafeNearbyWindow(today, now, zone).ifPresent(windows::add);
+                // 기록 없는 다음 날의 기본 구간 — 앱을 하루 종일 열지 않아도 동작하게. 다음 날 기록은 앱에서만 생기고
+                // 그때 앱이 재조회하므로, "기록이 없다"는 가정은 틀리는 순간 교체된다.
+                Instant nextDay = LocalCalendar.chartEnd(now, zone);
+                cafeNearbyWindow(caffeineService.today(userId, nextDay, zone), nextDay, zone).ifPresent(windows::add);
+            }
         }
         if (settings.isNotifyRecordReminder()) {
             recordReminderItem(userId, now, zone).ifPresent(items::add);
         }
         // 안정 정렬 — fireAt 동률이면 위 삽입 순서 유지
         items.sort(Comparator.comparing(NotificationItem::fireAt));
-        return new NotificationPlanResponse(now, List.copyOf(items));
+        return new NotificationPlanResponse(now, List.copyOf(items), List.copyOf(windows));
+    }
+
+    /**
+     * 카페 근처 알림 금지 구간: [시작, 그날 하루 경계(다음 05:00)). 하루에 하나, 사유가 겹치면 {@link CafeNearbyReason} 선언 순.
+     * <ul>
+     *   <li>ALREADY_EXCEEDED — 취침 시 예상 잔량이 이미 50mg 이상. 지금({@code at})부터</li>
+     *   <li>DAILY_LIMIT_EXCEEDED — 오늘 섭취량이 400mg 초과. 지금부터</li>
+     *   <li>CUTOFF_PASSED — 섭취 마감 시각이 있음. 마감 시각부터(이미 지났으면 과거 시각 그대로)</li>
+     *   <li>마감 없음(SAFE_ANYTIME)이고 400mg 이하면 구간 없음</li>
+     * </ul>
+     * 끝을 취침이 아니라 05:00으로 둔 건 취침 뒤 새벽 섭취도 막아야 하고, 서버의 "오늘" 경계와 맞추기 위해서다.
+     * 마감 시각이 지나면 기준 용량 한 잔이 곧 취침 시 50mg 초과이므로, 문구의 "기준을 넘어요"는 계산 없이 참이다.
+     */
+    private static Optional<CafeNearbyWindow> cafeNearbyWindow(CaffeineTodayResponse today, Instant at, ZoneId zone) {
+        Instant until = LocalCalendar.chartEnd(at, zone);
+        String status = today.cutoff().status();
+        if (CutoffResult.Status.ALREADY_EXCEEDED.name().equals(status)) {
+            String body = "지금도 취침 때 카페인이 약 %dmg 남을 것 같아요. 오늘은 디카페인으로 골라 주세요."
+                    .formatted(Math.round(today.predictedAtBedtime()));
+            return Optional.of(new CafeNearbyWindow(
+                    CafeNearbyReason.ALREADY_EXCEEDED.name(), at, until, CAFE_NEARBY_TITLE, body));
+        }
+        if (today.overDailyLimit()) {
+            String body = "오늘 이미 %dmg를 마셨어요(하루 권장 %dmg). 오늘은 디카페인으로 골라 주세요."
+                    .formatted(today.todayTotal(), Pharmacokinetics.DAILY_RECOMMENDED_LIMIT_MG);
+            return Optional.of(new CafeNearbyWindow(
+                    CafeNearbyReason.DAILY_LIMIT_EXCEEDED.name(), at, until, CAFE_NEARBY_TITLE, body));
+        }
+        if (CutoffResult.Status.CUTOFF.name().equals(status)) {
+            Instant cutoff = today.cutoff().cutoff();
+            String body = "오늘 마감 %s이 지났어요. 지금 %dmg 한 잔이면 취침 때 기준(%dmg)을 넘어요. 들어간다면 디카페인으로!"
+                    .formatted(HH_MM.withZone(zone).format(cutoff), today.referenceDoseMg(),
+                            Math.round(Pharmacokinetics.BEDTIME_SAFE_THRESHOLD_MG));
+            return Optional.of(new CafeNearbyWindow(
+                    CafeNearbyReason.CUTOFF_PASSED.name(), cutoff, until, CAFE_NEARBY_TITLE, body));
+        }
+        return Optional.empty();
     }
 
     /**

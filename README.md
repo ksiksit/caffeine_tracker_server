@@ -184,14 +184,22 @@ curl -X POST http://localhost:8080/api/auth/login \
 
 # 전체 빌드 (테스트는 H2 임베디드 DB로 동작, 환경변수 불필요)
 ./gradlew build
+
+# E2E (Docker 필요, build·CI 와 별개): 현재 소스로 이미지를 빌드해 실제 MySQL 과 띄우고 HTTP 로 검증
+./gradlew e2eTest
+
+# 배포된 서버에 스모크만 (컨테이너 없이, 전용 계정 필요)
+E2E_EMAIL=... E2E_PASSWORD=... ./gradlew e2eTest -Pe2e.baseUrl=http://localhost:18081
 ```
+
+E2E 환경을 손으로 띄워 Postman 등으로 확인하려면 `docker compose -f docker-compose.e2e.yml up --build` (포트 18080, 데이터는 남지 않음).
 
 ## 프로젝트 구조
 
 ```
 src/main/java/com/jongbeom/server/
 ├── domain/
-│   ├── auth/           # 회원가입, 로그인, JWT 발급 (+refresh/ 리프레시 토큰 하위 모듈)
+│   ├── auth/           # 회원가입, 로그인, JWT(access·refresh) 발급·검증
 │   ├── user/           # 사용자 정보 조회
 │   ├── settings/       # 유저 설정 + 학습 상태 (연산 입력값)
 │   ├── caffeine/       # 카페인 기록 CRUD + 잔류량/마감시각 계산 — 레이어 구성 예시:
@@ -221,7 +229,7 @@ docs/
 ```
 
 > 각 도메인 내부는 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/` 레이어 패키지로 구성한다.
-> 레이어가 아닌 도메인 컴포넌트(`domain/auth/JwtTokenProvider`, `domain/learning/LearningSkipReason` 등)와
-> 하위 기능 모듈(`auth/refresh/`)은 도메인 루트에 둔다.
+> 레이어가 아닌 도메인 컴포넌트(`domain/auth/JwtTokenProvider`, `domain/auth/RefreshTokenVerifier`, `domain/learning/LearningSkipReason` 등)는
+> 도메인 루트에 둔다.
 
 > `domain/calc/`의 도메인 수식은 iOS Swift에서 포팅했으며, Swift 단위테스트의 입력→기대값을 **골든 테스트**로 복제해 부동소수 정합을 검증한다.

@@ -8,11 +8,12 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 - `./gradlew build` — 빌드+테스트 (테스트는 H2, 환경변수 불필요)
 - `./gradlew build -x test` — 컴파일만
 - `./gradlew bootRun` — 로컬 실행 (환경변수 4개 필요, README 참조)
+- `./gradlew e2eTest` — E2E (Docker 필요, `build`·CI와 별개). `src/e2eTest`는 블랙박스 — main 코드를 import 하지 않는다
 
 ## 배치 규칙
 - `com.jongbeom.server.domain.<도메인>/` 아래 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/`.
   테스트도 같은 구조로 미러링, 통합 테스트는 `*IT` 접미사.
-- 레이어가 아닌 컴포넌트(`JwtTokenProvider`, `LearningSkipReason`)와 하위 모듈(`auth/refresh/`)은 도메인 루트.
+- 레이어가 아닌 컴포넌트(`JwtTokenProvider`, `RefreshTokenVerifier`, `LearningSkipReason`)는 도메인 루트.
 - 인프라는 `global/`(config·error·web·entity). `ServerApplication`은 패키지 루트 고정(컴포넌트 스캔 베이스).
 - 새 엔드포인트는 `SecurityConfig.authorizeHttpRequests`에 등록 (미등록 = authenticated).
 
@@ -50,6 +51,8 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
   `half_life_observations`는 `UNIQUE(user_id, obs_date)`. 관측 저장 성공 후에만 settings 반영.
 - 알림: 서버는 푸시를 보내지 않는다(운영 EC2 외부 인터넷 불가 → APNs 미사용). `GET /api/notifications/plan`이 `now` 이후에
   울릴 항목(종류·시각·문구)만 계산해 내려주고 iOS가 로컬 알림으로 예약한다. 설정 `notifications.*`가 꺼진 종류는 생략.
+  카페 근처 알림은 시각이 아니라 금지 구간(`cafeNearbyWindows`)으로 내려준다 — 서버는 "언제"만, 앱이 "어디"(지오펜스)와
+  진입 순간 판정을 맡는다. 카페 좌표·사용자 위치는 서버로 받지 않는다.
 - 시간 의존 로직은 주입 `Clock`(`ClockConfig`) 사용, 테스트는 `@MockBean Clock`으로 고정.
 
 ## 환경

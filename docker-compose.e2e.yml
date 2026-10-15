@@ -1,0 +1,50 @@
+# E2E 전용 환경: 매번 빈 MySQL + 스키마 자동 적용 + 현재 소스로 빌드한 앱 이미지.
+# ./gradlew e2eTest 가 Testcontainers 로 이 파일을 띄우고 내린다. 수동 확인용으로 직접 띄워도 된다:
+#   docker compose -f docker-compose.e2e.yml up --build   → http://localhost:18080 (Postman 등)
+#   docker compose -f docker-compose.e2e.yml down          (볼륨이 없어 데이터는 남지 않는다)
+# 로컬 개발용 docker-compose.yml(포트 3306·8080, 데이터 유지)과 동시에 띄워도 충돌하지 않게 포트를 분리했다.
+name: caffeine-e2e
+
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: e2e-root-pw
+      MYSQL_DATABASE: caffeine_tracker
+      MYSQL_USER: caffeine
+      MYSQL_PASSWORD: e2e-pw
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      # 운영과 같은 DDL 원본. initdb 스크립트는 MYSQL_DATABASE 를 선택한 채 최초 기동 때 한 번 실행된다.
+      - ./docs/db/db-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    tmpfs:
+      - /var/lib/mysql   # 데이터는 메모리에만 — 매 실행이 빈 DB 에서 시작하고 디스크 I/O 도 줄인다
+    healthcheck:
+      # TCP 로 확인해야 한다: 초기화 중 임시 서버는 소켓만 열어 두므로(--skip-networking)
+      # 소켓 ping 은 스키마 적용 전에 healthy 가 되어 앱이 먼저 붙다 실패할 수 있다.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --protocol=tcp -u root -p\"$$MYSQL_ROOT_PASSWORD\""]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  app:
+    build: .
+    environment:
+      SPRING_PROFILES_ACTIVE: prod   # 운영과 같은 프로파일로 띄운다 — 프로파일 설정 오류도 E2E 가 잡는다
+      DB_URL: jdbc:mysql://db:3306/caffeine_tracker?serverTimezone=UTC&characterEncoding=UTF-8&useUnicode=true&allowPublicKeyRetrieval=true&useSSL=false
+      DB_USERNAME: caffeine
+      DB_PASSWORD: e2e-pw
+      JWT_SECRET: e2e-only-jwt-secret-not-for-production-use-32bytes+
+    ports:
+      - "18080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
