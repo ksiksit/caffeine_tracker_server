@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.util.Base64;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +19,8 @@ public class RefreshTokenService {
 
     /** 원문 토큰 난수 바이트 수. RefreshToken 의 tokenHash 컬럼 길이 64(SHA-256 hex)와는 별개 값이다. */
     private static final int RAW_TOKEN_BYTES = 64;
+    /** 만료·폐기된 토큰을 삭제하기 전까지 보관하는 일수. */
+    private static final int STALE_RETENTION_DAYS = 7;
 
     private final RefreshTokenRepository repository;
     private final RefreshTokenHasher hasher;
@@ -82,6 +85,18 @@ public class RefreshTokenService {
     public void revokeAllForUser(Long userId) {
         int updated = repository.revokeAllByUserId(userId, LocalDateTime.now(clock));
         log.info("사용자 RefreshToken 일괄 폐기 userId={}, count={}", userId, updated);
+    }
+
+    /**
+     * 만료·폐기 후 {@link #STALE_RETENTION_DAYS}일이 지난 토큰을 삭제한다(매일 04:00).
+     * 유예 기간은 폐기 직후 재사용 시도 로그를 추적할 여지를 남기기 위함.
+     */
+    @Scheduled(cron = "0 0 4 * * *")
+    @Transactional
+    public void purgeStale() {
+        LocalDateTime cutoff = LocalDateTime.now(clock).minusDays(STALE_RETENTION_DAYS);
+        int deleted = repository.deleteStale(cutoff);
+        log.info("만료·폐기 RefreshToken 정리 cutoff={}, count={}", cutoff, deleted);
     }
 
     private String generateRawToken() {

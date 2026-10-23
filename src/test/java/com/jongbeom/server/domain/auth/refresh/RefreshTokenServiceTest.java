@@ -117,4 +117,11 @@ class RefreshTokenServiceTest {
 
         verify(repository).revokeAllByUserId(7L, FIXED_NOW);
     }
+
+    @Test
+    void purgeStale_은_7일_이전에_만료되거나_폐기된_토큰을_삭제한다() {
+        service.purgeStale();
+
+        verify(repository).deleteStale(FIXED_NOW.minusDays(7));
+    }
 }
