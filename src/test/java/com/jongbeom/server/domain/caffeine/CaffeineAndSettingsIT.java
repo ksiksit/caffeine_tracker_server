@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jongbeom.server.support.AbstractIntegrationTest;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -76,6 +78,46 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.error.fieldErrors[0].field").value("notifications"));
+    }
+
+    private static String settingsWithSeed(String learnedMean, String learnedVariance) {
+        return """
+                {"halfLife":5.0,"condition":0,"bedtimeHour":23,"bedtimeMinute":0,\
+                "referenceDoseMg":75,"isLearningEnabled":true,\
+                "notifications":{"cutoff":true,"bedtimeResidual":true,"recordReminder":true},\
+                "learnedMean":%s,"learnedVariance":%s,"lastLearnedDate":"2026-05-30"}"""
+                .formatted(learnedMean, learnedVariance);
+    }
+
+    @Test
+    void settings_학습값_시드는_그대로_저장() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(settingsWithSeed("4.2", "0.5")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.learnedMean").value(4.2))
+                .andExpect(jsonPath("$.data.learnedVariance").value(0.5))
+                .andExpect(jsonPath("$.data.lastLearnedDate").value("2026-05-30"));
+    }
+
+    /** 0 이하 시드는 학습 prior 로 쓸 수 없으므로(INVALID_PRIOR) 입력 단계에서 거절한다. */
+    @ParameterizedTest
+    @CsvSource({"5.0, 0.0, learnedVariance", "5.0, -1.0, learnedVariance", "0.0, 2.25, learnedMean"})
+    void settings_학습값_시드가_0이하면_400(String learnedMean, String learnedVariance, String field)
+            throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(settingsWithSeed(learnedMean, learnedVariance)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value(field));
+
+        mockMvc.perform(get("/api/settings").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.learnedMean").value(5.0))
+                .andExpect(jsonPath("$.data.learnedVariance").value(2.25));
     }
 
     @Test

@@ -976,10 +976,14 @@ components:
         learnedMean:
           type: number
           format: double
+          minimum: 0
+          exclusiveMinimum: true
           description: learnedVariance 와 함께 보내면 학습 상태를 1회 시드(기기 이전용). 하나만 보내면 무시
         learnedVariance:
           type: number
           format: double
+          minimum: 0
+          exclusiveMinimum: true
         lastLearnedDate:
           type: string
           format: date
@@ -1156,6 +1160,7 @@ components:
         end:
           type: string
           format: date-time
+          description: start 보다 늦어야 한다. 어기면 400 VALIDATION_FAILED(field samples[i].endAfterStart), 배치 전체 미저장
         hkValue:
           type: integer
           minimum: 0

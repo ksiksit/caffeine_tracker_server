@@ -268,8 +268,8 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | `notifications.cutoff` | boolean | ✔ | | |
 | `notifications.bedtimeResidual` | boolean | ✔ | | |
 | `notifications.recordReminder` | boolean | ✔ | | |
-| `learnedMean` | number | | | `learnedVariance`와 함께 보내면 학습 상태를 1회 시드(기존 기기의 학습값 이전용). 둘 중 하나만 있으면 무시 |
-| `learnedVariance` | number | | | 위와 같음 |
+| `learnedMean` | number | | 0 초과 | `learnedVariance`와 함께 보내면 학습 상태를 1회 시드(기존 기기의 학습값 이전용). 둘 중 하나만 있으면 무시 |
+| `learnedVariance` | number | | 0 초과 | 위와 같음 |
 | `lastLearnedDate` | string(date) | | | 시드 시 함께 저장. 생략하면 null |
 
 **응답 200** `data: SettingsResponse` (조회와 동일)
@@ -392,7 +392,7 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | `samples` | SampleItem[] | ✔ | 1개 이상 | |
 | `samples[].clientUuid` | string | ✔ | 최대 64자 | HealthKit 샘플 UUID. 멱등 키 |
 | `samples[].start` | string(date-time) | ✔ | 오프셋 포함 | |
-| `samples[].end` | string(date-time) | ✔ | 오프셋 포함 | |
+| `samples[].end` | string(date-time) | ✔ | 오프셋 포함, `start`보다 늦어야 함 | 어기면 400 `VALIDATION_FAILED`(`field: samples[i].endAfterStart`), 배치 전체 미저장 |
 | `samples[].hkValue` | integer | ✔ | 0~5 | 수면 단계 rawValue |
 
 **응답 200** `data: UploadSleepSamplesResponse`
