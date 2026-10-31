@@ -36,7 +36,7 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
   테스트가 대조하지 않는 유일한 사본이라, 세부를 적으면 낡아도 빌드가 통과한다.
 
 ## 절대 규칙
-- `domain/calc/` 상수(반감기 clamp 3~7h, alpha 0.15/beta 0.10/sigmaObs 10, trust region 0.5h 등)는 도메인 근거값 — 변경 금지.
+- `domain/calc/` 상수(반감기 clamp 3~7h, alpha 15/beta 0.10/sigmaObs 10, trust region 0.5h 등)는 도메인 근거값 — 변경 금지.
   iOS Swift 포팅이라 골든 테스트와 일치해야 한다.
 - Flyway/Liquibase/부팅 시 자동 스키마 적용 재도입 제안 금지 — 수동 적용이 결정 사항.
 - CD 자동화 제안 금지 — 수동 배포 유지가 결정 사항.

@@ -199,7 +199,11 @@ src/main/java/com/jongbeom/server/
 │   ├── sleep/          # 수면 원시 샘플 업로드 + 병합/요약
 │   ├── learning/       # 베이지안 반감기 학습 + 대시보드
 │   ├── notification/   # 로컬 알림 계획 (서버가 종류·시각·문구 계산, iOS 가 예약)
-│   └── calc/           # 순수 연산(iOS Swift 포팅): 약동학·수면병합·베이지안·타임존 — 레이어 없음
+│   └── calc/           # 순수 연산(iOS Swift 포팅) — 레이어·Spring 의존 없음, 다른 도메인을 import 하지 않음
+│       ├── pk/         # 카페인 약동학 (잔량·시계열·마감시각)
+│       ├── time/       # 타임존 로컬 달력·차트 경계(LocalCalendar), 경과 시간(Elapsed)
+│       ├── sleep/      # 수면 단계·병합·요약
+│       └── learning/   # 베이지안 반감기 갱신·학습용 bedtime 추출·대시보드 통계
 ├── global/
 │   ├── config/         # SecurityConfig, JwtConfig(+JwtProperties), ClockConfig
 │   ├── error/          # 전역 에러 (BusinessException·ErrorCode·ApiError·GlobalExceptionHandler·JsonSecurityErrorHandler=401/403)

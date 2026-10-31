@@ -1,6 +1,6 @@
 package com.jongbeom.server.domain.notification;
 
-import com.jongbeom.server.domain.calc.Pharmacokinetics;
+import com.jongbeom.server.domain.calc.time.LocalCalendar;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -19,7 +19,7 @@ import java.util.TreeMap;
  */
 public final class UsualFirstRecordTime {
 
-    private static final int DAY_START_HOUR = Pharmacokinetics.CHART_START_HOUR;
+    private static final int DAY_START_HOUR = LocalCalendar.CHART_START_HOUR;
 
     private UsualFirstRecordTime() {
     }

@@ -1,4 +1,4 @@
-package com.jongbeom.server.domain.calc;
+package com.jongbeom.server.domain.calc.sleep;
 
 /**
  * 수면 단계. iOS {@code SleepStage}(HealthKit) 이관.

@@ -1,6 +1,7 @@
 package com.jongbeom.server.domain.settings.entity;
 
-import com.jongbeom.server.domain.calc.Pharmacokinetics;
+import com.jongbeom.server.domain.calc.learning.BayesianHalfLifeUpdater;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics;
 import com.jongbeom.server.global.entity.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -28,9 +29,6 @@ import lombok.NoArgsConstructor;
 @Table(name = "user_settings")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserSettings extends BaseTimeEntity {
-
-    /** Koletzko 2021 모집단 분산(1.5²). prior 리셋 시 사용. (← SettingsManager.populationPriorVariance) */
-    public static final double POPULATION_PRIOR_VARIANCE = 1.5 * 1.5;
 
     // 신규 유저 기본값 (← SettingsManager.init)
     private static final int DEFAULT_BEDTIME_HOUR = 23;
@@ -92,7 +90,7 @@ public class UserSettings extends BaseTimeEntity {
         this.notifyBedtimeResidual = true;
         this.notifyRecordReminder = true;
         this.learnedMean = Pharmacokinetics.DEFAULT_HALF_LIFE_HOURS;
-        this.learnedVariance = POPULATION_PRIOR_VARIANCE;
+        this.learnedVariance = BayesianHalfLifeUpdater.POPULATION_PRIOR_VARIANCE;
         this.lastLearnedDate = null;
     }
 
@@ -110,7 +108,7 @@ public class UserSettings extends BaseTimeEntity {
         // 의도적 정확 비교(!=) — 슬라이더 값이 문자 그대로 바뀐 경우에만 prior 리셋 (iOS didSet 동일)
         if (this.halfLife != halfLife) {
             this.learnedMean = halfLife;
-            this.learnedVariance = POPULATION_PRIOR_VARIANCE;
+            this.learnedVariance = BayesianHalfLifeUpdater.POPULATION_PRIOR_VARIANCE;
             this.lastLearnedDate = null;
         }
         this.halfLife = halfLife;

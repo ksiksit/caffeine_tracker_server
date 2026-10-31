@@ -1,11 +1,11 @@
-package com.jongbeom.server.domain.calc;
+package com.jongbeom.server.domain.calc.learning;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
-import com.jongbeom.server.domain.calc.LearningStatsCalc.HistogramBin;
-import com.jongbeom.server.domain.calc.LearningStatsCalc.Point;
-import com.jongbeom.server.domain.calc.LearningStatsCalc.Range;
+import com.jongbeom.server.domain.calc.learning.LearningStatsCalc.HistogramBin;
+import com.jongbeom.server.domain.calc.learning.LearningStatsCalc.Point;
+import com.jongbeom.server.domain.calc.learning.LearningStatsCalc.Range;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

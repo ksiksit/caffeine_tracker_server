@@ -1,10 +1,10 @@
 package com.jongbeom.server.domain.sleep.service;
 
-import com.jongbeom.server.domain.calc.LocalCalendar;
-import com.jongbeom.server.domain.calc.SleepMerger;
-import com.jongbeom.server.domain.calc.SleepMerger.Interval;
-import com.jongbeom.server.domain.calc.SleepStage;
-import com.jongbeom.server.domain.calc.SleepSummaryCalc;
+import com.jongbeom.server.domain.calc.time.LocalCalendar;
+import com.jongbeom.server.domain.calc.sleep.SleepMerger;
+import com.jongbeom.server.domain.calc.sleep.SleepMerger.Interval;
+import com.jongbeom.server.domain.calc.sleep.SleepStage;
+import com.jongbeom.server.domain.calc.sleep.SleepSummaryCalc;
 import com.jongbeom.server.domain.sleep.dto.SleepSummaryResponse;
 import com.jongbeom.server.domain.sleep.dto.SleepSummaryResponse.RecordItem;
 import com.jongbeom.server.domain.sleep.dto.SleepSummaryResponse.StageItem;

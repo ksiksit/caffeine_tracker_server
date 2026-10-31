@@ -1,10 +1,10 @@
-package com.jongbeom.server.domain.calc;
+package com.jongbeom.server.domain.calc.sleep;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
-import com.jongbeom.server.domain.calc.SleepMerger.Interval;
-import com.jongbeom.server.domain.calc.SleepSummaryCalc.Result;
+import com.jongbeom.server.domain.calc.sleep.SleepMerger.Interval;
+import com.jongbeom.server.domain.calc.sleep.SleepSummaryCalc.Result;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;

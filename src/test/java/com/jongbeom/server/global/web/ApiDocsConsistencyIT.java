@@ -2,7 +2,7 @@ package com.jongbeom.server.global.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.jongbeom.server.domain.calc.Pharmacokinetics;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics;
 import com.jongbeom.server.domain.learning.LearningSkipReason;
 import com.jongbeom.server.domain.notification.NotificationType;
 import com.jongbeom.server.global.error.ErrorCode;
@@ -300,11 +300,13 @@ class ApiDocsConsistencyIT {
         return component.getType();
     }
 
+    /** openapi.yaml paths 중 "METHOD /api/..." 집합. /actuator/** 는 컨트롤러가 아니므로 codeEndpoints 와 맞춰 제외. */
     @SuppressWarnings("unchecked")
     private static Set<String> openapiEndpoints() throws Exception {
         Map<String, Object> paths = (Map<String, Object>) loadYaml().get("paths");
         Set<String> result = new TreeSet<>();
         paths.forEach((path, item) -> ((Map<String, Object>) item).keySet().stream()
+                .filter(httpMethod -> path.startsWith("/api/"))
                 .filter(HTTP_METHODS::contains)
                 .forEach(httpMethod -> result.add(httpMethod.toUpperCase() + " " + path)));
         return result;

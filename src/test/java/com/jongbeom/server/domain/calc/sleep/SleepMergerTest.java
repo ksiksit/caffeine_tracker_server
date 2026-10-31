@@ -1,9 +1,9 @@
-package com.jongbeom.server.domain.calc;
+package com.jongbeom.server.domain.calc.sleep;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.jongbeom.server.domain.calc.SleepMerger.Interval;
-import com.jongbeom.server.domain.calc.SleepMerger.Sample;
+import com.jongbeom.server.domain.calc.sleep.SleepMerger.Interval;
+import com.jongbeom.server.domain.calc.sleep.SleepMerger.Sample;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;

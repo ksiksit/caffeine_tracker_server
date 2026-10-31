@@ -30,6 +30,8 @@ tags:
     description: 베이지안 반감기 학습 + 대시보드
   - name: notification
     description: 로컬 알림 계획(서버 계산, iOS 가 예약)
+  - name: ops
+    description: 운영용(Actuator) — 앱은 호출하지 않는다
 
 paths:
   /api/auth/signup:
@@ -544,6 +546,32 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /actuator/health:
+    get:
+      tags: [ops]
+      summary: 헬스체크
+      description: |
+        Spring Boot Actuator 헬스체크. 배포 후 기동 확인·컨테이너 healthcheck 용. 공통 봉투가 아닌 Actuator 형식으로 응답한다.
+        운영(prod)은 show-details: never 라 구성 요소별 상세가 없다. probes 가 켜져 있어 하위 경로
+        /actuator/health/liveness · /actuator/health/readiness 도 같은 형식으로 응답한다.
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: 정상
+          content:
+            application/vnd.spring-boot.actuator.v3+json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example: { status: UP }
+        '503':
+          description: 비정상(DB 연결 실패 등)
+          content:
+            application/vnd.spring-boot.actuator.v3+json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example: { status: DOWN }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -735,6 +763,15 @@ components:
             message: 카페인 기록을 찾을 수 없습니다.
 
   schemas:
+    # ---------- 운영(Actuator, 봉투 아님) ----------
+    HealthStatus:
+      type: object
+      description: Actuator 헬스 응답. 공통 봉투가 아니며 코드에 대응하는 DTO record 가 없다.
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN, OUT_OF_SERVICE, UNKNOWN]
     # ---------- 공통 봉투 ----------
     SuccessEnvelope:
       type: object

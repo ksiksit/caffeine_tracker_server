@@ -9,10 +9,10 @@ import com.jongbeom.server.domain.caffeine.dto.UpdateCaffeineRecordRequest;
 import com.jongbeom.server.domain.caffeine.entity.CaffeineRecord;
 import com.jongbeom.server.domain.caffeine.exception.CaffeineRecordNotFoundException;
 import com.jongbeom.server.domain.caffeine.repository.CaffeineRecordRepository;
-import com.jongbeom.server.domain.calc.LocalCalendar;
-import com.jongbeom.server.domain.calc.Pharmacokinetics;
-import com.jongbeom.server.domain.calc.Pharmacokinetics.CutoffResult;
-import com.jongbeom.server.domain.calc.Pharmacokinetics.Dose;
+import com.jongbeom.server.domain.calc.time.LocalCalendar;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.CutoffResult;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.Dose;
 import com.jongbeom.server.domain.settings.entity.UserSettings;
 import com.jongbeom.server.domain.settings.service.UserSettingsService;
 import java.time.Instant;
@@ -116,7 +116,7 @@ public class CaffeineService {
         }
         List<DataPointResponse> chart = Pharmacokinetics
                 .generateTimeSeries(doses, chartStart, chartEnd,
-                        Pharmacokinetics.CHART_INTERVAL_MINUTES, effectiveHalfLifeHours)
+                        LocalCalendar.CHART_INTERVAL_MINUTES, effectiveHalfLifeHours)
                 .stream().map(p -> new DataPointResponse(p.time(), p.concentrationMg())).toList();
         double currentResidual = Pharmacokinetics.totalRemaining(now, doses, effectiveHalfLifeHours);
         double predictedAtBedtime = Pharmacokinetics.totalRemaining(bedtime, doses, effectiveHalfLifeHours);

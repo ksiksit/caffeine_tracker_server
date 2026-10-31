@@ -1,11 +1,11 @@
-package com.jongbeom.server.domain.calc;
+package com.jongbeom.server.domain.calc.learning;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
-import com.jongbeom.server.domain.calc.BedtimeExtractor.Gate;
-import com.jongbeom.server.domain.calc.BedtimeExtractor.Result;
-import com.jongbeom.server.domain.calc.SleepMerger.Interval;
+import com.jongbeom.server.domain.calc.learning.BedtimeExtractor.Gate;
+import com.jongbeom.server.domain.calc.learning.BedtimeExtractor.Result;
+import com.jongbeom.server.domain.calc.sleep.SleepMerger.Interval;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
