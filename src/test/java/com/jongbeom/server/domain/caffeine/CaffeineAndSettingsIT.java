@@ -185,6 +185,35 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void caffeine_today_05시이전에도_최근24시간_잔량을_계산() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        // 서울 2026-06-01 23:00 200mg, 다음 날 00:30 조회 — 그날 05:00 경계 이전이지만 몸에는 남아 있다.
+        mockMvc.perform(post("/api/caffeine-records").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"amount\":200,\"drinkName\":\"콜드브루\",\"timestamp\":\"2026-06-01T23:00:00+09:00\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/caffeine/today").header("Authorization", "Bearer " + accessToken)
+                .param("now", "2026-06-02T00:30:00+09:00")
+                .param("tz", "Asia/Seoul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records.length()").value(0))
+                .andExpect(jsonPath("$.data.todayTotal").value(0))
+                .andExpect(jsonPath("$.data.carryoverRecords.length()").value(1))
+                .andExpect(jsonPath("$.data.carryoverRecords[0].amount").value(200))
+                // 200 × 2^(-1.5/5) = 162.45mg
+                .andExpect(jsonPath("$.data.currentResidual").value(Matchers.closeTo(162.45, 0.01)));
+
+        // 24시간이 지나면 잔량 계산에서도 빠진다.
+        mockMvc.perform(get("/api/caffeine/today").header("Authorization", "Bearer " + accessToken)
+                .param("now", "2026-06-03T00:30:00+09:00")
+                .param("tz", "Asia/Seoul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.carryoverRecords.length()").value(0))
+                .andExpect(jsonPath("$.data.currentResidual").value(0.0));
+    }
+
+    @Test
     void caffeine_수정_삭제_그리고_없는기록_404() throws Exception {
         String accessToken = authToken("c@b.com", "테스터");
         MvcResult created = mockMvc.perform(post("/api/caffeine-records")

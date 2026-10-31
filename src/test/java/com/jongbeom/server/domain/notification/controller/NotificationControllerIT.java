@@ -170,7 +170,8 @@ class NotificationControllerIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].title").value("오늘 카페인 기록이 없어요"))
                 .andExpect(jsonPath("$.data.items[0].body", containsString("09:00")))
                 .andExpect(jsonPath("$.data.items[1].type").value("CUTOFF"))
-                .andExpect(jsonPath("$.data.items[1].fireAt").value("2026-06-01T10:34:30.675Z"));
+                // 어제 09:00 100mg이 24시간 룩백 안이라 취침 잔량 0.51mg만큼 마감이 앞당겨진다
+                .andExpect(jsonPath("$.data.items[1].fireAt").value("2026-06-01T10:30:01.586Z"));
     }
 
     @Test
@@ -179,13 +180,13 @@ class NotificationControllerIT extends AbstractIntegrationTest {
         addHistory(accessToken, FIVE_DAYS);
         addRecord(accessToken, 100, "2026-06-01T07:00:00+09:00");
 
-        // 100mg @ 07:00 → 23:00 취침 시 10.88mg → CUTOFF 상태, 마감 18:18:17.035 KST
+        // 100mg @ 07:00 + 어제 09:00 100mg(24h 룩백 안) → 23:00 취침 시 11.40mg → CUTOFF 상태, 마감 18:12 KST
         plan(accessToken, NOW_08_KST)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].type").value("CUTOFF"))
-                .andExpect(jsonPath("$.data.items[0].fireAt").value("2026-06-01T08:48:17.035Z"))
-                .andExpect(jsonPath("$.data.items[0].body", containsString("18:18")));
+                .andExpect(jsonPath("$.data.items[0].fireAt").value("2026-06-01T08:42:32.591Z"))
+                .andExpect(jsonPath("$.data.items[0].body", containsString("18:12")));
     }
 
     @Test
@@ -285,9 +286,9 @@ class NotificationControllerIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.cafeNearbyWindows[0].activeFrom").value("2026-06-01T05:00:00Z"))
                 .andExpect(jsonPath("$.data.cafeNearbyWindows[0].activeUntil").value("2026-06-01T20:00:00Z"))
                 .andExpect(jsonPath("$.data.cafeNearbyWindows[0].body", containsString("100mg")))
-                // 다음 날은 오늘 기록과 무관한 기본 구간
+                // 다음 날은 새 기록이 없다고 보되, 오늘 400mg의 다음 날 취침 잔량 3.59mg만큼 마감이 앞당겨진다
                 .andExpect(jsonPath("$.data.cafeNearbyWindows[1].reason").value("CUTOFF_PASSED"))
-                .andExpect(jsonPath("$.data.cafeNearbyWindows[1].activeFrom").value("2026-06-02T11:04:30.675Z"));
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[1].activeFrom").value("2026-06-02T10:32:15.990Z"));
     }
 
     @Test

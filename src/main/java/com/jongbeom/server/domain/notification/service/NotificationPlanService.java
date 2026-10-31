@@ -71,7 +71,7 @@ public class NotificationPlanService {
             }
             if (settings.isNotifyCafeNearby()) {
                 cafeNearbyWindow(today, now, zone).ifPresent(windows::add);
-                // 기록 없는 다음 날의 기본 구간 — 앱을 하루 종일 열지 않아도 동작하게. 다음 날 기록은 앱에서만 생기고
+                // 새 기록 없는 다음 날의 기본 구간(최근 24시간 잔량은 포함) — 앱을 하루 종일 열지 않아도 동작하게. 다음 날 기록은 앱에서만 생기고
                 // 그때 앱이 재조회하므로, "기록이 없다"는 가정은 틀리는 순간 교체된다.
                 Instant nextDay = LocalCalendar.chartEnd(now, zone);
                 cafeNearbyWindow(caffeineService.today(userId, nextDay, zone), nextDay, zone).ifPresent(windows::add);

@@ -43,8 +43,8 @@
 - 요청의 시각은 ISO-8601 + 오프셋: `2026-06-01T14:00:00+09:00`. 응답의 시각은 UTC `Z`: `2026-06-01T05:00:00Z`.
 - 날짜는 `YYYY-MM-DD`(로컬 날짜). `tz`는 IANA 타임존 이름(`Asia/Seoul`)이며 잘못된 값은 400 `INVALID_PARAMETER`.
 - 서버는 시각을 UTC로 저장하고, "오늘 경계·취침시각·수면 윈도우" 같은 로컬 달력 연산만 요청의 `tz`로 계산한다.
-  - 오늘 = `tz` 기준 그날 05:00부터 24시간. 00:00~05:00에는 그날 05:00이 아직 오지 않았으므로 오늘 기록·잔량이 비어 있다
-    (iOS `filterTodayRecords`와 같은 동작)
+  - 오늘 = `tz` 기준 그날 05:00부터 24시간. 00:00~05:00에는 그날 05:00이 아직 오지 않았으므로 오늘 기록·합계가 비어 있다
+  - 잔량·마감시각은 오늘 경계와 무관하게 `now` 이전 24시간부터의 기록으로 계산한다(학습과 같은 룩백)
   - 다음 취침시각 = 오늘의 설정 `bedtimeHour:bedtimeMinute`, 이미 지났으면 내일
   - 수면 윈도우(`date` 기준) = 전날 18:00 ~ 당일 12:00
 
@@ -355,17 +355,18 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | `records` | CaffeineRecordResponse[] | 오늘 기록 |
 | `todayTotal` | integer | 오늘 섭취 합(mg) |
 | `overDailyLimit` | boolean | `todayTotal > 400` |
-| `chart` | DataPointResponse[] | 잔량 시계열. 오늘 05:00부터 24시간, 15분 간격 + 섭취 직전·직후 점. 기록 없으면 `[]` |
+| `chart` | DataPointResponse[] | 잔량 시계열. 오늘 05:00부터 24시간, 15분 간격 + 섭취 직전·직후 점. 최근 24시간 기록 없으면 `[]` |
 | `chart[].time` | string(date-time) | UTC |
 | `chart[].concentrationMg` | number | 그 시각 체내 잔량(mg) |
-| `currentResidual` | number | `now` 시점 잔량(mg). 기록 없으면 0 |
-| `predictedAtBedtime` | number | 취침시각 예상 잔량(mg). 기록 없으면 0 |
+| `currentResidual` | number | `now` 시점 잔량(mg). 최근 24시간 기록 없으면 0 |
+| `predictedAtBedtime` | number | 취침시각 예상 잔량(mg). 최근 24시간 기록 없으면 0 |
 | `cutoff` | CutoffResponse | 기준 용량(`referenceDoseMg`)을 취침 시 잔량 50mg 이내로 마실 수 있는 가장 늦은 시각 |
 | `cutoff.status` | string | `SAFE_ANYTIME`(언제든 가능) · `CUTOFF`(마감시각 있음) · `ALREADY_EXCEEDED`(이미 초과) |
 | `cutoff.cutoff` | string(date-time) · null | `CUTOFF`일 때만. 과거일 수 있다 |
 | `cutoff.existingAtBedtime` | number · null | `ALREADY_EXCEEDED`일 때만. 취침 시 기존 잔량(mg) |
 | `effectiveHalfLifeHours` | number | 계산에 쓴 유효 반감기 |
 | `referenceDoseMg` | integer | 계산에 쓴 기준 용량 |
+| `carryoverRecords` | CaffeineRecordResponse[] | 오늘 경계 이전이지만 잔량 계산에 포함된 최근 24시간 기록. 합계·`records`에는 포함하지 않는다 |
 
 ```json
 { "success": true, "data": {
@@ -599,7 +600,7 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 `SAFE_ANYTIME`(마감 없음)이고 400mg 이하면 구간이 없다.
 마감 시각이 지나면 기준 용량 한 잔이 곧 취침 시 50mg 초과이므로 `CUTOFF_PASSED` 문구는 진입 순간 계산 없이 참이다.
 
-**기록 없는 다음 날의 기본 구간** — 같은 규칙을 다음 하루 경계 시각(`now`가 속한 날의 다음 05:00)에 기록이 없다고 보고 한 번 더 계산해 두 번째 원소로 붙인다.
+**기록 없는 다음 날의 기본 구간** — 같은 규칙을 다음 하루 경계 시각(`now`가 속한 날의 다음 05:00)에 새 기록이 없다고 보고 한 번 더 계산해 두 번째 원소로 붙인다. 그 시각 기준 최근 24시간 기록의 잔량은 계산에 포함한다.
 앱을 하루 종일 열지 않은 날에도 동작하게 하기 위해서다. 다음 날 기록은 앱에서만 생기고 그때 앱이 재조회하므로 가정이 틀리는 순간 교체된다.
 
 ```json

@@ -1113,8 +1113,13 @@ components:
     CaffeineTodayResponse:
       type: object
       required: [now, bedtime, records, todayTotal, overDailyLimit, chart, currentResidual, predictedAtBedtime,
-                 cutoff, effectiveHalfLifeHours, referenceDoseMg]
+                 cutoff, effectiveHalfLifeHours, referenceDoseMg, carryoverRecords]
       properties:
+        carryoverRecords:
+          type: array
+          description: 오늘 경계 이전이지만 잔량 계산에 포함된 최근 24시간 기록. 합계·records 에는 포함하지 않는다
+          items:
+            $ref: '#/components/schemas/CaffeineRecordResponse'
         now:
           type: string
           format: date-time
@@ -1136,7 +1141,7 @@ components:
           description: todayTotal > 400
         chart:
           type: array
-          description: 잔량 시계열. 05:00 부터 24h, 15분 간격 + 섭취 직전·직후 점. 기록 없으면 []
+          description: 잔량 시계열. 05:00 부터 24h, 15분 간격 + 섭취 직전·직후 점. 최근 24시간 기록 없으면 []
           items:
             $ref: '#/components/schemas/DataPointResponse'
         currentResidual:

@@ -18,7 +18,8 @@ public record CaffeineTodayResponse(
         double predictedAtBedtime,
         CutoffResponse cutoff,
         double effectiveHalfLifeHours,
-        int referenceDoseMg
+        int referenceDoseMg,
+        List<CaffeineRecordResponse> carryoverRecords
 ) {
     public record DataPointResponse(
             Instant time,
