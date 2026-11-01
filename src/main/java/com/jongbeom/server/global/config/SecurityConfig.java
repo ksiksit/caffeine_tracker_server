@@ -1,6 +1,7 @@
 package com.jongbeom.server.global.config;
 
 import com.jongbeom.server.global.error.JsonSecurityErrorHandler;
+import com.jongbeom.server.global.web.UserIdMdcFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -9,6 +10,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 
 /** Spring Security 설정 — 무상태 JWT 리소스 서버. */
@@ -19,9 +21,9 @@ public class SecurityConfig {
     private static final String[] PUBLIC_AUTH_ENDPOINTS = {
             "/api/auth/signup", "/api/auth/login", "/api/auth/refresh"};
 
-    /** 배포 헬스체크 (GET). */
-    private static final String[] ACTUATOR_HEALTH_ENDPOINTS = {
-            "/actuator/health", "/actuator/health/**"};
+    /** 배포 헬스체크·메트릭 수집 (GET). 운영은 비공개 관리 포트(8081)에서만 응답한다. */
+    private static final String[] ACTUATOR_PUBLIC_ENDPOINTS = {
+            "/actuator/health", "/actuator/health/**", "/actuator/prometheus"};
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -42,7 +44,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, PUBLIC_AUTH_ENDPOINTS).permitAll()
-                        .requestMatchers(HttpMethod.GET, ACTUATOR_HEALTH_ENDPOINTS).permitAll()
+                        .requestMatchers(HttpMethod.GET, ACTUATOR_PUBLIC_ENDPOINTS).permitAll()
                         // 새 도메인 엔드포인트는 여기 등록하지 않으면 기본 authenticated (CLAUDE.md 규칙)
                         .anyRequest().authenticated())
                 // 401/403 을 ApiResponse 봉투(JSON)로. 토큰 없음(익명) 경로는 exceptionHandling 이,
@@ -53,7 +55,8 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .authenticationEntryPoint(securityErrorHandler)
                         .accessDeniedHandler(securityErrorHandler)
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
+                .addFilterAfter(new UserIdMdcFilter(), BearerTokenAuthenticationFilter.class);
         return http.build();
     }
 }

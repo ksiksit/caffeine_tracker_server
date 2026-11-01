@@ -34,7 +34,7 @@
 | 항목 | 값 |
 |---|---|
 | Base URL | 로컬 `http://localhost:8080`. 운영은 EC2 주소(배포 환경에 따름) |
-| 인증 | `Authorization: Bearer <accessToken>` 헤더. 공개 API는 회원가입·로그인·토큰 재발급 3개뿐(그 외 공개 경로는 [헬스체크](#get-actuatorhealth--헬스체크)) |
+| 인증 | `Authorization: Bearer <accessToken>` 헤더. 공개 API는 회원가입·로그인·토큰 재발급 3개뿐(그 외 인증 없는 경로는 [운영](#운영)용 actuator) |
 | Content-Type | 요청·응답 모두 `application/json` (UTF-8) |
 | 토큰 | access 토큰(JWT) 1시간, refresh 토큰 14일. refresh는 1회용 — 재발급 시 새 쌍이 나오고 기존 refresh는 폐기된다(재사용 시 401). 로그아웃은 그 사용자의 refresh를 전부 폐기한다 |
 
@@ -617,6 +617,8 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 앱이 호출하지 않는 운영용 경로. Spring Boot Actuator가 제공하며 컨트롤러가 아니므로 위 엔드포인트 목록 표와
 `ApiDocsConsistencyIT` 대조 대상에서 빠진다. 배포 확인 절차는 [`운영-가이드.md`](../ops/운영-가이드.md).
 
+운영(prod)에서는 관리 포트 **8081**에서만 응답하고 8080에서는 404다. compose가 8081을 루프백에만 바인딩하므로 앱에서는 호출할 수 없다.
+
 ### GET /actuator/health — 헬스체크
 
 인증 불필요(`SecurityConfig`의 공개 경로). 배포 후 기동 확인과 컨테이너 healthcheck에 쓴다.
@@ -631,5 +633,14 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | 비정상(DB 연결 실패 등) | 503 | `{"status":"DOWN"}` |
 
 ```bash
-curl localhost:8080/actuator/health   # {"status":"UP"}
+curl localhost:8081/actuator/health   # {"status":"UP"}
+```
+
+### GET /actuator/prometheus — 메트릭
+
+인증 불필요(`SecurityConfig`의 공개 경로). Prometheus 수집용이며 **공통 봉투가 아니라** Prometheus 텍스트 형식으로 응답한다.
+운영(prod)에서만 노출하고, 그 외 프로파일은 별도 설정이 없으면 404다.
+
+```bash
+curl localhost:8081/actuator/prometheus
 ```

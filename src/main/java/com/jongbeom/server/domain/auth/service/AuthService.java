@@ -41,7 +41,7 @@ public class AuthService {
                 passwordEncoder.encode(request.password()),
                 request.nickname());
         User saved = userRepository.save(user);
-        log.info("회원가입 성공 userId={}, email={}", saved.getId(), saved.getEmail());
+        log.info("회원가입 성공 userId={}", saved.getId());
         return new SignupResponse(saved.getId(), saved.getEmail(), saved.getNickname());
     }
 
@@ -75,7 +75,7 @@ public class AuthService {
     private User findByEmailOrThrow(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> {
-                    log.info("로그인 실패(존재하지 않는 이메일) email={}", email);
+                    log.info("로그인 실패(존재하지 않는 이메일)");
                     return new InvalidCredentialsException();
                 });
     }

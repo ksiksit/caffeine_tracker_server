@@ -207,7 +207,7 @@ src/main/java/com/jongbeom/server/
 ├── global/
 │   ├── config/         # SecurityConfig, JwtConfig(+JwtProperties), ClockConfig
 │   ├── error/          # 전역 에러 (BusinessException·ErrorCode·ApiError·GlobalExceptionHandler·JsonSecurityErrorHandler=401/403)
-│   ├── web/            # 컨트롤러 공용 (ApiResponse 응답 봉투, CurrentUser)
+│   ├── web/            # 컨트롤러 공용 (ApiResponse 응답 봉투, CurrentUser), 요청 로그 필터
 │   └── entity/         # BaseTimeEntity
 └── ServerApplication.java   # 패키지 루트 고정 — 컴포넌트 스캔 베이스
 

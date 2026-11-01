@@ -551,7 +551,30 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /actuator/prometheus:
+    servers:
+      - url: http://localhost:8081
+        description: 운영(prod) 관리 포트. 루프백에만 바인딩된다
+    get:
+      tags: [ops]
+      summary: 메트릭
+      description: |
+        Prometheus 수집용 메트릭. 공통 봉투가 아닌 Prometheus 텍스트 형식으로 응답한다.
+        운영(prod)에서만 노출한다.
+      operationId: prometheus
+      security: []
+      responses:
+        '200':
+          description: 정상
+          content:
+            text/plain:
+              schema:
+                type: string
+
   /actuator/health:
+    servers:
+      - url: http://localhost:8081
+        description: 운영(prod) 관리 포트. 루프백에만 바인딩된다
     get:
       tags: [ops]
       summary: 헬스체크

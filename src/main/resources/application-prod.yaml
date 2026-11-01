@@ -11,12 +11,18 @@ logging:
     root: INFO
     com.jongbeom.server: INFO
     org.hibernate.SQL: WARN
+  structured:
+    format:
+      console: ecs # JSON 한 줄. MDC(requestId·userId)가 필드로 함께 나간다
 
 management:
+  # 8080 은 외부에 공개되므로 actuator 는 별도 포트로 분리한다. compose 는 8081 을 루프백에만 바인딩한다.
+  server:
+    port: 8081
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
   endpoint:
     health:
       probes:
