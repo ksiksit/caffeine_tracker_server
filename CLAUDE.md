@@ -12,7 +12,7 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 ## 배치 규칙
 - `com.jongbeom.server.domain.<도메인>/` 아래 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/`.
   테스트도 같은 구조로 미러링, 통합 테스트는 `*IT` 접미사.
-- 레이어가 아닌 컴포넌트(`JwtTokenProvider`, `LearningSkipReason`)와 하위 모듈(`auth/refresh/`)은 도메인 루트.
+- 레이어가 아닌 컴포넌트(`JwtTokenProvider`, `RefreshTokenVerifier`, `LearningSkipReason`)는 도메인 루트.
 - 인프라는 `global/`(config·error·web·entity). `ServerApplication`은 패키지 루트 고정(컴포넌트 스캔 베이스).
 - 새 엔드포인트는 `SecurityConfig.authorizeHttpRequests`에 등록 (미등록 = authenticated).
 
@@ -40,7 +40,7 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
   iOS Swift 포팅이라 골든 테스트와 일치해야 한다.
 - Flyway/Liquibase/부팅 시 자동 스키마 적용 재도입 제안 금지 — 수동 적용이 결정 사항.
 - CD 자동화 제안 금지 — 수동 배포 유지가 결정 사항.
-- 리프레시 토큰은 DB에 SHA-256 해시로만 저장, 평문 금지.
+- 리프레시 토큰은 JWT(`typ=refresh`·`ver` 클레임)로 발급하고 DB에 저장하지 않는다. 무효화는 `users.token_version`으로만 한다.
 
 ## 도메인 계약 (코드만 보고는 의도인지 알 수 없는 것)
 - 타임존: `timestamp`/`start`/`end`는 UTC `Instant`로 저장. 하루 경계·취침시각·24h 윈도우 같은 로컬 달력 연산만

@@ -79,4 +79,30 @@ class JwtTokenProviderTest {
 
         assertThat(jwt.getHeaders().get("alg")).isEqualTo("HS256");
     }
+
+    @Test
+    void createRefreshToken_은_typ_refresh와_ver_클레임을_담고_email_roles는_담지_않는다() {
+        User user = UserFixture.withId(7L);
+        user.invalidateTokens(); // ver = 1
+
+        JwtTokenProvider.IssuedToken issued = provider.createRefreshToken(user);
+        Jwt jwt = decoder.decode(issued.value());
+
+        assertThat(jwt.getClaimAsString("iss")).isEqualTo("test-issuer");
+        assertThat(jwt.getSubject()).isEqualTo("7");
+        assertThat(jwt.getClaimAsString("typ")).isEqualTo("refresh");
+        assertThat(((Number) jwt.getClaim("ver")).intValue()).isEqualTo(1);
+        assertThat(jwt.hasClaim("email")).isFalse();
+        assertThat(jwt.hasClaim("roles")).isFalse();
+        assertThat(jwt.getIssuedAt()).isEqualTo(FIXED_INSTANT);
+        assertThat(jwt.getExpiresAt()).isEqualTo(FIXED_INSTANT.plusSeconds(1209600));
+        assertThat(issued.expiresInSeconds()).isEqualTo(1209600L);
+    }
+
+    @Test
+    void createAccessToken_은_typ_클레임을_담지_않는다() {
+        Jwt jwt = decoder.decode(provider.createAccessToken(UserFixture.withId(7L)).value());
+
+        assertThat(jwt.hasClaim("typ")).isFalse();
+    }
 }
