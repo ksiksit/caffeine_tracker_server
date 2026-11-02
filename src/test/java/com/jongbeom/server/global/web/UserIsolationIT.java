@@ -149,4 +149,32 @@ class UserIsolationIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.isLearningEnabled").value(true))
                 .andExpect(jsonPath("$.data.notifications.cutoff").value(true));
     }
+
+    @Test
+    void 로그아웃은_다른사용자의_토큰에_영향없음() throws Exception {
+        signup("owner@b.com", DEFAULT_PASSWORD, "주인");
+        signup("other@b.com", DEFAULT_PASSWORD, "타인");
+        String ownerAccess = login("owner@b.com", DEFAULT_PASSWORD).get("accessToken").asText();
+        String otherRefresh = login("other@b.com", DEFAULT_PASSWORD).get("refreshToken").asText();
+
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + ownerAccess)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"any\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"" + otherRefresh + "\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void me는_토큰주인의_정보만_돌려줌() throws Exception {
+        authToken("owner@b.com", "주인");
+        String other = authToken("other@b.com", "타인");
+
+        mockMvc.perform(get("/api/me").header("Authorization", "Bearer " + other))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.email").value("other@b.com"));
+    }
 }
