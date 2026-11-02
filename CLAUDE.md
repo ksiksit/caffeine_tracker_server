@@ -8,6 +8,7 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 - `./gradlew build` — 빌드+테스트 (테스트는 H2, 환경변수 불필요)
 - `./gradlew build -x test` — 컴파일만
 - `./gradlew bootRun` — 로컬 실행 (환경변수 4개 필요, README 참조)
+- `./gradlew e2eTest` — E2E (Docker 필요, `build`·CI와 별개). `src/e2eTest`는 블랙박스 — main 코드를 import 하지 않는다
 
 ## 배치 규칙
 - `com.jongbeom.server.domain.<도메인>/` 아래 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/`.
