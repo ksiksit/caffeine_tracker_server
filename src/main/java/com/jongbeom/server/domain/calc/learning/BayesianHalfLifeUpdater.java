@@ -1,6 +1,8 @@
-package com.jongbeom.server.domain.calc;
+package com.jongbeom.server.domain.calc.learning;
 
-import com.jongbeom.server.domain.calc.Pharmacokinetics.Dose;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.Dose;
+import com.jongbeom.server.domain.calc.time.Elapsed;
 import java.time.Instant;
 import java.util.List;
 
@@ -23,6 +25,9 @@ public final class BayesianHalfLifeUpdater {
     public static final double BETA = 0.10;        // mg당 SOL 증가(분/mg)
     public static final double SIGMA_OBS = 10.0;   // SOL 관측 노이즈 표준편차(분)
 
+    /** Koletzko 2021 모집단 분산(1.5²). prior 초기값·리셋 시 사용. (← SettingsManager.populationPriorVariance) */
+    public static final double POPULATION_PRIOR_VARIANCE = 1.5 * 1.5;
+
     /** 반감기 clamp 범위(시간). */
     public static final double HALF_LIFE_CLAMP_MIN_HOURS = Pharmacokinetics.MIN_HALF_LIFE_HOURS; // 3
     public static final double HALF_LIFE_CLAMP_MAX_HOURS = Pharmacokinetics.MAX_HALF_LIFE_HOURS; // 7
@@ -30,12 +35,9 @@ public final class BayesianHalfLifeUpdater {
     public static final double VARIANCE_FLOOR = 0.05 * 0.05;    // 0.0025
     public static final double DOSES_LOOKBACK_HOURS = 24;
     public static final double MIN_RESIDUAL_FOR_LEARNING = 1.0; // mg
-    public static final double MAX_ACCEPTABLE_SOL_MINUTES = 180;
-    public static final long MIN_SLEEP_DURATION_SECONDS = 4 * 3600;
+    // 수면 게이트(최소 수면 시간·SOL 상한)는 BedtimeExtractor 소관.
 
-    // LN_2는 리터럴로 바꾸지 말 것 — Math.log(2) 결과 그대로 써야 iOS 골든과 비트 일치.
-    private static final double LN_2 = Math.log(2);
-    private static final double MILLIS_PER_HOUR = 3_600_000.0;
+    private static final double LN_2 = Pharmacokinetics.LN_2;
 
     /** prior 평균 주변 선형화 결과. cMu = 취침 시 잔량(mg), cPrime = ∂C/∂μ_base (mg/시간). */
     public record Linearization(double cMu, double cPrime) {
@@ -78,7 +80,7 @@ public final class BayesianHalfLifeUpdater {
         double ke = LN_2 / effectiveMu;
         double sum = 0;
         for (Dose dose : doses) {
-            double dtHours = (bedtime.toEpochMilli() - dose.timestamp().toEpochMilli()) / MILLIS_PER_HOUR;
+            double dtHours = Elapsed.hours(dose.timestamp(), bedtime);
             if (dtHours < 0) {
                 continue;
             }

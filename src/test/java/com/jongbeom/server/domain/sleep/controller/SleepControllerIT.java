@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jongbeom.server.support.AbstractIntegrationTest;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.MediaType;
 
 /** sleep 도메인 통합 테스트: 멱등 업로드와 서버 병합·SOL 계산. */
@@ -55,6 +57,29 @@ class SleepControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.hasData").value(false))
                 .andExpect(jsonPath("$.data.records").isEmpty());
+    }
+
+    /** end 가 start 보다 늦지 않으면(역전·같음) 배치 전체를 400으로 거절하고 아무것도 저장하지 않는다. */
+    @ParameterizedTest
+    @ValueSource(strings = {"2026-05-31T23:00:00+09:00", "2026-05-31T23:30:00+09:00"})
+    void end가_start보다_늦지않으면_400_VALIDATION_FAILED(String end) throws Exception {
+        String accessToken = authToken("sleep@b.com", "수면");
+        String body = """
+                {"samples":[
+                  {"clientUuid":"ok","start":"2026-05-31T23:30:00+09:00","end":"2026-06-01T05:00:00+09:00","hkValue":3},
+                  {"clientUuid":"bad","start":"2026-05-31T23:30:00+09:00","end":"%s","hkValue":0}
+                ]}""".formatted(end);
+
+        mockMvc.perform(post("/api/sleep/samples").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value("samples[1].endAfterStart"));
+
+        mockMvc.perform(get("/api/sleep/summary").header("Authorization", "Bearer " + accessToken)
+                .param("date", "2026-06-01").param("tz", "Asia/Seoul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hasData").value(false));
     }
 
     @Test

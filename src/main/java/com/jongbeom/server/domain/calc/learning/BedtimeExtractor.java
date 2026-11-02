@@ -1,6 +1,10 @@
-package com.jongbeom.server.domain.calc;
+package com.jongbeom.server.domain.calc.learning;
 
-import com.jongbeom.server.domain.calc.SleepMerger.Interval;
+import com.jongbeom.server.domain.calc.sleep.SleepMerger.Interval;
+import com.jongbeom.server.domain.calc.sleep.SleepScan;
+import com.jongbeom.server.domain.calc.sleep.SleepSummaryCalc;
+import com.jongbeom.server.domain.calc.time.Elapsed;
+import com.jongbeom.server.domain.calc.time.LocalCalendar;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -22,7 +26,11 @@ public final class BedtimeExtractor {
     /** 취침 시각 윈도우 경계(18시) — bedtimeHour가 이 이상이면 전날로 본다. */
     private static final int WINDOW_START_HOUR = LocalCalendar.SLEEP_WINDOW_START_HOUR;
 
-    private static final double MILLIS_PER_SECOND = 1000.0;
+    /** 학습 게이트: 이보다 짧은 밤은 관측으로 쓰지 않는다(초). */
+    public static final long MIN_SLEEP_DURATION_SECONDS = 4 * 3600;
+    /** 학습 게이트: SOL 최대 허용치(분). */
+    public static final double MAX_ACCEPTABLE_SOL_MINUTES = 180;
+
     private static final double SECONDS_PER_MINUTE = 60.0;
 
     public enum Gate {SLEEP_TOO_SHORT, MISSING_BEDTIME, INVALID_SOL}
@@ -42,10 +50,6 @@ public final class BedtimeExtractor {
         }
     }
 
-    private static double secondsBetween(Instant from, Instant to) {
-        return (to.toEpochMilli() - from.toEpochMilli()) / MILLIS_PER_SECOND;
-    }
-
     /**
      * 학습용 bedtime·SOL 추출 + 게이트 적용.
      *
@@ -62,9 +66,9 @@ public final class BedtimeExtractor {
             List<Interval> intervals, Instant bedtimeStart,
             int bedtimeHour, int bedtimeMinute, LocalDate summaryDate, ZoneId zone) {
 
-        IntervalScan scanned = scan(intervals);
+        SleepScan scanned = SleepScan.of(intervals);
 
-        if (scanned.totalSleepSeconds() < BayesianHalfLifeUpdater.MIN_SLEEP_DURATION_SECONDS) {
+        if (scanned.totalSleepSeconds() < MIN_SLEEP_DURATION_SECONDS) {
             return Result.fail(Gate.SLEEP_TOO_SHORT);
         }
         if (scanned.firstAsleep() == null) {
@@ -77,42 +81,18 @@ public final class BedtimeExtractor {
             return Result.fail(Gate.MISSING_BEDTIME);
         }
 
-        double solSeconds = secondsBetween(bedtime, scanned.firstAsleep());
+        double solSeconds = Elapsed.seconds(bedtime, scanned.firstAsleep());
         if (!isUsableSol(solSeconds)) {
             return Result.fail(Gate.INVALID_SOL);
         }
         return Result.ok(bedtime, solSeconds / SECONDS_PER_MINUTE);
     }
 
-    /** 구간 스캔 결과: 총수면(초)·최초 asleep 시작·최초 inBed 시작. */
-    private record IntervalScan(double totalSleepSeconds, Instant firstAsleep, Instant earliestInBed) {
-    }
-
-    private static IntervalScan scan(List<Interval> intervals) {
-        double totalSleep = 0;
-        Instant firstAsleep = null;
-        Instant earliestInBed = null;
-        for (Interval interval : intervals) {
-            SleepStage stage = SleepStage.fromHkValue(interval.hkValue());
-            if (stage.isAsleep()) {
-                totalSleep += secondsBetween(interval.start(), interval.end());
-                if (firstAsleep == null || interval.start().isBefore(firstAsleep)) {
-                    firstAsleep = interval.start();
-                }
-            }
-            if (stage == SleepStage.IN_BED
-                    && (earliestInBed == null || interval.start().isBefore(earliestInBed))) {
-                earliestInBed = interval.start();
-            }
-        }
-        return new IntervalScan(totalSleep, firstAsleep, earliestInBed);
-    }
-
     /** SOL(초)이 학습에 쓸 수 있는 값인가: 유한 · 0 이상 · 최대 허용치(분) 이하. */
     private static boolean isUsableSol(double solSeconds) {
         return Double.isFinite(solSeconds)
                 && solSeconds >= 0
-                && solSeconds / SECONDS_PER_MINUTE <= BayesianHalfLifeUpdater.MAX_ACCEPTABLE_SOL_MINUTES;
+                && solSeconds / SECONDS_PER_MINUTE <= MAX_ACCEPTABLE_SOL_MINUTES;
     }
 
     /** recordedBedtime(원시 inBed ?? 병합 inBed) ?? 설정 취침시각 폴백. */
@@ -132,7 +112,7 @@ public final class BedtimeExtractor {
         LocalDate nightDate = nightOf(summaryDate, bedtimeHour);
         ZonedDateTime bedtimeZ = nightDate.atStartOfDay(zone).withHour(bedtimeHour).withMinute(bedtimeMinute);
         Instant bedtime = bedtimeZ.toInstant();
-        double solSeconds = secondsBetween(bedtime, firstAsleep);
+        double solSeconds = Elapsed.seconds(bedtime, firstAsleep);
         if (!isUsableSol(solSeconds)) {
             return null;
         }

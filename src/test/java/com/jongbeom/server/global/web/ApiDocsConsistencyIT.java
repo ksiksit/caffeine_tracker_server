@@ -2,8 +2,9 @@ package com.jongbeom.server.global.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.jongbeom.server.domain.calc.Pharmacokinetics;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics;
 import com.jongbeom.server.domain.learning.LearningSkipReason;
+import com.jongbeom.server.domain.notification.CafeNearbyReason;
 import com.jongbeom.server.domain.notification.NotificationType;
 import com.jongbeom.server.global.error.ErrorCode;
 import java.io.InputStream;
@@ -44,7 +45,7 @@ import org.yaml.snakeyaml.Yaml;
  *   <li>DTO 필드: domain/*&#47;dto 와 global/error 의 record 필드 == openapi.yaml components.schemas 의 properties</li>
  *   <li>DTO 필드: 같은 record == api.md 의 "| 필드 |" 표(중첩 record 는 경로로 전개)</li>
  *   <li>필드 표를 생략한 앵커: 반드시 "…와 동일" 참조여야 하고, 그 참조가 가리키는 DTO 와 필드·제약이 같아야 한다</li>
- *   <li>enum 목록: ErrorCode, LearningSkipReason, CutoffResult.Status, NotificationType == openapi.yaml 의 enum</li>
+ *   <li>enum 목록: ErrorCode, LearningSkipReason, CutoffResult.Status, NotificationType, CafeNearbyReason == openapi.yaml 의 enum</li>
  * </ul>
  * 설명·제약 문구는 검사하지 않는다(사람이 맞춘다). 문서 파일은 build.gradle 의 processTestResources 가 docs/api/ 로 복사한다.
  */
@@ -140,6 +141,8 @@ class ApiDocsConsistencyIT {
                 .containsExactlyInAnyOrderElementsOf(names(Pharmacokinetics.CutoffResult.Status.values()));
         assertThat(enumOf(schemas, "NotificationItem", "type"))
                 .containsExactlyInAnyOrderElementsOf(names(NotificationType.values()));
+        assertThat(enumOf(schemas, "CafeNearbyWindow", "reason"))
+                .containsExactlyInAnyOrderElementsOf(names(CafeNearbyReason.values()));
     }
 
     /** 컨트롤러에 등록된 "METHOD /api/..." 집합. /error 등 메서드 미지정 매핑은 제외. */
@@ -300,11 +303,13 @@ class ApiDocsConsistencyIT {
         return component.getType();
     }
 
+    /** openapi.yaml paths 중 "METHOD /api/..." 집합. /actuator/** 는 컨트롤러가 아니므로 codeEndpoints 와 맞춰 제외. */
     @SuppressWarnings("unchecked")
     private static Set<String> openapiEndpoints() throws Exception {
         Map<String, Object> paths = (Map<String, Object>) loadYaml().get("paths");
         Set<String> result = new TreeSet<>();
         paths.forEach((path, item) -> ((Map<String, Object>) item).keySet().stream()
+                .filter(httpMethod -> path.startsWith("/api/"))
                 .filter(HTTP_METHODS::contains)
                 .forEach(httpMethod -> result.add(httpMethod.toUpperCase() + " " + path)));
         return result;

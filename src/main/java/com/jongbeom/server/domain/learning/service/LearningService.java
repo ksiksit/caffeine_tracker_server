@@ -1,14 +1,14 @@
 package com.jongbeom.server.domain.learning.service;
 
 import com.jongbeom.server.domain.caffeine.repository.CaffeineRecordRepository;
-import com.jongbeom.server.domain.calc.BayesianHalfLifeUpdater;
-import com.jongbeom.server.domain.calc.BayesianHalfLifeUpdater.Linearization;
-import com.jongbeom.server.domain.calc.BayesianHalfLifeUpdater.Posterior;
-import com.jongbeom.server.domain.calc.BedtimeExtractor;
-import com.jongbeom.server.domain.calc.LearningStatsCalc;
-import com.jongbeom.server.domain.calc.LearningStatsCalc.Point;
-import com.jongbeom.server.domain.calc.LearningStatsCalc.Range;
-import com.jongbeom.server.domain.calc.Pharmacokinetics.Dose;
+import com.jongbeom.server.domain.calc.learning.BayesianHalfLifeUpdater;
+import com.jongbeom.server.domain.calc.learning.BayesianHalfLifeUpdater.Linearization;
+import com.jongbeom.server.domain.calc.learning.BayesianHalfLifeUpdater.Posterior;
+import com.jongbeom.server.domain.calc.learning.BedtimeExtractor;
+import com.jongbeom.server.domain.calc.learning.LearningStatsCalc;
+import com.jongbeom.server.domain.calc.learning.LearningStatsCalc.Point;
+import com.jongbeom.server.domain.calc.learning.LearningStatsCalc.Range;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.Dose;
 import com.jongbeom.server.domain.learning.LearningSkipReason;
 import com.jongbeom.server.domain.learning.dto.LearningDashboardResponse;
 import com.jongbeom.server.domain.learning.dto.LearningDashboardResponse.Calibration;

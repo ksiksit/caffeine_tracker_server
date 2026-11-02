@@ -1,6 +1,5 @@
-package com.jongbeom.server.domain.calc;
+package com.jongbeom.server.domain.calc.learning;
 
-import com.jongbeom.server.domain.settings.entity.UserSettings;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,7 +45,7 @@ public final class LearningStatsCalc {
     /** 1 − σ_post/σ_prior_initial. σ_prior_initial = √2.25 = 1.5h. clamp[0,1]. */
     public static double confidenceScore(double posteriorVariance) {
         double sigmaPost = Math.sqrt(Math.max(posteriorVariance, 0));
-        double sigmaPriorInitial = Math.sqrt(UserSettings.POPULATION_PRIOR_VARIANCE);
+        double sigmaPriorInitial = Math.sqrt(BayesianHalfLifeUpdater.POPULATION_PRIOR_VARIANCE);
         double raw = 1.0 - sigmaPost / sigmaPriorInitial;
         return Math.min(Math.max(raw, 0), 1);
     }

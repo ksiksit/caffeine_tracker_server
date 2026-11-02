@@ -6,6 +6,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import java.time.LocalDate;
 
 /**
@@ -20,8 +21,8 @@ public record UpdateSettingsRequest(
         @NotNull @Min(1) @Max(1000) Integer referenceDoseMg,
         @NotNull Boolean isLearningEnabled,
         @NotNull @Valid NotificationSettingsRequest notifications,
-        Double learnedMean,
-        Double learnedVariance,
+        @Positive Double learnedMean,
+        @Positive Double learnedVariance,
         LocalDate lastLearnedDate
 ) {
     public boolean hasLearnedSeed() {

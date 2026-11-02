@@ -1,6 +1,6 @@
 package com.jongbeom.server.domain.learning;
 
-import com.jongbeom.server.domain.calc.BedtimeExtractor;
+import com.jongbeom.server.domain.calc.learning.BedtimeExtractor;
 
 /** 학습을 건너뛴 사유. iOS {@code LearningSkipReason} 이관(사용자 표시 메시지 포함). */
 public enum LearningSkipReason {

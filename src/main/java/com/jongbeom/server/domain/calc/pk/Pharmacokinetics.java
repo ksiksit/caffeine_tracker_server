@@ -1,5 +1,7 @@
-package com.jongbeom.server.domain.calc;
+package com.jongbeom.server.domain.calc.pk;
 
+import com.jongbeom.server.domain.calc.time.Elapsed;
+import com.jongbeom.server.domain.calc.time.LocalCalendar;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -10,7 +12,7 @@ import java.util.List;
  *
  * <p>iOS {@code CaffeineKineticsCalculator.swift} + {@code CaffeineHelpers.caffeineCutoffTime} 포팅.
  * 모든 메서드는 순수함수이며 절대시각({@link Instant}) 기준으로 계산한다. "하루 경계 / 취침시각" 같은
- * 로컬 달력 연산은 호출 측({@link com.jongbeom.server.domain.calc.LocalCalendar})에서 타임존으로 변환해 전달한다.
+ * 로컬 달력 연산은 호출 측({@link LocalCalendar})에서 타임존으로 변환해 전달한다.
  */
 public final class Pharmacokinetics {
 
@@ -21,15 +23,12 @@ public final class Pharmacokinetics {
     public static final double DEFAULT_HALF_LIFE_HOURS = 5.0;
     public static final double MIN_HALF_LIFE_HOURS = 3.0;
     public static final double MAX_HALF_LIFE_HOURS = 7.0;
-    public static final int CHART_INTERVAL_MINUTES = 15;
-    public static final int CHART_START_HOUR = 5;
-    public static final int CHART_FORWARD_HOURS = 24;
     public static final double BEDTIME_SAFE_THRESHOLD_MG = 50.0;
     public static final int DAILY_RECOMMENDED_LIMIT_MG = 400;
+    // 차트 시작·길이·간격 상수는 LocalCalendar 소관.
 
-    // 단위 상수. LN_2는 리터럴로 바꾸지 말 것 — Math.log(2) 결과를 그대로 써야 iOS 골든과 비트 일치.
-    private static final double LN_2 = Math.log(2);
-    private static final double MILLIS_PER_HOUR = 3_600_000.0;
+    /** ln 2. 리터럴로 바꾸지 말 것 — Math.log(2) 결과를 그대로 써야 iOS 골든과 비트 일치. 학습 계산도 공유. */
+    public static final double LN_2 = Math.log(2);
     private static final long SECONDS_PER_MINUTE = 60;
     /** dose 직전 점의 간격(1초) — 차트에서 섭취 시점이 수직 점프로 보이게 한다. */
     private static final long PRE_DOSE_SAMPLE_OFFSET_SECONDS = 1;
@@ -85,7 +84,7 @@ public final class Pharmacokinetics {
     public static double totalRemaining(Instant time, List<Dose> doses, double halfLifeHours) {
         double total = 0;
         for (Dose dose : doses) {
-            double hours = (time.toEpochMilli() - dose.timestamp().toEpochMilli()) / MILLIS_PER_HOUR;
+            double hours = Elapsed.hours(dose.timestamp(), time);
             total += remainingAmount(dose.amountMg(), hours, halfLifeHours);
         }
         return total;
@@ -188,7 +187,7 @@ public final class Pharmacokinetics {
         }
         double hoursBeforeBedtime = hoursToDecay(referenceDoseMg, headroomAtBedtimeMg, halfLifeHours);
         // (long) 캐스트는 0 방향 절단(서브밀리초 버림) — iOS 동일. Math.round/Duration 전환 금지.
-        Instant cutoff = bedtime.minusMillis((long) (hoursBeforeBedtime * MILLIS_PER_HOUR));
+        Instant cutoff = bedtime.minusMillis((long) (hoursBeforeBedtime * Elapsed.MILLIS_PER_HOUR));
         return CutoffResult.cutoff(cutoff);
     }
 

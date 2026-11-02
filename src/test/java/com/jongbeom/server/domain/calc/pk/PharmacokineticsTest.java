@@ -1,11 +1,11 @@
-package com.jongbeom.server.domain.calc;
+package com.jongbeom.server.domain.calc.pk;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
-import com.jongbeom.server.domain.calc.Pharmacokinetics.CutoffResult;
-import com.jongbeom.server.domain.calc.Pharmacokinetics.DataPoint;
-import com.jongbeom.server.domain.calc.Pharmacokinetics.Dose;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.CutoffResult;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.DataPoint;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.Dose;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;

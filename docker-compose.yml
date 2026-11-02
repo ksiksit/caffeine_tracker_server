@@ -9,7 +9,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-localpw}
       TZ: Asia/Seoul
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"  # 로컬 전용. 약한 기본 비밀번호가 외부에 열리지 않도록 루프백에만 바인딩
     volumes:
       - mysql_data:/var/lib/mysql
     command:
@@ -29,7 +29,8 @@ services:
       DB_URL: jdbc:mysql://db:3306/caffeine_tracker?serverTimezone=UTC&characterEncoding=UTF-8&useUnicode=true&allowPublicKeyRetrieval=true&useSSL=false
       DB_USERNAME: ${MYSQL_USER:-caffeine}
       DB_PASSWORD: ${MYSQL_PASSWORD:-localpw}
-      JWT_SECRET: ${JWT_SECRET:-local-docker-development-secret-please-replace-in-production-32bytes}
+      # 기본값 없음: 레포에 공개된 키로 부팅되면 누구나 JWT를 위조할 수 있다. .env 에 설정(생성: openssl rand -base64 48)
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 이 필요합니다 (.env 참조)}
     ports:
       - "8080:8080"
     depends_on:

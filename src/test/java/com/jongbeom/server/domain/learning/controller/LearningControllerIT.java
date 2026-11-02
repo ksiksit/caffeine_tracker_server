@@ -131,6 +131,94 @@ class LearningControllerIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.skipReason").value("LEARNING_DISABLED"));
     }
 
+    private void uploadSamples(String accessToken, String samplesJson) throws Exception {
+        mockMvc.perform(post("/api/sleep/samples").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"samples\":[" + samplesJson + "]}"))
+                .andExpect(status().isOk());
+    }
+
+    private void expectSkip(String accessToken, String skipReason) throws Exception {
+        mockMvc.perform(post("/api/learning/run").header("Authorization", "Bearer " + accessToken)
+                .param("tz", "Asia/Seoul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.updatedCount").value(0))
+                .andExpect(jsonPath("$.data.skipReason").value(skipReason))
+                .andExpect(jsonPath("$.data.skipMessage").isNotEmpty());
+    }
+
+    @Test
+    void 수면데이터없으면_NO_SLEEP_SUMMARY() throws Exception {
+        stubToday();
+        String accessToken = authToken("learn@b.com", "학습");
+        caffeine(accessToken, 200, "2026-05-31T19:00:00");
+        expectSkip(accessToken, "NO_SLEEP_SUMMARY");
+    }
+
+    @Test
+    void 최근7일_밖의_night는_후보아님_NO_SLEEP_SUMMARY() throws Exception {
+        stubToday();
+        String accessToken = authToken("learn@b.com", "학습");
+        // today 06-02 → 후보 05-27~06-02. 05-26 아침에 끝나는 밤은 제외
+        caffeine(accessToken, 200, "2026-05-25T19:00:00");
+        sleepNight(accessToken, "old", "2026-05-25", "2026-05-26T07:30:00");
+        expectSkip(accessToken, "NO_SLEEP_SUMMARY");
+    }
+
+    @Test
+    void 수면4시간미만이면_SLEEP_TOO_SHORT() throws Exception {
+        stubToday();
+        String accessToken = authToken("learn@b.com", "학습");
+        caffeine(accessToken, 200, "2026-05-31T19:00:00");
+        sleepNight(accessToken, "n1", "2026-05-31", "2026-06-01T02:30:00"); // core 3h
+        expectSkip(accessToken, "SLEEP_TOO_SHORT");
+    }
+
+    @Test
+    void SOL이_180분초과면_INVALID_SOL() throws Exception {
+        stubToday();
+        String accessToken = authToken("learn@b.com", "학습");
+        caffeine(accessToken, 200, "2026-05-31T17:00:00");
+        // inBed 20:00 시작, 잠은 23:30부터 → SOL 210분
+        uploadSamples(accessToken, """
+                {"clientUuid":"bed","start":"2026-05-31T20:00:00+09:00","end":"2026-05-31T20:30:00+09:00","hkValue":0},
+                {"clientUuid":"core","start":"2026-05-31T23:30:00+09:00","end":"2026-06-01T07:30:00+09:00","hkValue":3}""");
+        expectSkip(accessToken, "INVALID_SOL");
+    }
+
+    @Test
+    void 취침전_카페인없으면_INSUFFICIENT_CAFFEINE_RESIDUAL() throws Exception {
+        stubToday();
+        String accessToken = authToken("learn@b.com", "학습");
+        sleepNight(accessToken, "n1", "2026-05-31", "2026-06-01T07:30:00");
+        expectSkip(accessToken, "INSUFFICIENT_CAFFEINE_RESIDUAL");
+    }
+
+    @Test
+    void 여러밤_모두실패면_가장최신_night의_사유() throws Exception {
+        stubToday();
+        String accessToken = authToken("learn@b.com", "학습");
+        // 05-31 아침: 수면 3h → SLEEP_TOO_SHORT / 06-01 아침: 카페인 없음 → INSUFFICIENT_CAFFEINE_RESIDUAL
+        sleepNight(accessToken, "a", "2026-05-30", "2026-05-31T02:30:00");
+        sleepNight(accessToken, "b", "2026-05-31", "2026-06-01T07:30:00");
+        expectSkip(accessToken, "INSUFFICIENT_CAFFEINE_RESIDUAL");
+    }
+
+    @Test
+    void 하나라도_학습되면_skip사유_없음() throws Exception {
+        stubToday();
+        String accessToken = authToken("learn@b.com", "학습");
+        // 05-31 아침: 학습 성공 / 06-01 아침(더 최신): 수면 3h → 실패
+        caffeine(accessToken, 200, "2026-05-30T19:00:00");
+        sleepNight(accessToken, "a", "2026-05-30", "2026-05-31T07:30:00");
+        sleepNight(accessToken, "b", "2026-05-31", "2026-06-01T02:30:00");
+
+        mockMvc.perform(post("/api/learning/run").header("Authorization", "Bearer " + accessToken)
+                .param("tz", "Asia/Seoul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.updatedCount").value(1))
+                .andExpect(jsonPath("$.data.skipReason").value(Matchers.nullValue()));
+    }
+
     @Test
     void 인증없으면_401() throws Exception {
         mockMvc.perform(post("/api/learning/run").param("tz", "Asia/Seoul"))

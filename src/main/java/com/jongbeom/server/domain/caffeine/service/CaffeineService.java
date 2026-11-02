@@ -9,12 +9,14 @@ import com.jongbeom.server.domain.caffeine.dto.UpdateCaffeineRecordRequest;
 import com.jongbeom.server.domain.caffeine.entity.CaffeineRecord;
 import com.jongbeom.server.domain.caffeine.exception.CaffeineRecordNotFoundException;
 import com.jongbeom.server.domain.caffeine.repository.CaffeineRecordRepository;
-import com.jongbeom.server.domain.calc.LocalCalendar;
-import com.jongbeom.server.domain.calc.Pharmacokinetics;
-import com.jongbeom.server.domain.calc.Pharmacokinetics.CutoffResult;
-import com.jongbeom.server.domain.calc.Pharmacokinetics.Dose;
+import com.jongbeom.server.domain.calc.learning.BayesianHalfLifeUpdater;
+import com.jongbeom.server.domain.calc.time.LocalCalendar;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.CutoffResult;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.Dose;
 import com.jongbeom.server.domain.settings.entity.UserSettings;
 import com.jongbeom.server.domain.settings.service.UserSettingsService;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
@@ -62,7 +64,7 @@ public class CaffeineService {
 
     /**
      * 홈 화면용 통합 계산: settings 를 읽어 차트 시계열·현재/취침 잔량·마감시각을 한 번에 산출.
-     * 오늘 기록이 없으면 차트는 빈 배열·잔량 0이고 마감시각만 계산된다.
+     * 최근 24시간 기록이 없으면 차트는 빈 배열·잔량 0이고 마감시각만 계산된다.
      * (← iOS HomeViewModel.updateChartData 를 서버로 이관)
      */
     @Transactional(readOnly = true)
@@ -77,9 +79,17 @@ public class CaffeineService {
         Instant bedtime = LocalCalendar.nextBedtime(
                 now, zone, settings.getBedtimeHour(), settings.getBedtimeMinute());
 
-        List<CaffeineRecord> todayRecords = caffeineRecordRepository
-                .findByUserIdAndTimestampGreaterThanEqualOrderByTimestampAsc(userId, chartStart);
-        List<Dose> doses = todayRecords.stream()
+        // 잔량은 하루 경계와 무관하게 몸에 남으므로 학습과 같은 24h 룩백으로 계산한다. 05:00 경계는 목록·합계·차트 범위에만 쓴다.
+        List<CaffeineRecord> recentRecords = caffeineRecordRepository
+                .findByUserIdAndTimestampGreaterThanEqualOrderByTimestampAsc(
+                        userId, now.minus(Duration.ofHours((long) BayesianHalfLifeUpdater.DOSES_LOOKBACK_HOURS)));
+        List<CaffeineRecord> todayRecords = recentRecords.stream()
+                .filter(r -> !r.getTimestamp().isBefore(chartStart))
+                .toList();
+        List<CaffeineRecordResponse> carryoverRecords = recentRecords.stream()
+                .filter(r -> r.getTimestamp().isBefore(chartStart))
+                .map(CaffeineRecordResponse::from).toList();
+        List<Dose> doses = recentRecords.stream()
                 .map(r -> new Dose(r.getTimestamp(), r.getAmount()))
                 .toList();
 
@@ -99,7 +109,7 @@ public class CaffeineService {
                 records,
                 todayTotal, overDailyLimit,
                 computed.chart(), computed.currentResidual(), computed.predictedAtBedtime(),
-                toCutoffResponse(cutoff), effectiveHalfLifeHours, referenceDoseMg);
+                toCutoffResponse(cutoff), effectiveHalfLifeHours, referenceDoseMg, carryoverRecords);
     }
 
     /** 차트 시계열 + 현재/취침 잔량 묶음. */
@@ -116,7 +126,7 @@ public class CaffeineService {
         }
         List<DataPointResponse> chart = Pharmacokinetics
                 .generateTimeSeries(doses, chartStart, chartEnd,
-                        Pharmacokinetics.CHART_INTERVAL_MINUTES, effectiveHalfLifeHours)
+                        LocalCalendar.CHART_INTERVAL_MINUTES, effectiveHalfLifeHours)
                 .stream().map(p -> new DataPointResponse(p.time(), p.concentrationMg())).toList();
         double currentResidual = Pharmacokinetics.totalRemaining(now, doses, effectiveHalfLifeHours);
         double predictedAtBedtime = Pharmacokinetics.totalRemaining(bedtime, doses, effectiveHalfLifeHours);

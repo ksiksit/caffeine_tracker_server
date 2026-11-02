@@ -1,4 +1,4 @@
-package com.jongbeom.server.domain.calc;
+package com.jongbeom.server.domain.calc.time;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -25,18 +25,23 @@ public final class LocalCalendar {
     public static final int SLEEP_WINDOW_START_HOUR = 18;
     public static final int SLEEP_WINDOW_END_HOUR = 12;
 
+    // 차트/하루 경계 (← iOS AppConstants 1:1, 임의 변경 금지). CHART_START_HOUR는 "하루 시작 05시" 경계로도 쓰인다.
+    public static final int CHART_START_HOUR = 5;
+    public static final int CHART_FORWARD_HOURS = 24;
+    public static final int CHART_INTERVAL_MINUTES = 15;
+
     /**
-     * 차트 시작 = now가 속한 zone 로컬 날짜의 자정 + {@link Pharmacokinetics#CHART_START_HOUR}(5시).
+     * 차트 시작 = now가 속한 zone 로컬 날짜의 자정 + {@value #CHART_START_HOUR}시.
      * (← Swift filterTodayRecords / updateChartData start)
      */
     public static Instant chartStart(Instant now, ZoneId zone) {
         LocalDate today = now.atZone(zone).toLocalDate();
-        return today.atStartOfDay(zone).plusHours(Pharmacokinetics.CHART_START_HOUR).toInstant();
+        return today.atStartOfDay(zone).plusHours(CHART_START_HOUR).toInstant();
     }
 
-    /** 차트 끝 = 차트 시작 + {@link Pharmacokinetics#CHART_FORWARD_HOURS}(24h). */
+    /** 차트 끝 = 차트 시작 + {@value #CHART_FORWARD_HOURS}h. */
     public static Instant chartEnd(Instant now, ZoneId zone) {
-        return chartStart(now, zone).plus(Duration.ofHours(Pharmacokinetics.CHART_FORWARD_HOURS));
+        return chartStart(now, zone).plus(Duration.ofHours(CHART_FORWARD_HOURS));
     }
 
     /**

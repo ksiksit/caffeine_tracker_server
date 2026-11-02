@@ -1,4 +1,4 @@
-package com.jongbeom.server.domain.calc;
+package com.jongbeom.server.domain.calc.sleep;
 
 import java.time.Instant;
 import java.util.ArrayList;

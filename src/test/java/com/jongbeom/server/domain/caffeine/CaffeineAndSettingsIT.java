@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jongbeom.server.support.AbstractIntegrationTest;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -33,7 +35,8 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.effectiveHalfLifeHours").value(5.0))
                 .andExpect(jsonPath("$.data.notifications.cutoff").value(true))
                 .andExpect(jsonPath("$.data.notifications.bedtimeResidual").value(true))
-                .andExpect(jsonPath("$.data.notifications.recordReminder").value(true));
+                .andExpect(jsonPath("$.data.notifications.recordReminder").value(true))
+                .andExpect(jsonPath("$.data.notifications.cafeNearby").value(false)); // 동 선택·위치 권한이 필요해 기본 꺼짐
 
         // 반감기 6.0 + 흡연(×0.5): prior 리셋 → learnedMean=6.0, effective=6.0*0.5=3.0
         mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
@@ -45,6 +48,28 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.learnedMean").value(6.0))
                 .andExpect(jsonPath("$.data.effectiveHalfLifeHours").value(3.0));
+    }
+
+    @Test
+    void settings_카페근처_토글은_생략하면_기존값_유지() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        String base = """
+                {"halfLife":5.0,"condition":0,"bedtimeHour":23,"bedtimeMinute":0,\
+                "referenceDoseMg":75,"isLearningEnabled":true,\
+                "notifications":{"cutoff":true,"bedtimeResidual":true,"recordReminder":true%s}}""";
+
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(base.formatted(",\"cafeNearby\":true")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.notifications.cafeNearby").value(true));
+
+        // 이 필드를 모르는 이전 버전 앱의 PUT — 켜 둔 값을 끄면 안 된다
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(base.formatted("")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.notifications.cafeNearby").value(true));
     }
 
     @Test
@@ -76,6 +101,46 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.error.fieldErrors[0].field").value("notifications"));
+    }
+
+    private static String settingsWithSeed(String learnedMean, String learnedVariance) {
+        return """
+                {"halfLife":5.0,"condition":0,"bedtimeHour":23,"bedtimeMinute":0,\
+                "referenceDoseMg":75,"isLearningEnabled":true,\
+                "notifications":{"cutoff":true,"bedtimeResidual":true,"recordReminder":true},\
+                "learnedMean":%s,"learnedVariance":%s,"lastLearnedDate":"2026-05-30"}"""
+                .formatted(learnedMean, learnedVariance);
+    }
+
+    @Test
+    void settings_학습값_시드는_그대로_저장() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(settingsWithSeed("4.2", "0.5")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.learnedMean").value(4.2))
+                .andExpect(jsonPath("$.data.learnedVariance").value(0.5))
+                .andExpect(jsonPath("$.data.lastLearnedDate").value("2026-05-30"));
+    }
+
+    /** 0 이하 시드는 학습 prior 로 쓸 수 없으므로(INVALID_PRIOR) 입력 단계에서 거절한다. */
+    @ParameterizedTest
+    @CsvSource({"5.0, 0.0, learnedVariance", "5.0, -1.0, learnedVariance", "0.0, 2.25, learnedMean"})
+    void settings_학습값_시드가_0이하면_400(String learnedMean, String learnedVariance, String field)
+            throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(settingsWithSeed(learnedMean, learnedVariance)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value(field));
+
+        mockMvc.perform(get("/api/settings").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.learnedMean").value(5.0))
+                .andExpect(jsonPath("$.data.learnedVariance").value(2.25));
     }
 
     @Test
@@ -117,6 +182,35 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.currentResidual").value(0.0))
                 .andExpect(jsonPath("$.data.predictedAtBedtime").value(0.0))
                 .andExpect(jsonPath("$.data.chart").isEmpty());
+    }
+
+    @Test
+    void caffeine_today_05시이전에도_최근24시간_잔량을_계산() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        // 서울 2026-06-01 23:00 200mg, 다음 날 00:30 조회 — 그날 05:00 경계 이전이지만 몸에는 남아 있다.
+        mockMvc.perform(post("/api/caffeine-records").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"amount\":200,\"drinkName\":\"콜드브루\",\"timestamp\":\"2026-06-01T23:00:00+09:00\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/caffeine/today").header("Authorization", "Bearer " + accessToken)
+                .param("now", "2026-06-02T00:30:00+09:00")
+                .param("tz", "Asia/Seoul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records.length()").value(0))
+                .andExpect(jsonPath("$.data.todayTotal").value(0))
+                .andExpect(jsonPath("$.data.carryoverRecords.length()").value(1))
+                .andExpect(jsonPath("$.data.carryoverRecords[0].amount").value(200))
+                // 200 × 2^(-1.5/5) = 162.45mg
+                .andExpect(jsonPath("$.data.currentResidual").value(Matchers.closeTo(162.45, 0.01)));
+
+        // 24시간이 지나면 잔량 계산에서도 빠진다.
+        mockMvc.perform(get("/api/caffeine/today").header("Authorization", "Bearer " + accessToken)
+                .param("now", "2026-06-03T00:30:00+09:00")
+                .param("tz", "Asia/Seoul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.carryoverRecords.length()").value(0))
+                .andExpect(jsonPath("$.data.currentResidual").value(0.0));
     }
 
     @Test
