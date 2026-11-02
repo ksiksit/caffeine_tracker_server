@@ -60,6 +60,30 @@ public abstract class AbstractIntegrationTest {
         return login(email, DEFAULT_PASSWORD).get("accessToken").asText();
     }
 
+    /** 카페인 기록 생성(201 기대) 후 id. {@code timestamp}는 ISO-8601+오프셋(예: 2026-06-01T09:00:00+09:00). */
+    protected long createCaffeineRecord(String accessToken, int amount, String timestamp) throws Exception {
+        String body = """
+                {"amount":%d,"drinkName":"커피","timestamp":"%s"}""".formatted(amount, timestamp);
+        MvcResult result = mockMvc.perform(post("/api/caffeine-records")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return dataOf(result).get("id").asLong();
+    }
+
+    /** 수면 샘플 업로드(200 기대) 후 응답 data(received·inserted). {@code samplesJson}은 samples 배열 원문. */
+    protected JsonNode uploadSleepSamples(String accessToken, String samplesJson) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/sleep/samples")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"samples\":" + samplesJson + "}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return dataOf(result);
+    }
+
     /** 응답 봉투({@code ApiResponse})에서 {@code data} 노드를 꺼낸다 — 성공 응답 파싱의 표준 경로. */
     protected JsonNode dataOf(MvcResult result) throws Exception {
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("data");

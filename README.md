@@ -184,7 +184,15 @@ curl -X POST http://localhost:8080/api/auth/login \
 
 # 전체 빌드 (테스트는 H2 임베디드 DB로 동작, 환경변수 불필요)
 ./gradlew build
+
+# E2E (Docker 필요, build·CI 와 별개): 현재 소스로 이미지를 빌드해 실제 MySQL 과 띄우고 HTTP 로 검증
+./gradlew e2eTest
+
+# 배포된 서버에 스모크만 (컨테이너 없이, 전용 계정 필요)
+E2E_EMAIL=... E2E_PASSWORD=... ./gradlew e2eTest -Pe2e.baseUrl=http://localhost:18081
 ```
+
+E2E 환경을 손으로 띄워 Postman 등으로 확인하려면 `docker compose -f docker-compose.e2e.yml up --build` (포트 18080, 데이터는 남지 않음).
 
 ## 프로젝트 구조
 

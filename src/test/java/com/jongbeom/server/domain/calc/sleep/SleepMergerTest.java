@@ -102,14 +102,47 @@ class SleepMergerTest {
                 sample(2, 0, 4, 0, 3),
                 sample(4, 0, 4, 15, 2),
                 sample(4, 15, 6, 0, 3)));
-        assertThat(merged).hasSize(7);
-        assertThat(merged.get(0).start()).isEqualTo(time(22));
-        assertThat(merged.get(0).end()).isEqualTo(time(22, 30));
-        assertThat(merged.get(0).hkValue()).isEqualTo(0);
-        assertThat(merged.get(1).hkValue()).isEqualTo(3);
-        assertThat(merged.get(2).start()).isEqualTo(time(23, 45));
-        assertThat(merged.get(2).end()).isEqualTo(time(0, 30));
-        assertThat(merged.get(2).hkValue()).isEqualTo(5);
+        // inBed(22-06)는 더 세분화된 단계에 덮이고, 덮이지 않은 앞부분(22:00-22:30)만 남는다
+        assertThat(merged).containsExactly(
+                new Interval(time(22), time(22, 30), 0),
+                new Interval(time(22, 30), time(23, 45), 3),
+                new Interval(time(23, 45), time(0, 30), 5),
+                new Interval(time(0, 30), time(2), 4),
+                new Interval(time(2), time(4), 3),
+                new Interval(time(4), time(4, 15), 2),
+                new Interval(time(4, 15), time(6), 3));
+    }
+
+    @Test
+    void unsortedInput_sameResultAsSorted() {
+        List<Sample> sorted = List.of(
+                new Sample(time(22), time(7), 0),
+                new Sample(time(23), time(1), 3),
+                new Sample(time(1), time(2), 4));
+        List<Sample> reversed = List.of(sorted.get(2), sorted.get(1), sorted.get(0));
+        assertThat(SleepMerger.merge(reversed)).isEqualTo(SleepMerger.merge(sorted));
+    }
+
+    @Test
+    void equalPriority_firstSampleInInputWins() {
+        // 알 수 없는 hkValue(99)는 asleepUnspecified(1)와 같은 우선순위 → 입력 순서상 먼저 온 쪽이 이긴다(iOS 동일)
+        List<Interval> unknownFirst = SleepMerger.merge(List.of(
+                new Sample(time(22), time(23), 99),
+                new Sample(time(22), time(23), 1)));
+        List<Interval> unspecifiedFirst = SleepMerger.merge(List.of(
+                new Sample(time(22), time(23), 1),
+                new Sample(time(22), time(23), 99)));
+        assertThat(unknownFirst).containsExactly(new Interval(time(22), time(23), 99));
+        assertThat(unspecifiedFirst).containsExactly(new Interval(time(22), time(23), 1));
+    }
+
+    @Test
+    void overlappingSameStage_mergedIntoOne() {
+        // 같은 단계가 겹치면 경계점으로 쪼개진 뒤 다시 이어붙여 하나가 된다
+        List<Interval> merged = SleepMerger.merge(List.of(
+                new Sample(time(22), time(0), 3),
+                new Sample(time(23), time(1), 3)));
+        assertThat(merged).containsExactly(new Interval(time(22), time(1), 3));
     }
 
     @Test
