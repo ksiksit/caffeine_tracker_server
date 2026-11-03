@@ -43,6 +43,14 @@ class ActuatorPortIT {
     }
 
     @Test
+    void 메트릭에_HTTP_지연_히스토그램_버킷이_있다() {
+        get(serverPort, "/api/settings"); // 요청 메트릭이 하나는 기록되게 한다
+        String body = get(managementPort, "/actuator/prometheus").getBody();
+        // Grafana p95 패널이 쓰는 버킷. application-prod.yaml 의 slo 경계(100ms → le="0.1")가 그대로 나가야 한다
+        assertThat(body).contains("http_server_requests_seconds_bucket").contains("le=\"0.1\"");
+    }
+
+    @Test
     void 공개포트에는_헬스와_메트릭이_없다() {
         assertThat(get(serverPort, "/actuator/health").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(get(serverPort, "/actuator/prometheus").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
