@@ -13,6 +13,7 @@ import com.jongbeom.server.domain.sleep.dto.UploadSleepSamplesRequest.SampleItem
 import com.jongbeom.server.domain.sleep.dto.UploadSleepSamplesResponse;
 import com.jongbeom.server.domain.sleep.entity.SleepSample;
 import com.jongbeom.server.domain.sleep.repository.SleepSampleRepository;
+import com.jongbeom.server.domain.user.UserWriteLock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -31,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SleepService {
 
     private final SleepSampleRepository sleepSampleRepository;
+    private final UserWriteLock userWriteLock;
 
     /** 병합된 한 night(intervals + 원시 inBed bedtimeStart). summary·learning 이 공유하는 형태. */
     public record NightData(List<Interval> intervals, Instant bedtimeStart) {
@@ -39,9 +41,13 @@ public class SleepService {
         }
     }
 
-    /** 원시 샘플 멱등 업로드(client_uuid 중복은 건너뜀). */
+    /**
+     * 원시 샘플 멱등 업로드(client_uuid 중복은 건너뜀). 같은 배치가 동시에 오면(백그라운드 동기화 중복 등)
+     * 둘 다 "미저장"으로 판단해 UNIQUE 를 위반하므로, 사용자 쓰기 잠금 뒤에 저장 여부를 확인한다.
+     */
     @Transactional
     public UploadSleepSamplesResponse upload(Long userId, UploadSleepSamplesRequest request) {
+        userWriteLock.lock(userId);
         Map<String, SampleItem> byUuid = dedupeByUuid(request.samples());
         Set<String> alreadyStored = findAlreadyStoredUuids(userId, byUuid.keySet());
 

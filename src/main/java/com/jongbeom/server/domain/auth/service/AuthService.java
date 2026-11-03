@@ -11,10 +11,12 @@ import com.jongbeom.server.domain.auth.dto.TokenResponse;
 import com.jongbeom.server.domain.auth.exception.DuplicateEmailException;
 import com.jongbeom.server.domain.auth.exception.InvalidCredentialsException;
 import com.jongbeom.server.domain.auth.exception.InvalidRefreshTokenException;
+import com.jongbeom.server.domain.settings.service.UserSettingsService;
 import com.jongbeom.server.domain.user.entity.User;
 import com.jongbeom.server.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenVerifier refreshTokenVerifier;
+    private final UserSettingsService userSettingsService;
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
@@ -42,7 +45,14 @@ public class AuthService {
                 request.email(),
                 passwordEncoder.encode(request.password()),
                 request.nickname());
-        User saved = userRepository.save(user);
+        User saved;
+        try {
+            saved = userRepository.save(user); // IDENTITY 라 INSERT 가 여기서 바로 실행된다
+        } catch (DataIntegrityViolationException e) {
+            // 같은 이메일 동시 가입: 위 확인을 둘 다 통과한 뒤 먼저 커밋한 쪽이 있으면 uk_users_email 위반으로 여기 온다
+            throw new DuplicateEmailException(request.email());
+        }
+        userSettingsService.createDefault(saved.getId());
         log.info("회원가입 성공 userId={}", saved.getId());
         return new SignupResponse(saved.getId(), saved.getEmail(), saved.getNickname());
     }

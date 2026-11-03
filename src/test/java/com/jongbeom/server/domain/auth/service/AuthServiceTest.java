@@ -18,6 +18,7 @@ import com.jongbeom.server.domain.auth.dto.TokenResponse;
 import com.jongbeom.server.domain.auth.exception.DuplicateEmailException;
 import com.jongbeom.server.domain.auth.exception.InvalidCredentialsException;
 import com.jongbeom.server.domain.auth.exception.InvalidRefreshTokenException;
+import com.jongbeom.server.domain.settings.service.UserSettingsService;
 import com.jongbeom.server.support.UserFixture;
 import com.jongbeom.server.domain.user.entity.User;
 import com.jongbeom.server.domain.user.repository.UserRepository;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,6 +42,8 @@ class AuthServiceTest {
     JwtTokenProvider jwtTokenProvider;
     @Mock
     RefreshTokenVerifier refreshTokenVerifier;
+    @Mock
+    UserSettingsService userSettingsService;
 
     @InjectMocks
     AuthService authService;
@@ -57,6 +61,7 @@ class AuthServiceTest {
         assertThat(response.userId()).isEqualTo(10L);
         assertThat(response.email()).isEqualTo("a@b.com");
         assertThat(response.nickname()).isEqualTo("테스터");
+        verify(userSettingsService).createDefault(10L); // 설정 행은 가입과 같은 트랜잭션에서 만든다
     }
 
     @Test
@@ -67,6 +72,19 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.signup(req))
                 .isInstanceOf(DuplicateEmailException.class);
         verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void signup_확인후_동시가입에_밀려_UNIQUE위반이면_DuplicateEmailException() {
+        SignupRequest req = new SignupRequest("a@b.com", "password1!", "테스터");
+        given(userRepository.existsByEmail("a@b.com")).willReturn(false);
+        given(passwordEncoder.encode("password1!")).willReturn("hashed");
+        given(userRepository.save(any(User.class)))
+                .willThrow(new DataIntegrityViolationException("uk_users_email"));
+
+        assertThatThrownBy(() -> authService.signup(req))
+                .isInstanceOf(DuplicateEmailException.class);
+        verify(userSettingsService, never()).createDefault(any());
     }
 
     @Test
