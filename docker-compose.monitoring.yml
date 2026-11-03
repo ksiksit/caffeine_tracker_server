@@ -1,0 +1,32 @@
+# 로컬 모니터링: E2E 환경(docker-compose.e2e.yml)에 운영과 같은 설정의 Prometheus·Grafana 를 덧붙인다.
+# 단독으로는 뜨지 않는다 — 수집 대상 app 이 E2E 파일에 있다. 항상 두 파일을 함께 지정한다:
+#   docker compose -f docker-compose.e2e.yml -f docker-compose.monitoring.yml up --build
+#     → API http://localhost:18080 · Grafana http://localhost:13000 (admin / local-grafana-pw) · Prometheus http://localhost:19090
+#   docker compose -f docker-compose.e2e.yml -f docker-compose.monitoring.yml down   (볼륨이 없어 데이터는 남지 않는다)
+# 설정 파일(monitoring/)과 이미지 태그는 docker-compose.prod.yml 과 같게 유지한다. 포트는 로컬 개발(3306·8080)·운영과 겹치지 않게 분리했다.
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:19090:9090"
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: local-grafana-pw # 로컬 전용. 루프백에만 열리고 컨테이너를 내리면 사라진다
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:13000:3000"
