@@ -21,6 +21,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -78,17 +80,41 @@ public class SleepService {
                 .stream().map(SleepSample::getClientUuid).collect(Collectors.toSet());
     }
 
-    /**
-     * date(아침 기준) 전날 18:00 ~ 당일 12:00 윈도우 샘플을 병합.
-     * public 인 이유: {@link com.jongbeom.server.domain.learning.service.LearningService}가 학습 입력으로 재사용한다.
-     */
+    /** date(아침 기준) 전날 18:00 ~ 당일 12:00 윈도우 샘플을 병합. */
     @Transactional(readOnly = true)
     public NightData mergedNight(Long userId, LocalDate date, ZoneId zone) {
         Instant start = LocalCalendar.sleepWindowStart(date, zone);
         Instant end = LocalCalendar.sleepWindowEnd(date, zone);
+        return toNight(sleepSampleRepository
+                .findByUserIdAndStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(userId, start, end));
+    }
 
+    /**
+     * from~to(아침 날짜, 양끝 포함) 각 날짜의 병합 night. 샘플은 한 번에 조회하고 날짜별 윈도우로 나눈다 —
+     * 결과는 날짜마다 {@link #mergedNight}를 부른 것과 같다. 데이터 없는 날짜는 빠지고, 날짜 오름차순.
+     * public 인 이유: {@link com.jongbeom.server.domain.learning.service.LearningService}가 학습 입력으로 쓴다.
+     */
+    @Transactional(readOnly = true)
+    public SortedMap<LocalDate, NightData> mergedNights(Long userId, LocalDate from, LocalDate to, ZoneId zone) {
         List<SleepSample> samples = sleepSampleRepository
-                .findByUserIdAndStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(userId, start, end);
+                .findByUserIdAndStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(
+                        userId, LocalCalendar.sleepWindowStart(from, zone), LocalCalendar.sleepWindowEnd(to, zone));
+        SortedMap<LocalDate, NightData> nights = new TreeMap<>();
+        for (LocalDate date = from; !date.isAfter(to); date = date.plusDays(1)) {
+            Instant start = LocalCalendar.sleepWindowStart(date, zone);
+            Instant end = LocalCalendar.sleepWindowEnd(date, zone);
+            NightData night = toNight(samples.stream()
+                    .filter(s -> !s.getStartAt().isBefore(start) && s.getStartAt().isBefore(end))
+                    .toList());
+            if (!night.isEmpty()) {
+                nights.put(date, night);
+            }
+        }
+        return nights;
+    }
+
+    /** 한 윈도우의 샘플(시작시각 오름차순) → 병합 night. inBed 최초 시작이 bedtimeStart. */
+    private static NightData toNight(List<SleepSample> samples) {
         if (samples.isEmpty()) {
             return new NightData(List.of(), null);
         }
