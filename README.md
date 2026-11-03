@@ -195,6 +195,7 @@ E2E_EMAIL=... E2E_PASSWORD=... ./gradlew e2eTest -Pe2e.baseUrl=http://localhost:
 E2E 환경을 손으로 띄워 Postman 등으로 확인하려면 `docker compose -f docker-compose.e2e.yml up --build` (포트 18080, 데이터는 남지 않음).
 운영과 같은 Prometheus·Grafana 대시보드까지 로컬에서 보려면 `docker compose -f docker-compose.monitoring.yml up --build -d`
 (E2E 앱·DB를 함께 띄운다. Grafana `http://localhost:13000`, 접속 정보는 파일 머리 주석). `bootRun`(local 프로파일)은 메트릭을 노출하지 않아 대시보드가 비어 있다.
+이 스택에 k6로 부하를 걸어 엔드포인트별 지연(p95)을 재는 방법과, 빌드가 지키는 요청당 SQL 예산(`QueryCountIT`)은 [`perf/README.md`](perf/README.md).
 
 ## 프로젝트 구조
 
@@ -232,6 +233,10 @@ docs/
 │   └── db-schema.md    # 스키마 설명 · 변경 절차 · 변경 이력
 └── ops/
     └── 운영-가이드.md    # 수동 배포 절차 · 준비 상태 체크리스트
+
+perf/
+├── README.md           # 성능 측정 방법 — k6 지연 측정 · 요청당 SQL 예산(QueryCountIT)
+└── k6/learning-load.js # 로컬 모니터링 스택 대상 부하 스크립트
 ```
 
 > 각 도메인 내부는 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/` 레이어 패키지로 구성한다.
