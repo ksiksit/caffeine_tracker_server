@@ -1,9 +1,15 @@
-# 로컬 모니터링: E2E 환경(docker-compose.e2e.yml)에 운영과 같은 설정의 Prometheus·Grafana 를 덧붙인다.
-# 단독으로는 뜨지 않는다 — 수집 대상 app 이 E2E 파일에 있다. 항상 두 파일을 함께 지정한다:
-#   docker compose -f docker-compose.e2e.yml -f docker-compose.monitoring.yml up --build
+# 로컬 모니터링: E2E 환경(docker-compose.e2e.yml 의 app·db)을 불러와 운영과 같은 설정의 Prometheus·Grafana 를 붙인다.
+# 이 파일 하나로 네 컨테이너가 모두 뜬다:
+#   docker compose -f docker-compose.monitoring.yml up --build -d
 #     → API http://localhost:18080 · Grafana http://localhost:13000 (admin / local-grafana-pw) · Prometheus http://localhost:19090
-#   docker compose -f docker-compose.e2e.yml -f docker-compose.monitoring.yml down   (볼륨이 없어 데이터는 남지 않는다)
+#   docker compose -f docker-compose.monitoring.yml down   (볼륨이 없어 데이터는 남지 않는다)
 # 설정 파일(monitoring/)과 이미지 태그는 docker-compose.prod.yml 과 같게 유지한다. 포트는 로컬 개발(3306·8080)·운영과 겹치지 않게 분리했다.
+# 프로젝트 이름을 따로 두어 ./gradlew e2eTest 나 E2E 파일 단독 실행과 컨테이너가 섞이지 않게 한다.
+name: caffeine-monitoring
+
+include:
+  - docker-compose.e2e.yml
+
 services:
   prometheus:
     image: prom/prometheus:v3.5.0

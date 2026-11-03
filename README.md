@@ -193,8 +193,8 @@ E2E_EMAIL=... E2E_PASSWORD=... ./gradlew e2eTest -Pe2e.baseUrl=http://localhost:
 ```
 
 E2E 환경을 손으로 띄워 Postman 등으로 확인하려면 `docker compose -f docker-compose.e2e.yml up --build` (포트 18080, 데이터는 남지 않음).
-운영과 같은 Prometheus·Grafana 대시보드까지 로컬에서 보려면 `-f docker-compose.monitoring.yml`을 덧붙인다
-(Grafana `http://localhost:13000`, 접속 정보는 파일 머리 주석). `bootRun`(local 프로파일)은 메트릭을 노출하지 않아 대시보드가 비어 있다.
+운영과 같은 Prometheus·Grafana 대시보드까지 로컬에서 보려면 `docker compose -f docker-compose.monitoring.yml up --build -d`
+(E2E 앱·DB를 함께 띄운다. Grafana `http://localhost:13000`, 접속 정보는 파일 머리 주석). `bootRun`(local 프로파일)은 메트릭을 노출하지 않아 대시보드가 비어 있다.
 
 ## 프로젝트 구조
 
