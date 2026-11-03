@@ -1,0 +1,11 @@
+# monitoring/grafana/dashboards/*.json 을 대시보드로 자동 등록한다.
+# 화면에서 고친 내용은 저장되지 않는다 — 대시보드 변경은 JSON 파일을 고쳐 레포에 남긴다.
+apiVersion: 1
+
+providers:
+  - name: caffeine
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards

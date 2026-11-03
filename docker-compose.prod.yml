@@ -23,3 +23,56 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+  # 메트릭 저장소. 앱의 app:8081/actuator/prometheus 를 15초마다 긁어 시계열로 쌓는다.
+  # 보관은 15일 또는 2GB 중 먼저 닿는 쪽까지. 설정 파일은 compose 와 같은 폴더의 monitoring/ 에서 읽는다.
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: caffeine-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=2GB
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090" # 인증이 없으므로 루프백에만. PC 에서는 SSH 터널로 본다
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 대시보드. 데이터소스와 대시보드는 monitoring/grafana 에서 자동 등록된다.
+  grafana:
+    image: grafana/grafana:12.1.0
+    container_name: caffeine-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?.env 에 GRAFANA_ADMIN_PASSWORD 가 필요하다}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # EC2 는 외부 인터넷이 없다 — 업데이트 확인·사용 통계 전송·뉴스 피드를 끈다
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000" # 루프백에만. PC 에서는 SSH 터널로 본다
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  prometheus-data:
+  grafana-data:

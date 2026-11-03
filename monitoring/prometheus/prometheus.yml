@@ -1,0 +1,11 @@
+# 운영 EC2 의 Prometheus 설정. docker-compose.prod.yml 이 이 파일을 읽기 전용으로 마운트한다.
+# 앱 관리 포트(8081)는 compose 네트워크 안에서 서비스 이름 app 으로 접근한다.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: caffeine-app
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["app:8081"]
