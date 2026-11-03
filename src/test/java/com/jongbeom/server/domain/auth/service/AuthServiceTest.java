@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.jongbeom.server.domain.auth.JwtTokenProvider;
+import com.jongbeom.server.domain.auth.LoginAttemptLimiter;
 import com.jongbeom.server.domain.auth.RefreshTokenVerifier;
 import com.jongbeom.server.domain.auth.RefreshTokenVerifier.RefreshClaims;
 import com.jongbeom.server.domain.auth.dto.LoginRequest;
@@ -18,10 +21,12 @@ import com.jongbeom.server.domain.auth.dto.TokenResponse;
 import com.jongbeom.server.domain.auth.exception.DuplicateEmailException;
 import com.jongbeom.server.domain.auth.exception.InvalidCredentialsException;
 import com.jongbeom.server.domain.auth.exception.InvalidRefreshTokenException;
+import com.jongbeom.server.domain.auth.exception.TooManyLoginAttemptsException;
 import com.jongbeom.server.domain.settings.service.UserSettingsService;
 import com.jongbeom.server.support.UserFixture;
 import com.jongbeom.server.domain.user.entity.User;
 import com.jongbeom.server.domain.user.repository.UserRepository;
+import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,6 +49,8 @@ class AuthServiceTest {
     RefreshTokenVerifier refreshTokenVerifier;
     @Mock
     UserSettingsService userSettingsService;
+    @Mock
+    LoginAttemptLimiter loginAttemptLimiter;
 
     @InjectMocks
     AuthService authService;
@@ -104,15 +111,31 @@ class AuthServiceTest {
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresIn()).isEqualTo(3600);
         assertThat(response.refreshExpiresIn()).isEqualTo(1209600);
+        verify(loginAttemptLimiter).reset("a@b.com"); // 성공하면 시도 기록을 지운다
     }
 
     @Test
-    void login_존재하지않는이메일이면_InvalidCredentialsException() {
+    void login_존재하지않는이메일이면_더미해시로_bcrypt비교를_한뒤_InvalidCredentialsException() {
+        given(passwordEncoder.encode("dummy-password-for-timing")).willReturn("dummy-hash");
+        authService.initDummyPasswordHash();
         given(userRepository.findByEmail("a@b.com")).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("a@b.com", "password1!")))
                 .isInstanceOf(InvalidCredentialsException.class);
+        // 응답 시간으로 가입 여부가 드러나지 않도록 있는 이메일과 같은 비용의 비교를 한다
+        verify(passwordEncoder).matches("password1!", "dummy-hash");
         verify(jwtTokenProvider, never()).createRefreshToken(any());
+        verify(loginAttemptLimiter, never()).reset(any());
+    }
+
+    @Test
+    void login_시도한도를_넘으면_DB조회도_비밀번호비교도_하지않고_TooManyLoginAttemptsException() {
+        willThrow(new TooManyLoginAttemptsException(Instant.parse("2026-06-01T00:15:00Z")))
+                .given(loginAttemptLimiter).acquire("a@b.com");
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("a@b.com", "password1!")))
+                .isInstanceOf(TooManyLoginAttemptsException.class);
+        verifyNoInteractions(userRepository, passwordEncoder, jwtTokenProvider);
     }
 
     @Test
@@ -124,6 +147,7 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(new LoginRequest("a@b.com", "wrong")))
                 .isInstanceOf(InvalidCredentialsException.class);
         verify(jwtTokenProvider, never()).createRefreshToken(any());
+        verify(loginAttemptLimiter, never()).reset(any());
     }
 
     @Test

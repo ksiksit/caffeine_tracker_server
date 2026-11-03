@@ -77,6 +77,7 @@ HTTP 상태 코드는 그대로 의미를 가진다(201 생성, 400/401/404/409 
 | `EMAIL_ALREADY_EXISTS` | 409 | 이미 사용 중인 이메일입니다. | 회원가입 이메일 중복 |
 | `INVALID_CREDENTIALS` | 401 | 이메일 또는 비밀번호가 올바르지 않습니다. | 로그인 실패(없는 이메일 포함, 구분하지 않음) |
 | `INVALID_REFRESH_TOKEN` | 401 | RefreshToken 이 유효하지 않습니다. | 토큰 재발급: 서명 불일치·만료·access 토큰 사용·사용자 없음·로그아웃으로 무효화됨 |
+| `TOO_MANY_LOGIN_ATTEMPTS` | 429 | 로그인 시도가 너무 많습니다. 15분 후 다시 시도해 주세요. | 같은 이메일 로그인 실패 한도 초과(로그인 절 참조) |
 | `UNAUTHORIZED` | 401 | 인증이 필요합니다. | Bearer 토큰 없음·만료·위조(시큐리티 단계) |
 | `FORBIDDEN` | 403 | 접근 권한이 없습니다. | 권한 부족(현재 발생 경로 없음, 예비) |
 | `VALIDATION_FAILED` | 400 | 입력값이 올바르지 않습니다. | 바디 필드 검증 실패. `error.fieldErrors` 포함 |
@@ -173,7 +174,13 @@ HTTP 상태 코드는 그대로 의미를 가진다(201 생성, 400/401/404/409 
 { "success": true, "data": { "accessToken": "eyJhbGciOiJIUzI1NiJ9...", "refreshToken": "eyJhbGciOiJIUzI1NiJ9...", "tokenType": "Bearer", "expiresIn": 3600, "refreshExpiresIn": 1209600 }, "error": null, "message": null }
 ```
 
-**에러**: 401 `INVALID_CREDENTIALS`
+**에러**: 401 `INVALID_CREDENTIALS`, 429 `TOO_MANY_LOGIN_ATTEMPTS`
+
+**시도 제한** (이메일 단위, 대소문자 무시)
+- 첫 시도부터 15분 안에 5번 실패하면, 6번째부터 그 15분이 끝날 때까지 429. 막힌 동안의 시도는 해제 시각을 늦추지 않는다.
+- 막힌 동안에는 맞는 비밀번호도 429다(429/200 차이로 비밀번호를 맞혔는지 알 수 없게).
+- 없는 이메일도 같은 규칙을 적용하고, 응답 시간도 있는 이메일과 같게 맞춘다(가입 여부를 드러내지 않게).
+- 로그인에 성공하면 그 이메일의 실패 횟수를 지운다. 기록은 서버 메모리에 있어 재시작하면 초기화된다.
 
 ### POST /api/auth/refresh — 토큰 재발급
 

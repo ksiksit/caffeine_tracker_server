@@ -101,6 +101,52 @@ class AuthControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isCreated());
     }
 
+    private int loginStatus(String email, String password) throws Exception {
+        return mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"%s"}""".formatted(email, password)))
+                .andReturn().getResponse().getStatus();
+    }
+
+    @Test
+    void login_5번_틀리면_6번째는_맞는_비밀번호여도_429_TOO_MANY_LOGIN_ATTEMPTS() throws Exception {
+        signup("a@b.com", "password1!", "테스터");
+        for (int i = 0; i < 5; i++) {
+            assertThat(loginStatus("a@b.com", "wrong-password")).isEqualTo(401);
+        }
+
+        // 막힌 동안 맞는 비밀번호를 받아 주면 429/200 차이로 비밀번호를 맞혔는지 알 수 있다
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"a@b.com","password":"password1!"}"""))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.error.code").value("TOO_MANY_LOGIN_ATTEMPTS"));
+    }
+
+    @Test
+    void login_없는이메일도_같은규칙으로_429() throws Exception {
+        // 없는 이메일만 안 막으면 429 여부로 가입 여부가 드러난다
+        for (int i = 0; i < 5; i++) {
+            assertThat(loginStatus("nobody@b.com", "password1!")).isEqualTo(401);
+        }
+        assertThat(loginStatus("nobody@b.com", "password1!")).isEqualTo(429);
+    }
+
+    @Test
+    void login_한도전에_성공하면_실패횟수가_초기화된다() throws Exception {
+        signup("a@b.com", "password1!", "테스터");
+        for (int i = 0; i < 4; i++) {
+            assertThat(loginStatus("a@b.com", "wrong-password")).isEqualTo(401);
+        }
+        login("a@b.com", "password1!");
+
+        for (int i = 0; i < 5; i++) {
+            assertThat(loginStatus("a@b.com", "wrong-password")).isEqualTo(401);
+        }
+    }
+
     @Test
     void login_존재하지않는이메일도_401_INVALID_CREDENTIALS() throws Exception {
         // 이메일 존재 여부를 노출하지 않도록 비밀번호 불일치와 같은 응답

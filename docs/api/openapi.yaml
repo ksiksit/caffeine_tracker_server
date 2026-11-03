@@ -72,7 +72,10 @@ paths:
     post:
       tags: [auth]
       summary: 로그인
-      description: 이메일·비밀번호 검증 후 access/refresh 토큰 쌍을 발급한다.
+      description: >-
+        이메일·비밀번호 검증 후 access/refresh 토큰 쌍을 발급한다.
+        같은 이메일(대소문자 무시)로 첫 시도부터 15분 안에 5번 실패하면 그 15분이 끝날 때까지 429를 돌려준다.
+        막힌 동안에는 맞는 비밀번호도 429이고, 없는 이메일도 같은 규칙이다. 성공하면 실패 횟수를 지운다.
       operationId: login
       security: []
       requestBody:
@@ -88,6 +91,8 @@ paths:
           $ref: '#/components/responses/BadRequestBody'
         '401':
           $ref: '#/components/responses/InvalidCredentials'
+        '429':
+          $ref: '#/components/responses/TooManyLoginAttempts'
 
   /api/auth/refresh:
     post:
@@ -767,6 +772,17 @@ components:
             data: null
             error: { code: INVALID_CREDENTIALS }
             message: 이메일 또는 비밀번호가 올바르지 않습니다.
+    TooManyLoginAttempts:
+      description: 같은 이메일 로그인 실패 한도 초과 (TOO_MANY_LOGIN_ATTEMPTS)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error: { code: TOO_MANY_LOGIN_ATTEMPTS }
+            message: 로그인 시도가 너무 많습니다. 15분 후 다시 시도해 주세요.
     InvalidRefreshToken:
       description: refresh 토큰 서명 불일치·만료·access 토큰 사용·사용자 없음·로그아웃으로 무효화됨 (INVALID_REFRESH_TOKEN)
       content:
@@ -848,6 +864,7 @@ components:
             - EMAIL_ALREADY_EXISTS
             - INVALID_CREDENTIALS
             - INVALID_REFRESH_TOKEN
+            - TOO_MANY_LOGIN_ATTEMPTS
             - UNAUTHORIZED
             - FORBIDDEN
             - VALIDATION_FAILED
