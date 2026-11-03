@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jongbeom.server.domain.auth.LoginAttemptLimiter;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,6 +32,14 @@ public abstract class AbstractIntegrationTest {
     protected MockMvc mockMvc;
     @Autowired
     protected ObjectMapper objectMapper;
+    @Autowired
+    private LoginAttemptLimiter loginAttemptLimiter;
+
+    /** 로그인 시도 기록은 DB 가 아니라 메모리라 롤백되지 않는다 — 재사용되는 컨텍스트에서 테스트끼리 섞이지 않게 비운다. */
+    @BeforeEach
+    void clearLoginAttempts() {
+        loginAttemptLimiter.clear();
+    }
 
     /** 회원가입(201 기대). */
     protected MvcResult signup(String email, String password, String nickname) throws Exception {

@@ -1,6 +1,7 @@
 package com.jongbeom.server.domain.auth.service;
 
 import com.jongbeom.server.domain.auth.JwtTokenProvider;
+import com.jongbeom.server.domain.auth.LoginAttemptLimiter;
 import com.jongbeom.server.domain.auth.RefreshTokenVerifier;
 import com.jongbeom.server.domain.auth.RefreshTokenVerifier.RefreshClaims;
 import com.jongbeom.server.domain.auth.dto.LoginRequest;
@@ -14,6 +15,7 @@ import com.jongbeom.server.domain.auth.exception.InvalidRefreshTokenException;
 import com.jongbeom.server.domain.settings.service.UserSettingsService;
 import com.jongbeom.server.domain.user.entity.User;
 import com.jongbeom.server.domain.user.repository.UserRepository;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -35,6 +37,15 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenVerifier refreshTokenVerifier;
     private final UserSettingsService userSettingsService;
+    private final LoginAttemptLimiter loginAttemptLimiter;
+
+    /** 없는 이메일 로그인에도 bcrypt 비교를 한 번 하기 위한 해시. 실제 인코더로 만들어 비용(strength)이 같다. */
+    private String dummyPasswordHash;
+
+    @PostConstruct
+    void initDummyPasswordHash() {
+        dummyPasswordHash = passwordEncoder.encode("dummy-password-for-timing");
+    }
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
@@ -57,13 +68,25 @@ public class AuthService {
         return new SignupResponse(saved.getId(), saved.getEmail(), saved.getNickname());
     }
 
+    /**
+     * 시도 제한(이메일 단위)을 먼저 통과해야 한다 — {@link LoginAttemptLimiter}.
+     * 없는 이메일도 bcrypt 비교를 똑같이 한 번 해서, 응답 시간으로 가입 여부가 드러나지 않게 한다.
+     */
     @Transactional
     public TokenResponse login(LoginRequest request) {
-        User user = findByEmailOrThrow(request.email());
-        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        loginAttemptLimiter.acquire(request.email());
+        User user = userRepository.findByEmail(request.email()).orElse(null);
+        String hashToCheck = user != null ? user.getPasswordHash() : dummyPasswordHash;
+        boolean matches = passwordEncoder.matches(request.password(), hashToCheck);
+        if (user == null) {
+            log.info("로그인 실패(존재하지 않는 이메일)");
+            throw new InvalidCredentialsException();
+        }
+        if (!matches) {
             log.info("로그인 실패(비밀번호 불일치) userId={}", user.getId());
             throw new InvalidCredentialsException();
         }
+        loginAttemptLimiter.reset(request.email());
         log.info("로그인 성공 userId={}", user.getId());
         return issueTokens(user);
     }
@@ -88,14 +111,6 @@ public class AuthService {
         return TokenResponse.bearer(
                 accessToken.value(), refreshToken.value(),
                 accessToken.expiresInSeconds(), refreshToken.expiresInSeconds());
-    }
-
-    private User findByEmailOrThrow(String email) {
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> {
-                    log.info("로그인 실패(존재하지 않는 이메일)");
-                    return new InvalidCredentialsException();
-                });
     }
 
     @Transactional
