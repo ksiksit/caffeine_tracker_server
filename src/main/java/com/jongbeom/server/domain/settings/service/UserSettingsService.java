@@ -4,16 +4,31 @@ import com.jongbeom.server.domain.settings.dto.NotificationSettingsRequest;
 import com.jongbeom.server.domain.settings.dto.UpdateSettingsRequest;
 import com.jongbeom.server.domain.settings.entity.UserSettings;
 import com.jongbeom.server.domain.settings.repository.UserSettingsRepository;
+import com.jongbeom.server.domain.user.UserWriteLock;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 유저 설정 조회·갱신. 설정 행은 첫 조회 시점에 기본값으로 생성되는 upsert 모델. */
+/**
+ * 유저 설정 조회·갱신. 설정 행은 가입 트랜잭션에서 기본값으로 만든다({@link #createDefault}).
+ * {@link #getOrCreate}의 생성 분기는 이 규칙 이전에 가입해 행이 없는 계정용 폴백이다.
+ */
 @Service
 @RequiredArgsConstructor
 public class UserSettingsService {
 
     private final UserSettingsRepository userSettingsRepository;
+    private final UserWriteLock userWriteLock;
+
+    /**
+     * 가입 시 기본 설정 행 생성. 첫 접속 때 설정을 읽는 요청 여러 개가 동시에 와도
+     * 각자 행을 만들려다 PK 가 충돌하지 않도록, 행은 가입과 같은 트랜잭션에서 미리 만든다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void createDefault(Long userId) {
+        userSettingsRepository.save(UserSettings.createDefault(userId));
+    }
 
     /** 설정 조회. 없으면 기본값으로 생성해 반환(GET 이 곧 보장). */
     @Transactional
@@ -22,8 +37,10 @@ public class UserSettingsService {
                 .orElseGet(() -> userSettingsRepository.save(UserSettings.createDefault(userId)));
     }
 
+    /** 같은 사용자의 학습 실행과 겹치면 한쪽 갱신이 유실되므로 사용자 쓰기 잠금 뒤에 읽는다. */
     @Transactional
     public UserSettings update(Long userId, UpdateSettingsRequest request) {
+        userWriteLock.lock(userId);
         UserSettings settings = getOrCreate(userId);
         settings.update(request.halfLife(), request.condition(), request.bedtimeHour(),
                 request.bedtimeMinute(), request.referenceDoseMg(), request.isLearningEnabled());

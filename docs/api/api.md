@@ -144,7 +144,9 @@ HTTP 상태 코드는 그대로 의미를 가진다(201 생성, 400/401/404/409 
 { "success": true, "data": { "userId": 1, "email": "user@example.com", "nickname": "테스터" }, "error": null, "message": null }
 ```
 
-**에러**: 409 `EMAIL_ALREADY_EXISTS`
+**에러**: 409 `EMAIL_ALREADY_EXISTS` (같은 이메일로 동시에 가입하면 하나만 201, 나머지는 이 409)
+
+가입과 같은 트랜잭션에서 기본 설정 행도 만든다.
 
 ### POST /api/auth/login — 로그인
 
@@ -224,7 +226,7 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 
 ### GET /api/settings — 설정 조회
 
-유저 설정과 학습 상태를 조회한다. 설정 행이 없으면 기본값으로 생성해 반환한다.
+유저 설정과 학습 상태를 조회한다. 설정 행은 가입 시 기본값으로 만들어지며, 그 이전에 가입해 행이 없는 계정은 이 조회에서 생성한다.
 
 **응답 200** `data: SettingsResponse`
 
@@ -254,6 +256,7 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 ### PUT /api/settings — 설정 변경
 
 설정 전체를 교체한다. `halfLife`가 이전 값과 다르면 학습 prior가 리셋된다(`learnedMean=halfLife`, `learnedVariance=2.25`, `lastLearnedDate=null`).
+같은 사용자의 학습 실행·수면 업로드가 진행 중이면 그것이 끝난 뒤에 반영된다(서로의 갱신을 덮어쓰지 않는다).
 
 **요청 바디** `UpdateSettingsRequest`
 
@@ -386,7 +389,7 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 
 ### POST /api/sleep/samples — 수면 샘플 업로드
 
-기기에서 읽은 원시 샘플을 배치로 올린다. `clientUuid`가 이미 저장돼 있으면 건너뛰므로 같은 배치를 다시 보내도 안전하다(멱등). 배치 안의 중복 `clientUuid`는 첫 항목만 저장.
+기기에서 읽은 원시 샘플을 배치로 올린다. `clientUuid`가 이미 저장돼 있으면 건너뛰므로 같은 배치를 다시 보내도 안전하다(멱등). 같은 배치가 동시에 와도 샘플은 한 번만 저장되고 둘 다 200이다(`inserted` 합계가 실제 저장 수). 배치 안의 중복 `clientUuid`는 첫 항목만 저장.
 
 **요청 바디** `UploadSleepSamplesRequest`
 
@@ -453,7 +456,7 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 
 ### POST /api/learning/run — 반감기 학습 실행
 
-오늘(`tz` 기준) 포함 최근 7일 중 수면 데이터가 있고 아직 학습하지 않은 밤을 오래된 순으로 학습하고 설정의 학습 상태에 반영한다. 같은 날짜는 1회만 학습된다.
+오늘(`tz` 기준) 포함 최근 7일 중 수면 데이터가 있고 아직 학습하지 않은 밤을 오래된 순으로 학습하고 설정의 학습 상태에 반영한다. 같은 날짜는 1회만 학습된다. 같은 사용자의 실행이 겹치면 차례로 처리되어, 뒤의 실행은 `ALREADY_LEARNED`로 건너뛴다.
 
 **쿼리**
 

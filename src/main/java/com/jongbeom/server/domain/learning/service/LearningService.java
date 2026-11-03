@@ -24,6 +24,7 @@ import com.jongbeom.server.domain.settings.entity.UserSettings;
 import com.jongbeom.server.domain.settings.service.UserSettingsService;
 import com.jongbeom.server.domain.sleep.service.SleepService;
 import com.jongbeom.server.domain.sleep.service.SleepService.NightData;
+import com.jongbeom.server.domain.user.UserWriteLock;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -50,15 +51,20 @@ public class LearningService {
     private final SleepService sleepService;
     private final CaffeineRecordRepository caffeineRepository;
     private final HalfLifeObservationRepository observationRepository;
+    private final UserWriteLock userWriteLock;
     private final Clock clock;
 
     /**
      * 최근 7일 중 미학습 night를 오래된→최신 순으로 배치 학습.
      * **순차 prior 체이닝**: 매 night마다 settings의 갱신된 learned 값을 prior로 사용한다.
      * (← iOS updateMissingObservations)
+     *
+     * <p>같은 사용자의 run 이 겹치면 둘 다 "미학습"으로 판단해 같은 night 를 두 번 저장하려 하고(UNIQUE 위반),
+     * 서로 다른 prior 로 settings 를 덮어쓴다. 사용자 쓰기 잠금으로 차례로 실행해, 뒤의 run 은 앞의 결과를 보고 건너뛴다.
      */
     @Transactional
     public LearningRunResponse run(Long userId, ZoneId zone) {
+        userWriteLock.lock(userId);
         UserSettings settings = settingsService.getOrCreate(userId);
         if (!settings.isLearningEnabled()) {
             return toRunResponse(0, LearningSkipReason.LEARNING_DISABLED);
