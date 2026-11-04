@@ -5,6 +5,7 @@ import com.jongbeom.server.domain.calc.sleep.SleepMerger;
 import com.jongbeom.server.domain.calc.sleep.SleepMerger.Interval;
 import com.jongbeom.server.domain.calc.sleep.SleepStage;
 import com.jongbeom.server.domain.calc.sleep.SleepSummaryCalc;
+import com.jongbeom.server.domain.sleep.SleepMetrics;
 import com.jongbeom.server.domain.sleep.dto.SleepSummaryResponse;
 import com.jongbeom.server.domain.sleep.dto.SleepSummaryResponse.RecordItem;
 import com.jongbeom.server.domain.sleep.dto.SleepSummaryResponse.StageItem;
@@ -35,6 +36,7 @@ public class SleepService {
 
     private final SleepSampleRepository sleepSampleRepository;
     private final UserWriteLock userWriteLock;
+    private final SleepMetrics sleepMetrics;
 
     /** 병합된 한 night(intervals + 원시 inBed bedtimeStart). summary·learning 이 공유하는 형태. */
     public record NightData(List<Interval> intervals, Instant bedtimeStart) {
@@ -61,6 +63,7 @@ public class SleepService {
                 .toList();
 
         sleepSampleRepository.saveAll(toInsert);
+        sleepMetrics.recordUpload(request.samples().size(), toInsert.size());
         return new UploadSleepSamplesResponse(request.samples().size(), toInsert.size());
     }
 

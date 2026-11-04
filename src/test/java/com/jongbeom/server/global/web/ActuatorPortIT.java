@@ -51,6 +51,17 @@ class ActuatorPortIT {
     }
 
     @Test
+    void 메트릭에_도메인_카운터가_요청_전부터_0으로_나온다() {
+        String body = get(managementPort, "/actuator/prometheus").getBody();
+        // Grafana 도메인 패널이 쓰는 이름. Micrometer 이름(caffeine.learning.runs)이 Prometheus 형식(_total)으로 바뀐 것
+        assertThat(body)
+                .contains("caffeine_learning_runs_total{outcome=\"LEARNED\"")
+                .contains("caffeine_learning_nights_total{outcome=\"ALREADY_LEARNED\"")
+                .contains("caffeine_sleep_samples_total{result=\"duplicate\"")
+                .contains("caffeine_auth_logins_total{outcome=\"UNKNOWN_EMAIL\"");
+    }
+
+    @Test
     void 공개포트에는_헬스와_메트릭이_없다() {
         assertThat(get(serverPort, "/actuator/health").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(get(serverPort, "/actuator/prometheus").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);

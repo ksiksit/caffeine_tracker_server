@@ -11,6 +11,8 @@ import static org.mockito.Mockito.verify;
 
 import com.jongbeom.server.domain.auth.JwtTokenProvider;
 import com.jongbeom.server.domain.auth.LoginAttemptLimiter;
+import com.jongbeom.server.domain.auth.LoginMetrics;
+import com.jongbeom.server.domain.auth.LoginMetrics.Outcome;
 import com.jongbeom.server.domain.auth.RefreshTokenVerifier;
 import com.jongbeom.server.domain.auth.RefreshTokenVerifier.RefreshClaims;
 import com.jongbeom.server.domain.auth.dto.LoginRequest;
@@ -51,6 +53,8 @@ class AuthServiceTest {
     UserSettingsService userSettingsService;
     @Mock
     LoginAttemptLimiter loginAttemptLimiter;
+    @Mock
+    LoginMetrics loginMetrics;
 
     @InjectMocks
     AuthService authService;
@@ -112,6 +116,7 @@ class AuthServiceTest {
         assertThat(response.expiresIn()).isEqualTo(3600);
         assertThat(response.refreshExpiresIn()).isEqualTo(1209600);
         verify(loginAttemptLimiter).reset("a@b.com"); // 성공하면 시도 기록을 지운다
+        verify(loginMetrics).record(Outcome.SUCCESS);
     }
 
     @Test
@@ -126,6 +131,7 @@ class AuthServiceTest {
         verify(passwordEncoder).matches("password1!", "dummy-hash");
         verify(jwtTokenProvider, never()).createRefreshToken(any());
         verify(loginAttemptLimiter, never()).reset(any());
+        verify(loginMetrics).record(Outcome.UNKNOWN_EMAIL); // 응답은 비밀번호 불일치와 같지만 메트릭은 나눈다
     }
 
     @Test
@@ -136,6 +142,7 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(new LoginRequest("a@b.com", "password1!")))
                 .isInstanceOf(TooManyLoginAttemptsException.class);
         verifyNoInteractions(userRepository, passwordEncoder, jwtTokenProvider);
+        verifyNoInteractions(loginMetrics); // 막힌 시도는 HTTP 429 메트릭으로 본다
     }
 
     @Test
@@ -148,6 +155,7 @@ class AuthServiceTest {
                 .isInstanceOf(InvalidCredentialsException.class);
         verify(jwtTokenProvider, never()).createRefreshToken(any());
         verify(loginAttemptLimiter, never()).reset(any());
+        verify(loginMetrics).record(Outcome.WRONG_PASSWORD);
     }
 
     @Test

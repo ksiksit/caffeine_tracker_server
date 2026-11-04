@@ -564,6 +564,167 @@
         "overrides": []
       },
       "options": {}
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "학습 실행 결과 (최근 1시간)",
+      "description": "POST /api/learning/run 실행 수를 결과별로 센다. LEARNED 는 1밤 이상 학습, 그 외는 응답 skipReason. 0인 결과는 숨긴다. 앱은 실행이 건너뛰어져도 200 을 받으므로 HTTP 패널에는 안 보이는 값이다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (outcome) (increase(caffeine_learning_runs_total{job=\"caffeine-app\"}[1h])) > 0",
+          "legendFormat": "{{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "학습 밤별 결과 (최근 1시간)",
+      "description": "학습 실행이 살펴본 후보 밤을 결과별로 센다. 응답은 최신 밤 사유 하나만 주므로 다른 밤이 왜 빠졌는지는 여기서 본다. ALREADY_LEARNED 는 재실행마다 쌓인다. 0인 결과는 숨긴다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (outcome) (increase(caffeine_learning_nights_total{job=\"caffeine-app\"}[1h])) > 0",
+          "legendFormat": "{{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "수면 샘플 업로드 (최근 1시간)",
+      "description": "inserted 는 새로 저장한 샘플, duplicate 는 이미 저장됐거나 같은 배치 안에서 겹쳐 버린 샘플. duplicate 가 계속 크면 앱이 같은 샘플을 반복해 올리고 있다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (result) (increase(caffeine_sleep_samples_total{job=\"caffeine-app\"}[1h]))",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "로그인 결과 (최근 1시간)",
+      "description": "비밀번호 검증까지 간 시도를 결과별로 센다. UNKNOWN_EMAIL 은 응답이 WRONG_PASSWORD 와 같은 401 이라 HTTP 패널로는 나눌 수 없다 — 이것만 크게 늘면 이메일 목록 대입을 의심한다. BLOCKED 는 시도 제한(429) 응답 수로 HTTP 메트릭에서 가져온다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (outcome) (increase(caffeine_auth_logins_total{job=\"caffeine-app\"}[1h]))",
+          "legendFormat": "{{outcome}}"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(http_server_requests_seconds_count{job=\"caffeine-app\",uri=\"/api/auth/login\",status=\"429\"}[1h])) or vector(0)",
+          "legendFormat": "BLOCKED (429)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
     }
   ]
 }

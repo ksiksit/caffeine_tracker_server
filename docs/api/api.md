@@ -650,6 +650,8 @@ curl localhost:8081/actuator/health   # {"status":"UP"}
 
 인증 불필요(`SecurityConfig`의 공개 경로). Prometheus 수집용이며 **공통 봉투가 아니라** Prometheus 텍스트 형식으로 응답한다.
 운영(prod)에서만 노출하고, 그 외 프로파일은 별도 설정이 없으면 404다.
+HTTP·JVM·DB 풀 기본 메트릭 외에 학습·수면 업로드·로그인 결과를 세는 도메인 카운터(`caffeine_*_total`)가 함께 나간다.
+목록과 읽는 법은 [`운영-가이드.md`](../ops/운영-가이드.md) "도메인 메트릭".
 
 ```bash
 curl localhost:8081/actuator/prometheus

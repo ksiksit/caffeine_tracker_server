@@ -13,7 +13,7 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 ## 배치 규칙
 - `com.jongbeom.server.domain.<도메인>/` 아래 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/`.
   테스트도 같은 구조로 미러링, 통합 테스트는 `*IT` 접미사.
-- 레이어가 아닌 컴포넌트(`JwtTokenProvider`, `RefreshTokenVerifier`, `LearningSkipReason`)는 도메인 루트.
+- 레이어가 아닌 컴포넌트(`JwtTokenProvider`, `RefreshTokenVerifier`, `LearningSkipReason`, `*Metrics`)는 도메인 루트.
 - 인프라는 `global/`(config·error·web·entity). `ServerApplication`은 패키지 루트 고정(컴포넌트 스캔 베이스).
 - 새 엔드포인트는 `SecurityConfig.authorizeHttpRequests`에 등록 (미등록 = authenticated).
 
@@ -33,6 +33,8 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
   api.md 필드 표·openapi 스키마·enum을 코드와 대조한다. **이름은 잡고 설명 문구는 못 잡는다.**
   api.md 필드 표의 경로 표기(`a[].b`·`*Suffix[]` 등)는 파서가 읽으므로 api.md "필드 표 표기" 절을 따른다.
 - 사용자에게 보이는 기능 → `docs/features.md` 표. 동작 조건·임계값은 여기 적는다 — 그 괄호가 그대로 테스트 케이스 목록이다.
+- 도메인 메트릭(`*Metrics`) 이름·태그 → `monitoring/grafana/dashboards/caffeine-app.json` 쿼리 + `docs/ops/운영-가이드.md`
+  "도메인 메트릭" 표. 태그에 userId 등 사용자별 값 금지(시계열 폭증). 대시보드 쿼리는 테스트가 대조하지 않는다.
 - 새 엔드포인트 → `README.md` API 표에도 한 줄. **경로와 `features.md`의 기능 이름만** 적고 동작 세부는 옮기지 않는다.
   테스트가 대조하지 않는 유일한 사본이라, 세부를 적으면 낡아도 빌드가 통과한다.
 
