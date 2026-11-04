@@ -2,6 +2,7 @@ package com.jongbeom.server.domain.auth.service;
 
 import com.jongbeom.server.domain.auth.JwtTokenProvider;
 import com.jongbeom.server.domain.auth.LoginAttemptLimiter;
+import com.jongbeom.server.domain.auth.LoginMetrics;
 import com.jongbeom.server.domain.auth.RefreshTokenVerifier;
 import com.jongbeom.server.domain.auth.RefreshTokenVerifier.RefreshClaims;
 import com.jongbeom.server.domain.auth.dto.LoginRequest;
@@ -38,6 +39,7 @@ public class AuthService {
     private final RefreshTokenVerifier refreshTokenVerifier;
     private final UserSettingsService userSettingsService;
     private final LoginAttemptLimiter loginAttemptLimiter;
+    private final LoginMetrics loginMetrics;
 
     /** 없는 이메일 로그인에도 bcrypt 비교를 한 번 하기 위한 해시. 실제 인코더로 만들어 비용(strength)이 같다. */
     private String dummyPasswordHash;
@@ -79,14 +81,17 @@ public class AuthService {
         String hashToCheck = user != null ? user.getPasswordHash() : dummyPasswordHash;
         boolean matches = passwordEncoder.matches(request.password(), hashToCheck);
         if (user == null) {
+            loginMetrics.record(LoginMetrics.Outcome.UNKNOWN_EMAIL);
             log.info("로그인 실패(존재하지 않는 이메일)");
             throw new InvalidCredentialsException();
         }
         if (!matches) {
+            loginMetrics.record(LoginMetrics.Outcome.WRONG_PASSWORD);
             log.info("로그인 실패(비밀번호 불일치) userId={}", user.getId());
             throw new InvalidCredentialsException();
         }
         loginAttemptLimiter.reset(request.email());
+        loginMetrics.record(LoginMetrics.Outcome.SUCCESS);
         log.info("로그인 성공 userId={}", user.getId());
         return issueTokens(user);
     }

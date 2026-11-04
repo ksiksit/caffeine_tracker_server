@@ -10,6 +10,7 @@ import com.jongbeom.server.domain.calc.learning.LearningStatsCalc;
 import com.jongbeom.server.domain.calc.learning.LearningStatsCalc.Point;
 import com.jongbeom.server.domain.calc.learning.LearningStatsCalc.Range;
 import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.Dose;
+import com.jongbeom.server.domain.learning.LearningMetrics;
 import com.jongbeom.server.domain.learning.LearningSkipReason;
 import com.jongbeom.server.domain.learning.dto.LearningDashboardResponse;
 import com.jongbeom.server.domain.learning.dto.LearningDashboardResponse.Calibration;
@@ -59,6 +60,7 @@ public class LearningService {
     private final CaffeineRecordRepository caffeineRepository;
     private final HalfLifeObservationRepository observationRepository;
     private final UserWriteLock userWriteLock;
+    private final LearningMetrics learningMetrics;
     private final Clock clock;
 
     /**
@@ -74,7 +76,7 @@ public class LearningService {
         userWriteLock.lock(userId);
         UserSettings settings = settingsService.getOrCreate(userId);
         if (!settings.isLearningEnabled()) {
-            return toRunResponse(0, LearningSkipReason.LEARNING_DISABLED);
+            return finishRun(0, LearningSkipReason.LEARNING_DISABLED);
         }
 
         LocalDate today = LocalDate.ofInstant(clock.instant(), zone);
@@ -82,7 +84,7 @@ public class LearningService {
         // 데이터 없는 날은 조용히 건너뛰므로 빠져 있다
         SortedMap<LocalDate, NightData> nights = sleepService.mergedNights(userId, oldestCandidate, today, zone);
         if (nights.isEmpty()) {
-            return toRunResponse(0, LearningSkipReason.NO_SLEEP_SUMMARY);
+            return finishRun(0, LearningSkipReason.NO_SLEEP_SUMMARY);
         }
 
         // 입력은 밤 수와 무관하게 한 번씩만 조회한다. 취침 시각은 settings 의 취침 설정과 그 밤 데이터로만 정해져
@@ -106,6 +108,7 @@ public class LearningService {
             LearningSkipReason skipReason = learnedDates.contains(date)
                     ? LearningSkipReason.ALREADY_LEARNED
                     : learnOneNight(userId, date, settings, bedtimes.get(date), records);
+            learningMetrics.recordNight(skipReason);
             if (skipReason == null) {
                 updated++;
             } else {
@@ -113,7 +116,7 @@ public class LearningService {
             }
         }
         // 하나라도 학습됐으면 사유는 보고하지 않는다 (← iOS 동일 규칙)
-        return toRunResponse(updated, updated == 0 ? latestReason : null);
+        return finishRun(updated, updated == 0 ? latestReason : null);
     }
 
     /**
@@ -241,7 +244,12 @@ public class LearningService {
                 .toList();
     }
 
-    private LearningRunResponse toRunResponse(int updated, LearningSkipReason reason) {
+    /**
+     * 실행 결과를 메트릭에 남기고 응답으로 바꾼다. 메트릭은 트랜잭션 커밋 전에 올라가므로 커밋이 실패하면(요청은 500)
+     * 그 실행도 세어진다 — 드물고 500 은 HTTP 메트릭에 따로 보이므로 감수한다.
+     */
+    private LearningRunResponse finishRun(int updated, LearningSkipReason reason) {
+        learningMetrics.recordRun(reason);
         return new LearningRunResponse(updated,
                 reason == null ? null : reason.name(),
                 reason == null ? null : reason.message());
