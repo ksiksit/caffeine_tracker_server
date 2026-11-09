@@ -1,6 +1,6 @@
 {{/*
   경보 메시지 템플릿. alertmanager.yml(운영, SNS)과 alertmanager.local.yml(로컬)이 함께 쓴다.
-  SNS 가 이메일로 그대로 보내고, Lambda alert-relay 가 같은 문장을 Discord 로 옮긴다 (docs/alerting-plan.md §4.1).
+  SNS 가 이메일로 그대로 보내고, Lambda alert-relay 가 같은 문장을 Slack 으로 옮긴다 (docs/alerting-plan.md §4.1).
 
   - 제목(caffeine.subject)은 ASCII 만 쓴다. SNS 는 제목에 한글이 있으면 발행 자체를 거부한다 — monitoring/check.sh 가 검사한다
   - 시각은 KST. 경보 라벨에는 사용자별 값이 없으므로(alerts.yml 규칙) 본문에도 개인정보가 들어가지 않는다

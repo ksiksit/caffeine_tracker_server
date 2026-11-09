@@ -13,6 +13,7 @@
 #   5. 라우팅 결과 — 하트비트는 heartbeat, 나머지는 alerts 수신자로 가는지 (amtool config routes test)
 #   6. 메시지 템플릿 렌더링을 기대 결과와 비교, 제목이 ASCII 인지 (SNS 는 제목에 한글이 있으면 발행을 거부한다)
 #   7. AWS 설정 파일 — 정책 JSON 문법, 자리표시자가 스크립트가 채우는 것뿐인지, 설정 스크립트 문법 (bash -n)
+#   8. Lambda alert-relay 단위 테스트 (node --test, Node 20 이상. 6번의 기대 렌더링 결과를 입력으로 쓴다)
 set -eu
 
 PROMETHEUS_IMAGE=prom/prometheus:v3.5.0
@@ -103,5 +104,19 @@ for script in monitoring/aws/*.sh; do
     bash -n "$script"
 done
 echo "SUCCESS"
+
+step "8. Lambda alert-relay 단위 테스트"
+if command -v node >/dev/null 2>&1; then
+    node --test monitoring/lambda/alert-relay/relay.test.mjs > /tmp/check-lambda.$$ 2>&1 || {
+        cat /tmp/check-lambda.$$ >&2
+        rm -f /tmp/check-lambda.$$
+        echo "FAIL: Lambda 단위 테스트 실패" >&2
+        exit 1
+    }
+    grep -E '^# (tests|pass|fail)' /tmp/check-lambda.$$
+    rm -f /tmp/check-lambda.$$
+else
+    echo "node 가 없어 건너뛰었다 (CI 는 돌린다)"
+fi
 
 printf '\n모든 검사 통과\n'
