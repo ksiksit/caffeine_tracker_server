@@ -41,6 +41,8 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
   route·inhibit_rules는 같아야 한다(스크립트가 대조). 메시지 템플릿을 바꾸면 `monitoring/alertmanager/testdata/*.expected.txt`도 갱신.
 - 경보 AWS 스크립트·정책(`monitoring/aws/`) → `docs/ops/경보-AWS-설정.md`의 "생기는 것" 표·콘솔 절차·되돌리기 명령.
   스크립트는 더하기만 하고 다시 실행해도 되게 유지한다. 테스트는 문법만 본다 — 동작은 실제 계정이나 moto로 확인.
+- 기반 AWS 스크립트(`infra/aws/`) → `docs/ops/기반-AWS-설정.md`의 "생기는 것" 표·되돌리기 명령. 경보 스크립트와 같은 규칙이다
+  (더하기만, 다시 실행 가능, 테스트는 문법만). EC2에서 나가는 인터넷은 닫힌 상태가 기본 — 여는 규칙을 스크립트 기본값으로 넣지 않는다.
 - 경보 Lambda(`monitoring/lambda/alert-relay/`) → `relay.test.mjs`(check.sh가 실행). 로직은 `relay.mjs`에 의존성 주입으로 두고
   `index.mjs`는 AWS 클라이언트 연결만. 외부 의존성 없이 유지(런타임 내장 SDK v3). 배포는 `monitoring/aws/4-alert-relay.sh` 재실행.
 - 새 엔드포인트 → `README.md` API 표에도 한 줄. **경로와 `features.md`의 기능 이름만** 적고 동작 세부는 옮기지 않는다.

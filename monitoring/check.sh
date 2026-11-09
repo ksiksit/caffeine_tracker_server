@@ -12,7 +12,7 @@
 #   4. 두 파일의 route·inhibit_rules 가 같은지 (로컬에서 확인한 라우팅이 운영과 같다는 보장)
 #   5. 라우팅 결과 — 하트비트는 heartbeat, 나머지는 alerts 수신자로 가는지 (amtool config routes test)
 #   6. 메시지 템플릿 렌더링을 기대 결과와 비교, 제목이 ASCII 인지 (SNS 는 제목에 한글이 있으면 발행을 거부한다)
-#   7. AWS 설정 파일 — 정책 JSON 문법, 자리표시자가 스크립트가 채우는 것뿐인지, 설정 스크립트 문법 (bash -n)
+#   7. AWS 설정 파일 — 정책 JSON 문법, 자리표시자가 스크립트가 채우는 것뿐인지, 설정 스크립트 문법 (bash -n, infra/aws 포함)
 #   8. Lambda alert-relay 단위 테스트 (node --test, Node 20 이상. 6번의 기대 렌더링 결과를 입력으로 쓴다)
 set -eu
 
@@ -100,7 +100,7 @@ for policy in monitoring/aws/policies/*.json; do
     fi
 done
 command -v python3 >/dev/null 2>&1 || echo "python3 가 없어 정책 JSON 문법 검사는 건너뛰었다"
-for script in monitoring/aws/*.sh; do
+for script in monitoring/aws/*.sh infra/aws/*.sh; do
     bash -n "$script"
 done
 echo "SUCCESS"
