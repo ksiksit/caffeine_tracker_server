@@ -1,8 +1,8 @@
 # 장애 경보 설계 — 외부 인터넷이 없는 EC2에서 운영자에게 알리기
 
 > 작성: 2026-11-09 · 상태: **3단계 중 레포 작업 구현** (경보 규칙·promtool 테스트·Alertmanager 설정·로컬 compose·CI 검사, 2026-11-09).
-> AWS 1·2·4단계는 **스크립트·절차 준비됨, moto로 동작 확인, 실제 계정에서 실행 전** (`ops/경보-AWS-설정.md`, `monitoring/aws/`, 2026-11-09).
-> Lambda `caffeine-alert-relay`는 코드·테스트·배포 스크립트 구현, 배포 전.
+> AWS 1·2·4단계는 **Terraform으로 구현, moto로 동작 확인, 실제 계정에서 실행 전** (`infra/terraform/modules/alerting/`, `ops/경보-AWS-설정.md`, 2026-11-09).
+> Lambda `caffeine-alert-relay`는 코드·테스트 구현, 배포 전(Terraform이 함께 올린다).
 > 대상: `monitoring/` 경보 규칙·Alertmanager 추가 + AWS SNS·Lambda·CloudWatch 알람
 >
 > 구현된 부분의 원본은 `monitoring/`·`docker-compose.*.yml`·`ops/운영-가이드.md` "경보" 절이다. 이 문서의 예시와 다르면 그쪽이 맞다.
@@ -235,7 +235,7 @@ Alertmanager 설정 파일은 환경변수를 펼치지 않는다. 토픽 ARN에
 
 ## 5. EC2 바깥의 감시 (CloudWatch)
 
-`monitoring/aws/1-topics-and-alarms.sh`로 만든다(콘솔도 가능). 설정값은 스크립트가 원본이고, 절차는 `ops/경보-AWS-설정.md`.
+Terraform(`infra/terraform/modules/alerting/alarms.tf`·`lambda.tf`)으로 만든다. 설정값은 그 파일이 원본이고, 절차는 `ops/경보-AWS-설정.md`.
 
 ### 5.1 인프라 알람
 
@@ -264,7 +264,7 @@ Prometheus·Alertmanager·SNS 엔드포인트·IAM·Lambda 중 **어느 하나�
 
 ## 6. Lambda `alert-relay`
 
-함수 이름은 `caffeine-alert-relay`다. 구현했고(2026-11-09) 배포는 `monitoring/aws/4-alert-relay.sh`, 절차는 `ops/경보-AWS-설정.md` 4단계다.
+함수 이름은 `caffeine-alert-relay`다. 구현했고(2026-11-09) 배포는 `terraform apply`(`modules/alerting/lambda.tf`), 확인은 `ops/경보-AWS-설정.md` "4단계 확인"이다.
 
 | 항목 | 값 |
 |---|---|
@@ -375,13 +375,9 @@ docker exec caffeine-alertmanager amtool silence add 'alertname=~"AppDown|AppRes
 - Lambda 단위: `relay.test.mjs` 30개 통과(Node 22·20). 세 가지 입력, Slack 제어 문자 바꾸기, 4000자 자르기, 웹훅 캐시·형식 검사(Discord 주소 거부 포함), Slack 오류 시 예외.
   Alertmanager 입력은 템플릿 기대 렌더링 결과(`testdata/*.expected.txt`)를 그대로 쓴다. 로직을 일부러 바꾸면 테스트가 실패하는 것도 확인했다.
 - Lambda 연결(`index.mjs`): 실제 AWS SDK v3로 moto(SSM·CloudWatch)에 붙여 돌렸다. SecureString 복호화, Heartbeat 메트릭 기록, Slack 요청 본문을 확인했다.
-- AWS 스크립트(`monitoring/aws/1-·2-·4-*.sh`): moto 5.2.5 서버와 AWS CLI v1에 대고 각각 두 번씩 돌렸다. 둘 다 종료 코드 0이고,
-  두 번째 실행은 토픽·구독·보안 그룹 규칙(`InvalidPermission.Duplicate`)·엔드포인트·역할·홉 제한·로그 그룹·Lambda 구독을 "있음"으로 건너뛰고
-  Lambda는 새 코드로 갱신했다. 만들어진 알람 7개의 지표·통계·주기·횟수·임계값·누락 데이터 처리가 §5와 같고, Lambda는 nodejs22.x·arm64·128MB·10초·환경변수 3개,
-  정책 JSON에 `__REGION__`·`__ACCOUNT_ID__`가 남지 않았다. 웹훅 파라미터가 없으면 넣는 방법을 출력하고 종료 코드 1로 멈추는 것,
-  하트비트 메트릭이 생긴 뒤 다시 실행하면 `caffeine-heartbeat-missing`이 그때 만들어지는 것도 확인했다.
-  moto가 실제와 다른 곳: 이메일 구독을 바로 확인 상태로 만들고(실제로는 확인 대기 → 다시 실행 때 재요청 분기), `add-permission` 중복에
-  `ResourceConflictException`을 내지 않는다(실제 계정에서 "호출 권한 있음" 분기). 이 두 분기와 IAM 권한 부족(`AccessDenied`)은 실제 계정에서만 확인된다.
+- AWS 자원: 처음에는 bash 스크립트로 만들어 moto에서 확인했고, 같은 날 Terraform(`infra/terraform/`)으로 옮겼다. Terraform의 검증 결과와
+  moto가 실제와 다른 곳(CloudWatch 알람 프로토콜 등)은 `ops/기반-AWS-설정.md` "검증 기록"에 있다. 알람 7개의 지표·통계·주기·횟수·임계값·누락 데이터 처리가 §5와 같고,
+  Lambda는 nodejs22.x·arm64·128MB·10초·환경변수 3개인 것을 확인했다. 이메일 구독 승인과 IAM 권한 부족(`AccessDenied`)은 실제 계정에서만 확인된다.
 - 경로 통합·운영 종단: AWS 계정에서 1·2·4단계를 실행한 뒤.
 
 ---
@@ -414,10 +410,10 @@ CloudWatch 알람 10개 이내·`PutMetricData`는 이 규모면 프리 티어 �
 | 단계 | 내용 | 완료 기준 |
 |---|---|---|
 | 0 | §10의 1·2 확인 | 진행 가능 여부 결정 |
-| 1 | SNS 토픽 두 개 + 이메일 구독 + §5.1 인프라 알람 (`1-topics-and-alarms.sh`) | `set-alarm-state`로 울린 테스트 알람이 이메일로 온다. **코드 없이 EC2 전체 장애를 먼저 잡는다**. 스크립트 준비됨, 실행 전 |
-| 2 | 엔드포인트 + EC2 역할 + 홉 제한 (`2-ec2-to-sns.sh`) → EC2에서 수동 발행 | EC2의 컨테이너(aws-cli 이미지를 `docker load`)에서 `sns publish`한 메시지가 이메일로 온다. **가장 위험한 네트워크·권한 경로를 코드 전에 검증한다**. 스크립트 준비됨, 실행 전 |
+| 1 | SNS 토픽 두 개 + 이메일 구독 + §5.1 인프라 알람 (`modules/alerting/sns.tf`·`alarms.tf`) | `set-alarm-state`로 울린 테스트 알람이 이메일로 온다. **EC2 전체 장애를 먼저 잡는다**. Terraform 구현, 실행 전 |
+| 2 | 엔드포인트 + EC2 역할 + 홉 제한 (`modules/alerting/endpoint.tf`, 역할·홉 제한은 `ec2.tf`) → EC2에서 수동 발행 | EC2의 컨테이너(aws-cli 이미지를 `docker load`)에서 `sns publish`한 메시지가 이메일로 온다. **가장 위험한 네트워크·권한 경로를 Alertmanager를 켜기 전에 검증한다**. Terraform 구현, 실행 전 |
 | 3 | 경보 규칙 + promtool 테스트 + Alertmanager (로컬 → 운영) | 로컬에서 §9 규칙·통합 검증 통과, 운영에서 앱을 잠깐 내리면 `AppDown`과 해결 알림이 이메일로 온다. **레포 작업은 2026-11-09 구현, 운영 반영은 2단계 뒤** |
-| 4 | Lambda `caffeine-alert-relay` + Slack + 하트비트 알람 + Lambda 오류 알람 (`4-alert-relay.sh`) | Slack 수신, Alertmanager를 15분 내리면 `HeartbeatMissing`이 온다. 코드·스크립트 준비됨, 배포 전 |
+| 4 | Lambda `caffeine-alert-relay` + Slack + 하트비트 알람 + Lambda 오류 알람 (`modules/alerting/lambda.tf`) | Slack 수신, Alertmanager를 15분 내리면 `HeartbeatMissing`이 온다. 코드·Terraform 구현, 배포 전 |
 | 5 | 문서 동기화 (§12) | 운영 가이드에 절차·사일런스·알람 설정값 기록 |
 
 ---
@@ -427,9 +423,9 @@ CloudWatch 알람 10개 이내·`PutMetricData`는 이 규모면 프리 티어 �
 | 문서·파일 | 변경 | 상태 |
 |---|---|---|
 | `ops/운영-가이드.md` | "경보" 절: 규칙 보는 법, Alertmanager 켜기, `.env`의 ARN 변수 3개, 배포 사일런스, 로컬 확인 | 2026-11-09 반영 |
-| `ops/경보-AWS-설정.md` | 1·2단계 절차, 생기는 것, 확인·문제 해결, 콘솔 절차, 되돌리기 | 2026-11-09 반영 |
+| `ops/경보-AWS-설정.md` | 생기는 것, 단계별 확인·문제 해결, 끄기 (자원 생성은 Terraform — `ops/기반-AWS-설정.md`) | 2026-11-09 반영 |
 | `ops/운영-가이드.md` | 하트비트 알람이 울렸을 때 점검 순서(§8) | 2026-11-09 반영 |
-| `ops/경보-AWS-설정.md` | 4단계(Slack 웹훅·SSM·배포·확인·문제 해결·되돌리기) | 2026-11-09 반영 |
+| `ops/경보-AWS-설정.md` | 4단계(Slack 웹훅·SSM·확인·문제 해결) | 2026-11-09 반영 |
 | `CLAUDE.md` "바꾸면 같이 바꿀 것" | 메트릭 이름을 바꾸면 경보 규칙도 같이 바꾼다(`AlertRuleMetricsIT`가 대조), 경보 설정을 바꾸면 테스트·`check.sh` | 2026-11-09 반영 |
 | `docker-compose.prod.yml`, `docker-compose.monitoring.yml` | Alertmanager 서비스(운영은 `alerting` 프로필). 이미지 태그는 두 파일과 `check.sh`가 같게 | 2026-11-09 반영 |
 | `monitoring/prometheus/prometheus.yml` | `rule_files`, `alerting.alertmanagers` | 2026-11-09 반영 |

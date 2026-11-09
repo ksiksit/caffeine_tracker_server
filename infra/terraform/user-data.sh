@@ -1,6 +1,6 @@
 #!/bin/bash
-# EC2 첫 부팅 때 root 로 한 번 실행된다 (base.sh 가 --user-data 로 넘긴다). Amazon Linux 2023 · x86_64 기준.
-# Docker 와 compose 플러그인을 설치한다. 이때만 인터넷이 필요하다 — 끝난 것을 확인한 뒤 egress.sh close 로 나가는 길을 닫는다.
+# EC2 첫 부팅 때 root 로 한 번 실행된다 (ec2.tf 가 user_data 로 넘긴다). Amazon Linux 2023 · x86_64 기준.
+# Docker 와 compose 플러그인을 설치한다. 이때만 인터넷이 필요하다(apply -var ec2_egress_open=true) — 끝난 것을 확인한 뒤 apply 로 닫는다.
 # 로그: EC2 의 /var/log/cloud-init-output.log
 set -euxo pipefail
 

@@ -29,7 +29,14 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      # 경보 규칙·Alertmanager 설정 문법, 규칙 경계값 테스트, 메시지 템플릿 (promtool·amtool 은 Docker 이미지로 실행)
+      # check.sh 7번(Terraform 서식·문법)이 쓴다. 검사만 한다 — plan·apply 는 PC 에서 직접 한다
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.1
+          terraform_wrapper: false
+
+      # 경보 규칙·Alertmanager 설정 문법, 규칙 경계값 테스트, 메시지 템플릿 (promtool·amtool 은 Docker 이미지로 실행), Terraform 문법
       - name: Check monitoring config
         run: sh monitoring/check.sh
 
