@@ -1,7 +1,7 @@
 # 장애 경보 설계 — 외부 인터넷이 없는 EC2에서 운영자에게 알리기
 
 > 작성: 2026-11-09 · 상태: **3단계 중 레포 작업 구현** (경보 규칙·promtool 테스트·Alertmanager 설정·로컬 compose·CI 검사, 2026-11-09).
-> AWS 1·2·4단계는 **스크립트·절차 준비됨, 실행 전** (`ops/경보-AWS-설정.md`, `monitoring/aws/`, 2026-11-09).
+> AWS 1·2·4단계는 **스크립트·절차 준비됨, moto로 동작 확인, 실제 계정에서 실행 전** (`ops/경보-AWS-설정.md`, `monitoring/aws/`, 2026-11-09).
 > Lambda `caffeine-alert-relay`는 코드·테스트·배포 스크립트 구현, 배포 전.
 > 대상: `monitoring/` 경보 규칙·Alertmanager 추가 + AWS SNS·Lambda·CloudWatch 알람
 >
@@ -369,11 +369,20 @@ docker exec caffeine-alertmanager amtool silence add 'alertname=~"AppDown|AppRes
 - 메트릭 이름: `AlertRuleMetricsIT` 통과. 메트릭·라벨 이름을 바꾸면 실패한다.
 - 로컬 통합: Prometheus·Alertmanager 바이너리와 가짜 수집 대상으로 규칙 평가 → Alertmanager → 수신기 흐름을 확인했다.
   DB 타임아웃 경보가 ERROR 로그 경보를 억제하는 것, 배포 사일런스 명령, `entrypoint.sh`의 값 검사·치환도 확인했다.
-  **`docker-compose.monitoring.yml`로 띄우는 확인은 Docker가 있는 PC에서 아직 하지 않았다.**
+  `docker-compose.monitoring.yml`로 여섯 컨테이너를 띄워서도 확인했다: 수집 대상 `up`, 규칙 12개 로드, `Watchdog` → `heartbeat` 수신기,
+  앱을 내리면 약 2분 50초 뒤 `AppDown`(critical), 다시 올리면 `AppRestarted`(warning)에 이어 `group_interval` 5분 안에 `AppDown` resolved가
+  alert-sink에 찍혔다. 앱 이미지만 호스트에서 빌드한 JAR로 Dockerfile 2단계를 그대로 만들어 썼다(검증 환경의 빌드 컨테이너가 Gradle 플러그인 저장소에 못 나갔다).
 - Lambda 단위: `relay.test.mjs` 30개 통과(Node 22·20). 세 가지 입력, Slack 제어 문자 바꾸기, 4000자 자르기, 웹훅 캐시·형식 검사(Discord 주소 거부 포함), Slack 오류 시 예외.
   Alertmanager 입력은 템플릿 기대 렌더링 결과(`testdata/*.expected.txt`)를 그대로 쓴다. 로직을 일부러 바꾸면 테스트가 실패하는 것도 확인했다.
 - Lambda 연결(`index.mjs`): 실제 AWS SDK v3로 moto(SSM·CloudWatch)에 붙여 돌렸다. SecureString 복호화, Heartbeat 메트릭 기록, Slack 요청 본문을 확인했다.
-- 경로 통합·운영 종단: AWS 준비 뒤.
+- AWS 스크립트(`monitoring/aws/1-·2-·4-*.sh`): moto 5.2.5 서버와 AWS CLI v1에 대고 각각 두 번씩 돌렸다. 둘 다 종료 코드 0이고,
+  두 번째 실행은 토픽·구독·보안 그룹 규칙(`InvalidPermission.Duplicate`)·엔드포인트·역할·홉 제한·로그 그룹·Lambda 구독을 "있음"으로 건너뛰고
+  Lambda는 새 코드로 갱신했다. 만들어진 알람 7개의 지표·통계·주기·횟수·임계값·누락 데이터 처리가 §5와 같고, Lambda는 nodejs22.x·arm64·128MB·10초·환경변수 3개,
+  정책 JSON에 `__REGION__`·`__ACCOUNT_ID__`가 남지 않았다. 웹훅 파라미터가 없으면 넣는 방법을 출력하고 종료 코드 1로 멈추는 것,
+  하트비트 메트릭이 생긴 뒤 다시 실행하면 `caffeine-heartbeat-missing`이 그때 만들어지는 것도 확인했다.
+  moto가 실제와 다른 곳: 이메일 구독을 바로 확인 상태로 만들고(실제로는 확인 대기 → 다시 실행 때 재요청 분기), `add-permission` 중복에
+  `ResourceConflictException`을 내지 않는다(실제 계정에서 "호출 권한 있음" 분기). 이 두 분기와 IAM 권한 부족(`AccessDenied`)은 실제 계정에서만 확인된다.
+- 경로 통합·운영 종단: AWS 계정에서 1·2·4단계를 실행한 뒤.
 
 ---
 
