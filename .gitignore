@@ -52,3 +52,10 @@ src/main/resources/application-local.yaml
 ### Claude Code (개인 설정·워크트리 — 공유 스킬은 .claude/skills/ 로 추적) ###
 .claude/settings.local.json
 .claude/worktrees/
+
+### Terraform (infra/terraform) — state·변수 파일은 올리지 않는다. .terraform.lock.hcl 은 올린다 ###
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+infra/terraform/.build/

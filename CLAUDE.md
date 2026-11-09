@@ -9,7 +9,7 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 - `./gradlew build -x test` — 컴파일만
 - `./gradlew bootRun` — 로컬 실행 (환경변수 4개 필요, README 참조)
 - `./gradlew e2eTest` — E2E (Docker 필요, `build`·CI와 별개). `src/e2eTest`는 블랙박스 — main 코드를 import 하지 않는다
-- `sh monitoring/check.sh` — 경보 규칙·Alertmanager 설정 검사 (promtool·amtool 없으면 Docker, CI도 실행)
+- `sh monitoring/check.sh` — 경보 규칙·Alertmanager 설정·Terraform 문법 검사 (promtool·amtool 없으면 Docker, CI도 실행)
 
 ## 배치 규칙
 - `com.jongbeom.server.domain.<도메인>/` 아래 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/`.
@@ -39,10 +39,11 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
   경보 규칙(`monitoring/prometheus/alerts.yml`)은 `AlertRuleMetricsIT`가 메트릭·라벨 이름을 대조하므로, 이름을 바꾸면 규칙도 같이 바꾼다.
 - 경보 규칙·Alertmanager 설정 → `alerts.test.yml` 경계값 테스트 + `sh monitoring/check.sh`. 운영·로컬 Alertmanager 설정의
   route·inhibit_rules는 같아야 한다(스크립트가 대조). 메시지 템플릿을 바꾸면 `monitoring/alertmanager/testdata/*.expected.txt`도 갱신.
-- 경보 AWS 스크립트·정책(`monitoring/aws/`) → `docs/ops/경보-AWS-설정.md`의 "생기는 것" 표·콘솔 절차·되돌리기 명령.
-  스크립트는 더하기만 하고 다시 실행해도 되게 유지한다. 테스트는 문법만 본다 — 동작은 실제 계정이나 moto로 확인.
+- AWS 자원(`infra/terraform/`, 경보는 `modules/alerting/`) → `docs/ops/기반-AWS-설정.md`·`docs/ops/경보-AWS-설정.md`의 "생기는 것" 표와 변수 표.
+  실행은 PC에서 직접 한다(CI는 `fmt`·`validate`만 — plan·apply를 CI에 넣지 않는다). 테스트는 문법만 본다 — 동작은 실제 계정이나 moto로 확인.
+  비밀(DB 비밀번호·Slack 웹훅)은 변수·state에 넣지 않고 SSM 파라미터에 둔다. EC2에서 나가는 인터넷은 닫힌 상태가 기본(`ec2_egress_open` 기본값 false 유지).
 - 경보 Lambda(`monitoring/lambda/alert-relay/`) → `relay.test.mjs`(check.sh가 실행). 로직은 `relay.mjs`에 의존성 주입으로 두고
-  `index.mjs`는 AWS 클라이언트 연결만. 외부 의존성 없이 유지(런타임 내장 SDK v3). 배포는 `monitoring/aws/4-alert-relay.sh` 재실행.
+  `index.mjs`는 AWS 클라이언트 연결만. 외부 의존성 없이 유지(런타임 내장 SDK v3). 배포는 `terraform apply`(zip을 Terraform이 묶는다).
 - 새 엔드포인트 → `README.md` API 표에도 한 줄. **경로와 `features.md`의 기능 이름만** 적고 동작 세부는 옮기지 않는다.
   테스트가 대조하지 않는 유일한 사본이라, 세부를 적으면 낡아도 빌드가 통과한다.
 

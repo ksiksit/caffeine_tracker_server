@@ -1,0 +1,15 @@
+# 이 파일을 terraform.tfvars 로 복사해 값을 채운다 (terraform.tfvars 는 레포에 올라가지 않는다).
+# 비밀(DB 비밀번호·Slack 웹훅)은 여기 적지 않는다 — SSM 파라미터 스토어에 직접 넣는다 (docs/ops/기반-AWS-설정.md).
+
+region         = "ap-northeast-2"
+ssh_cidr       = "203.0.113.7/32"                           # 내 PC 주소: curl -s https://checkip.amazonaws.com
+ssh_public_key = "ssh-ed25519 AAAA... caffeine"             # cat ~/.ssh/caffeine-key.pub
+alert_email    = "me@example.com"                           # 경보를 받을 이메일
+
+# 아래는 바꿀 때만 주석을 푼다 (기본값은 variables.tf)
+# instance_type           = "t3.small"      # x86_64 유형만
+# db_instance_class       = "db.t4g.micro"
+# alerting_enabled        = true            # false 면 경보 자원을 만들지 않는다(지운다)
+# heartbeat_alarm_enabled = false           # EC2 에서 Alertmanager 를 켠 뒤 true
+# ec2_auto_recover        = false
+# db_final_snapshot       = false           # true 면 destroy 때 스냅숏을 남긴다
