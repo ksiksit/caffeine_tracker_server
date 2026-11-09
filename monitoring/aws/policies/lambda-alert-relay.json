@@ -15,10 +15,10 @@
       "Condition": { "StringEquals": { "cloudwatch:namespace": "Caffeine/Monitoring" } }
     },
     {
-      "Sid": "DiscordWebhookParameterOnly",
+      "Sid": "SlackWebhookParameterOnly",
       "Effect": "Allow",
       "Action": "ssm:GetParameter",
-      "Resource": "arn:aws:ssm:__REGION__:__ACCOUNT_ID__:parameter/caffeine/alert-relay/discord-webhook"
+      "Resource": "arn:aws:ssm:__REGION__:__ACCOUNT_ID__:parameter/caffeine/alert-relay/slack-webhook"
     }
   ]
 }

@@ -1,4 +1,4 @@
-# 경보 AWS 설정 — 토픽·알람, EC2 → SNS 경로, Discord 전달
+# 경보 AWS 설정 — 토픽·알람, EC2 → SNS 경로, Slack 전달
 
 > 대상: `../alerting-plan.md` §11의 **1·2·4단계**. 레포 쪽 준비는 끝나 있고(경보 규칙·Alertmanager 설정·Lambda 코드), 이 문서는 AWS 쪽 작업이다.
 > 순서: 1단계 → 2단계 → 3단계(Alertmanager 켜기, `운영-가이드.md` "경보" 절) → 4단계. 4단계는 3단계 전에 해도 되지만,
@@ -52,12 +52,12 @@ EC2는 인터넷이 없고 이 권한도 없다. 두 스크립트 모두 **더�
 | 2 | SNS 인터페이스 엔드포인트 | EC2 서브넷, 프라이빗 DNS, 정책은 두 토픽 발행만 (`monitoring/aws/policies/sns-endpoint.json`) |
 | 2 | EC2 역할의 인라인 정책 `caffeine-sns-publish` | 두 토픽 `sns:Publish`만. 역할이 없으면 `caffeine-ec2` 역할을 만들어 붙인다 |
 | 2 | 인스턴스 메타데이터 홉 제한 2 | 컨테이너가 인스턴스 역할 자격 증명을 받으려면 필요하다(설계 §7.2). 재부팅 없이 적용된다 |
-| 4 | SSM 파라미터 `/caffeine/alert-relay/discord-webhook` | Discord 웹훅 URL(SecureString). **직접 넣는다** — 스크립트는 비밀을 받지 않는다 |
+| 4 | SSM 파라미터 `/caffeine/alert-relay/slack-webhook` | Slack 수신 웹훅 URL(SecureString). **직접 넣는다** — 스크립트는 비밀을 받지 않는다 |
 | 4 | IAM 역할 `caffeine-alert-relay` | 자기 로그 쓰기, `Caffeine/Monitoring` 네임스페이스 메트릭, 웹훅 파라미터 읽기만 (`lambda-alert-relay.json`) |
 | 4 | 로그 그룹 `/aws/lambda/caffeine-alert-relay` | 보관 14일 |
 | 4 | Lambda `caffeine-alert-relay` | `monitoring/lambda/alert-relay`, nodejs22.x, arm64, 128MB, 10초, VPC 없음 |
 | 4 | 구독 두 개 + 호출 권한 | `caffeine-alerts`·`caffeine-heartbeat` → Lambda |
-| 4 | 알람 `caffeine-alert-relay-errors` | Lambda 오류 1건 이상. Discord 전달이 깨지면 이메일로 알린다 |
+| 4 | 알람 `caffeine-alert-relay-errors` | Lambda 오류 1건 이상. Slack 전달이 깨지면 이메일로 알린다 |
 | 4 | 알람 `caffeine-heartbeat-missing` | 하트비트 15분 없음(데이터 없음도 위반). **하트비트가 온 적이 있을 때만** 만든다 |
 
 알람은 울릴 때와 풀릴 때 모두 `caffeine-alerts`로 알린다. 비용은 엔드포인트가 대부분이다(설계 §10 비용 추정, AZ 하나에 월 약 7~10달러).
@@ -123,17 +123,23 @@ docker run --rm amazon/aws-cli:2.22.0 sns publish --region ap-northeast-2 \
 
 메일이 오면 3단계로 간다: `운영-가이드.md` "경보" 절의 **Alertmanager 켜기**.
 
-## 4단계 — Discord 전달과 하트비트 (Lambda)
+## 4단계 — Slack 전달과 하트비트 (Lambda)
 
-**Discord 웹훅 만들기.** 경보를 받을 Discord 서버의 채널 → 채널 편집 → 연동 → 웹후크 → 새 웹후크 → **웹후크 URL 복사**.
-URL을 아는 사람은 누구나 그 채널에 글을 쓸 수 있으므로 채팅·레포·셸 기록에 남기지 않는다.
+**Slack 수신 웹훅 만들기.** 경보를 받을 채널을 먼저 만들어 둔다(예: `#caffeine-alerts`).
+
+1. 브라우저에서 `https://api.slack.com/apps` → **Create New App** → **From scratch** → 앱 이름(예: `caffeine-alerts`)과 워크스페이스를 고른다.
+2. 왼쪽 **Incoming Webhooks** → **Activate Incoming Webhooks**를 켠다.
+3. 아래 **Add New Webhook to Workspace** → 채널을 고르고 **허용**. 워크스페이스 설정에 따라 관리자 승인이 필요할 수 있다.
+4. 생긴 **Webhook URL**(`https://hooks.slack.com/services/T…/B…/…`)을 복사한다.
+
+URL을 아는 사람은 누구나 그 채널에 글을 쓸 수 있으므로 채팅·레포·셸 기록에 남기지 않는다. 새어 나갔으면 같은 화면에서 지우고 새로 만든다.
 
 **URL을 SSM에 넣기.** 콘솔이 가장 안전하다: Systems Manager → 파라미터 스토어 → 파라미터 생성 →
-이름 `/caffeine/alert-relay/discord-webhook`, 유형 **SecureString**, 값에 URL. CLI로 넣을 때는 입력을 숨기고 JSON으로 넘긴다.
+이름 `/caffeine/alert-relay/slack-webhook`, 유형 **SecureString**, 값에 URL. CLI로 넣을 때는 입력을 숨기고 JSON으로 넘긴다.
 
 ```bash
 # --value "$URL" 로 넘기면 AWS CLI v1 이 https:// 로 시작하는 값을 주소로 보고 내려받아, URL 대신 응답을 저장한다
-read -rs URL && aws ssm put-parameter --region ap-northeast-2 --cli-input-json "{\"Name\":\"/caffeine/alert-relay/discord-webhook\",\"Type\":\"SecureString\",\"Value\":\"$URL\"}"; unset URL
+read -rs URL && aws ssm put-parameter --region ap-northeast-2 --cli-input-json "{\"Name\":\"/caffeine/alert-relay/slack-webhook\",\"Type\":\"SecureString\",\"Value\":\"$URL\"}"; unset URL
 ```
 
 **배포**
@@ -147,9 +153,9 @@ Lambda 코드(`monitoring/lambda/alert-relay`)를 고친 뒤에도 같은 명령
 **확인**
 
 ```bash
-# PC: 시험 메시지 — 이메일과 Discord 둘 다 와야 한다
+# PC: 시험 메시지 — 이메일과 Slack 둘 다 와야 한다
 aws sns publish --region ap-northeast-2 --topic-arn arn:aws:sns:ap-northeast-2:<계정 ID>:caffeine-alerts \
-  --subject "[TEST] alert-relay" --message "Discord 경로 확인"
+  --subject "[TEST] alert-relay" --message "Slack 경로 확인"
 
 # PC: Alertmanager 를 켠 지 몇 분 뒤 — Heartbeat 메트릭이 보이면 하트비트가 오고 있다
 aws cloudwatch list-metrics --region ap-northeast-2 --namespace Caffeine/Monitoring --metric-name Heartbeat
@@ -160,11 +166,12 @@ Heartbeat 메트릭이 보이면 **스크립트를 한 번 더 실행**한다. �
 
 | 증상 | 원인 | 볼 곳 |
 |---|---|---|
-| 이메일은 오는데 Discord 는 안 온다 | Lambda 오류 | `aws logs tail /aws/lambda/caffeine-alert-relay --since 10m`(CLI v2), 아래 메시지 |
-| 로그에 `Discord 웹훅 URL 형식이 아니다` | 파라미터 값이 웹훅 URL이 아니다(공백·다른 주소) | SSM 파라미터 값. 보안상 다른 주소로는 보내지 않는다 |
-| 로그에 `Discord 응답 404` / `401` | 웹훅이 지워졌거나 토큰이 틀렸다 | Discord 에서 웹훅을 새로 만들어 파라미터 값을 바꾼다. 재배포는 필요 없다 |
-| 로그에 `Discord 응답 429` | Discord 속도 제한 | 일시적이다. SNS 가 다시 호출한다 |
-| `AccessDeniedException ... ssm:GetParameter` | 역할 정책·파라미터 이름 | 파라미터 이름이 정확히 `/caffeine/alert-relay/discord-webhook` 인가 |
+| 이메일은 오는데 Slack 은 안 온다 | Lambda 오류 | `aws logs tail /aws/lambda/caffeine-alert-relay --since 10m`(CLI v2), 아래 메시지 |
+| 로그에 `Slack 수신 웹훅 URL 형식이 아니다` | 파라미터 값이 `https://hooks.slack.com/services/` 로 시작하지 않는다(다른 주소·앱 토큰 등) | SSM 파라미터 값. 보안상 다른 주소로는 보내지 않는다 |
+| 로그에 `Slack 응답 404` / `403` | 웹훅이 지워졌거나(`no_service`) 앱이 채널에서 빠졌다 | Slack 앱 설정의 Incoming Webhooks 에서 새로 만들어 파라미터 값을 바꾼다. 재배포는 필요 없다 |
+| 로그에 `Slack 응답 410` | 채널이 보관(archive)됐다 | 채널을 되살리거나 다른 채널로 웹훅을 새로 만든다 |
+| 로그에 `Slack 응답 429` | 웹훅 속도 제한(대략 초당 1건) | 일시적이다. SNS 가 다시 호출한다 |
+| `AccessDeniedException ... ssm:GetParameter` | 역할 정책·파라미터 이름 | 파라미터 이름이 정확히 `/caffeine/alert-relay/slack-webhook` 인가 |
 | 하트비트 알람이 울렸다 | 경보 경로 어딘가가 끊겼다 | `운영-가이드.md` "경보" 절의 하트비트 점검 순서 |
 
 Lambda 는 웹훅 URL을 5분 동안 캐시한다. 파라미터 값을 바꾸면 늦어도 5분 뒤에는 새 URL로 보낸다.
@@ -208,7 +215,7 @@ aws lambda delete-function --function-name caffeine-alert-relay
 aws logs delete-log-group --log-group-name /aws/lambda/caffeine-alert-relay
 aws iam delete-role-policy --role-name caffeine-alert-relay --policy-name caffeine-alert-relay
 aws iam delete-role --role-name caffeine-alert-relay
-aws ssm delete-parameter --name /caffeine/alert-relay/discord-webhook
+aws ssm delete-parameter --name /caffeine/alert-relay/slack-webhook   # Slack 쪽 웹훅은 Slack 앱 설정에서 따로 지운다
 
 # 2단계: 엔드포인트 → 보안 그룹 규칙 → 보안 그룹 (보안 그룹은 엔드포인트가 완전히 지워진 뒤에 지워진다)
 ENDPOINT_ID=$(aws ec2 describe-vpc-endpoints --filters "Name=vpc-id,Values=$VPC_ID" "Name=service-name,Values=com.amazonaws.$AWS_DEFAULT_REGION.sns" \

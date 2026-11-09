@@ -1,7 +1,7 @@
 """로컬 경보 수신기 (docker-compose.monitoring.yml 의 alert-sink 전용).
 
 Alertmanager 웹훅을 받아 한 경보당 한 줄씩 로그에 찍는다. 운영에서는 이 자리에 SNS 가 있다.
-웹훅 본문은 템플릿을 거치지 않은 JSON 이라 실제 이메일·Discord 문장과는 다르다 — 문장은 monitoring/check.sh 가 렌더링해 보여 준다.
+웹훅 본문은 템플릿을 거치지 않은 JSON 이라 실제 이메일·Slack 문장과는 다르다 — 문장은 monitoring/check.sh 가 렌더링해 보여 준다.
 표준 라이브러리만 쓴다.
 """
 import json
