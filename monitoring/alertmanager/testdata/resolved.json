@@ -1,0 +1,21 @@
+{
+  "receiver": "alerts",
+  "status": "resolved",
+  "alerts": [
+    {
+      "status": "resolved",
+      "labels": { "alertname": "High5xxRate", "severity": "critical" },
+      "annotations": {
+        "summary": "서버 오류(5xx) 급증",
+        "description": "최근 5분 5xx 비율 12.5%.",
+        "runbook": "운영 가이드 '메트릭과 로그' — docker logs --since 로 5xx 의 requestId 를 찾아 추적"
+      },
+      "startsAt": "2026-11-09T05:03:00Z",
+      "endsAt": "2026-11-09T05:21:30Z"
+    }
+  ],
+  "groupLabels": { "alertname": "High5xxRate" },
+  "commonLabels": { "alertname": "High5xxRate", "severity": "critical" },
+  "commonAnnotations": {},
+  "externalURL": "http://localhost:9093"
+}

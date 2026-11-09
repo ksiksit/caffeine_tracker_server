@@ -1,0 +1,52 @@
+# 운영 Alertmanager 설정. 설계: docs/alerting-plan.md §4
+#
+# __ALERT_TOPIC_ARN__ 같은 자리표시자는 entrypoint.sh 가 컨테이너 시작 때 .env 값으로 바꾼다.
+# 토픽 ARN 에 계정 ID 가 들어 있어 레포에 직접 쓰지 않는다. SNS 인증은 EC2 인스턴스 역할(키 없음)이다.
+#
+# route·inhibit_rules 는 alertmanager.local.yml 과 한 글자도 다르지 않아야 한다 — monitoring/check.sh 가 대조한다.
+# 수신자 이름(alerts·heartbeat)도 두 파일이 같다. 다른 것은 receivers 의 전송 방식뿐이다.
+
+route:
+  receiver: alerts
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h            # 계속 울리는 warning 은 4시간마다만 다시 알린다
+  routes:
+    - matchers: ['alertname="Watchdog"']
+      receiver: heartbeat
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 5m        # 하트비트 주기. CloudWatch 알람은 15분 동안 오지 않으면 울린다
+    - matchers: ['severity="critical"']
+      receiver: alerts
+      repeat_interval: 1h
+
+inhibit_rules:
+  # DB 문제면 그 결과인 5xx·에러 로그·지연 경보는 보내지 않는다
+  - source_matchers: ['alertname=~"DbConnectionPending|DbConnectionTimeout"']
+    target_matchers: ['alertname=~"High5xxRate|ErrorLogBurst|HighLatencyP95"']
+  # 디스크 critical 이 울리면 같은 원인의 warning 은 보내지 않는다
+  - source_matchers: ['alertname="DiskSpaceCritical"']
+    target_matchers: ['alertname="DiskSpaceLow"']
+
+receivers:
+  - name: alerts
+    sns_configs:
+      - topic_arn: __ALERT_TOPIC_ARN__
+        sigv4:
+          region: __AWS_REGION__
+        subject: '{{ template "caffeine.subject" . }}'
+        message: '{{ template "caffeine.message" . }}'
+        send_resolved: true
+  - name: heartbeat
+    sns_configs:
+      - topic_arn: __HEARTBEAT_TOPIC_ARN__
+        sigv4:
+          region: __AWS_REGION__
+        subject: 'heartbeat'
+        message: 'heartbeat'
+        send_resolved: false
+
+templates:
+  - templates/*.tmpl

@@ -1,0 +1,5 @@
+[RESOLVED] High5xxRate
+---
+✅ [해결] 서버 오류(5xx) 급증
+해결 11-09 14:21 KST · 지속 18m 30s
+

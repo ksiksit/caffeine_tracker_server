@@ -4,6 +4,17 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# 경보 규칙. 이 파일 기준 상대 경로라 compose 가 같은 폴더(/etc/prometheus)에 마운트한다. 설계: docs/alerting-plan.md
+rule_files:
+  - alerts.yml
+
+# 울린 경보를 넘길 Alertmanager. 운영에서는 compose 의 alerting 프로필을 켰을 때만 뜬다.
+# 끈 동안에도 규칙은 평가되어 Prometheus 화면(/alerts)에서 볼 수 있고, Alertmanager 연결 실패 로그가 남는 것은 무해하다.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 scrape_configs:
   - job_name: caffeine-app
     metrics_path: /actuator/prometheus

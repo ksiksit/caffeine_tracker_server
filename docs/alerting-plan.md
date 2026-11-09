@@ -1,10 +1,11 @@
 # 장애 경보 설계 — 외부 인터넷이 없는 EC2에서 운영자에게 알리기
 
-> 작성: 2026-11-09 · 상태: **설계만** (코드·compose·모니터링 설정·AWS 리소스 미변경)
+> 작성: 2026-11-09 · 상태: **3단계 중 레포 작업 구현** (경보 규칙·promtool 테스트·Alertmanager 설정·로컬 compose·CI 검사, 2026-11-09).
+> AWS 리소스(SNS·엔드포인트·역할·CloudWatch)와 Lambda는 미착수.
 > 대상: `monitoring/` 경보 규칙·Alertmanager 추가 + AWS SNS·Lambda·CloudWatch 알람
 >
-> 착수할 때 이 문서의 설정을 `monitoring/`·`docker-compose.*.yml`·`ops/운영-가이드.md`로 옮기고 구현과 함께 머지한다.
-> 이 문서는 그 전까지의 설계 메모이며, 어떤 테스트도 대조하지 않는다.
+> 구현된 부분의 원본은 `monitoring/`·`docker-compose.*.yml`·`ops/운영-가이드.md` "경보" 절이다. 이 문서의 예시와 다르면 그쪽이 맞다.
+> 이 문서 자체는 어떤 테스트도 대조하지 않는다.
 
 ---
 
@@ -120,7 +121,8 @@ flowchart LR
 | `DbConnectionTimeout` | `increase(hikaricp_connections_timeout_total[5m]) > 0` | — | critical | 커넥션을 30초 안에 못 받은 요청이 있다 |
 | `HeapHigh` | 힙 사용 ÷ 힙 최대 > 0.9 | 10m | warning | 메모리 부족 직전. 최대값이 `-1`인 풀은 `> 0`으로 걸러 낸다 |
 | `ErrorLogBurst` | `increase(logback_events_total{level="error"}[10m]) ≥ 5` | — | warning | ERROR 로그가 몰린다 |
-| `DiskLow` | `disk_free_bytes / disk_total_bytes < 0.15` (< 0.05면 critical) | 10m | warning | 디스크 부족. 배포 tar와 로그가 쌓이는 EC2라 필요하다 |
+| `DiskSpaceLow` | `disk_free_bytes / disk_total_bytes < 0.15` | 10m | warning | 디스크 부족. 배포 tar와 로그가 쌓이는 EC2라 필요하다 |
+| `DiskSpaceCritical` | 같은 비율 `< 0.05` | 5m | critical | 곧 가득 찬다. 울리면 `DiskSpaceLow`는 억제한다 |
 | `SuspiciousLogin` | 15분간 로그인 실패 ≥ 30 **또는** 로그인 429 ≥ 20 | — | warning | 비밀번호 대입·이메일 목록 대입 공격 의심. 이메일 하나당 15분 5회 제한이므로 30회는 여러 계정이 동시에 두드려진다는 뜻이다 |
 | `Watchdog` | `vector(1)` | — | heartbeat | 늘 울린다. 경보 경로가 살아 있다는 신호(§5.2) |
 
@@ -151,46 +153,51 @@ groups:
 ```
 
 - 경보 라벨과 문구에 **userId·이메일 같은 사용자별 값을 넣지 않는다.** 메트릭 태그 규칙(`CLAUDE.md`)과 같고, 그래서 SNS 메시지에 개인정보가 없다.
-- `disk_free_bytes`·`disk_total_bytes`는 Spring Boot가 기본 등록하는 디스크 메트릭이다. 컨테이너 안의 경로로 재므로 **구현 때
-  `/actuator/prometheus`에서 이름과 값이 EC2 루트 디스크와 맞는지 먼저 확인한다.** 맞지 않으면 node-exporter를 추가한다(§10 미결 4).
+- `disk_free_bytes`·`disk_total_bytes`는 Spring Boot가 기본 등록하는 디스크 메트릭이다. 노출은 `AlertRuleMetricsIT`로 확인했다.
+  컨테이너 안의 경로로 재므로 **값이 EC2 루트 디스크(`df -h /`)와 맞는지는 운영에서 확인한다.** 맞지 않으면 node-exporter를 추가한다(§10 미결 4).
+- 규칙이 쓰는 메트릭·라벨 이름은 `AlertRuleMetricsIT`가 `/actuator/prometheus`와 대조한다. 경계값은 `alerts.test.yml`(promtool)이 검사한다.
 
 ---
 
 ## 4. Alertmanager
 
-파일: `monitoring/alertmanager/alertmanager.yml`. 컨테이너는 Prometheus처럼 루프백(`127.0.0.1:9093`)에만 열고 PC에서는 SSH 터널로 본다.
+파일: `monitoring/alertmanager/alertmanager.yml`(운영)·`alertmanager.local.yml`(로컬, SNS 대신 수신기 컨테이너). 두 파일의 `route`·`inhibit_rules`는
+같고 `monitoring/check.sh`가 대조한다. 컨테이너는 Prometheus처럼 루프백(`127.0.0.1:9093`)에만 열고 PC에서는 SSH 터널로 본다. 아래는 요약이다.
 
 ```yaml
 route:
-  receiver: sns-alerts
+  receiver: alerts
   group_by: [alertname]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h            # 계속 울리는 warning 은 4시간마다만 다시 알린다
   routes:
     - matchers: [ 'alertname="Watchdog"' ]
-      receiver: sns-heartbeat
+      receiver: heartbeat
       group_wait: 0s
       group_interval: 1m
       repeat_interval: 5m        # 하트비트 주기
     - matchers: [ 'severity="critical"' ]
-      receiver: sns-alerts
+      receiver: alerts
       repeat_interval: 1h
 
 inhibit_rules:
   # DB 문제면 그 결과인 5xx·에러 로그 경보는 보내지 않는다
   - source_matchers: [ 'alertname=~"DbConnectionPending|DbConnectionTimeout"' ]
     target_matchers: [ 'alertname=~"High5xxRate|ErrorLogBurst|HighLatencyP95"' ]
+  # 디스크 critical 이면 warning 은 보내지 않는다
+  - source_matchers: [ 'alertname="DiskSpaceCritical"' ]
+    target_matchers: [ 'alertname="DiskSpaceLow"' ]
 
 receivers:
-  - name: sns-alerts
+  - name: alerts
     sns_configs:
       - topic_arn: __ALERT_TOPIC_ARN__
         sigv4: { region: __AWS_REGION__ }
         subject: '{{ template "caffeine.subject" . }}'
         message: '{{ template "caffeine.message" . }}'
         send_resolved: true
-  - name: sns-heartbeat
+  - name: heartbeat
     sns_configs:
       - topic_arn: __HEARTBEAT_TOPIC_ARN__
         sigv4: { region: __AWS_REGION__ }
@@ -216,21 +223,9 @@ receivers:
 ### 4.2 토픽 ARN 주입
 
 Alertmanager 설정 파일은 환경변수를 펼치지 않는다. 토픽 ARN에는 계정 ID가 들어 있어 레포에 직접 쓰지 않는다(§10 미결 3).
-레포에는 `__ALERT_TOPIC_ARN__` 같은 자리표시자를 두고, compose의 시작 명령이 `.env` 값으로 치환한 사본을 만들어 띄운다.
-
-```yaml
-# docker-compose.prod.yml (발췌)
-alertmanager:
-  image: prom/alertmanager:<구현 시 고정 버전>
-  container_name: caffeine-alertmanager
-  environment:
-    ALERT_TOPIC_ARN: ${ALERT_TOPIC_ARN:-}         # 비어 있으면 Alertmanager만 기동 실패하고 앱은 뜬다
-    HEARTBEAT_TOPIC_ARN: ${HEARTBEAT_TOPIC_ARN:-}
-    AWS_REGION: ${AWS_REGION:-}
-  entrypoint: ["/bin/sh", "-c"]
-  command: ["test -n \"$ALERT_TOPIC_ARN\" && sed -e ... /etc/alertmanager/alertmanager.yml > /tmp/am.yml && exec /bin/alertmanager --config.file=/tmp/am.yml ..."]
-  ports: ["127.0.0.1:9093:9093"]
-```
+레포에는 `__ALERT_TOPIC_ARN__` 같은 자리표시자를 두고, `monitoring/alertmanager/entrypoint.sh`가 `.env` 값으로 치환한 사본을
+데이터 볼륨에 만들어 띄운다. 스크립트는 값의 형식(SNS 토픽 ARN, 리전 문자)을 먼저 검사하고, 틀리면 이유를 남기고 끝낸다.
+운영 compose에서 Alertmanager는 `alerting` 프로필 뒤에 있어, AWS 준비 전 평소의 `up -d`로는 뜨지 않는다.
 
 `:?`(필수 변수)를 쓰지 않는다. `GRAFANA_ADMIN_PASSWORD`가 없으면 compose가 앱까지 기동을 거부하는 함정(`ops/운영-가이드.md` "알려진 함정")을
 반복하지 않기 위해서다. 값이 비면 Alertmanager 컨테이너만 실패하고, 그 사실은 하트비트 알람이 알린다.
@@ -360,7 +355,15 @@ docker exec caffeine-alertmanager amtool silence add 'alertname=~"AppDown|AppRes
 | Lambda 단위 | 세 가지 입력(하트비트·CloudWatch 알람 JSON·Alertmanager 문장), 2000자 자르기, Discord 오류 시 예외 | Node.js만 |
 | 운영 종단 | EC2에서 하트비트가 CloudWatch에 쌓이는지 확인, `aws cloudwatch set-alarm-state`로 알람을 강제로 울려 이메일·Discord 수신 | 운영 계정 |
 
-promtool 검사를 CI에 넣을지는 §10 미결 7이다. 넣는다면 `build-and-push` 잡 앞에 Docker 한 줄로 추가한다(CD가 아니라 검사다).
+**수행 기록 (2026-11-09)**
+
+- 규칙 단위·설정 검사: `monitoring/check.sh` 통과. CI `build-and-push` 잡이 빌드 전에 같은 스크립트를 돌린다(CD가 아니라 검사다).
+  규칙 임계값·문구·라우팅·템플릿을 일부러 바꿔 보면 검사가 실패하는 것도 확인했다.
+- 메트릭 이름: `AlertRuleMetricsIT` 통과. 메트릭·라벨 이름을 바꾸면 실패한다.
+- 로컬 통합: Prometheus·Alertmanager 바이너리와 가짜 수집 대상으로 규칙 평가 → Alertmanager → 수신기 흐름을 확인했다.
+  DB 타임아웃 경보가 ERROR 로그 경보를 억제하는 것, 배포 사일런스 명령, `entrypoint.sh`의 값 검사·치환도 확인했다.
+  **`docker-compose.monitoring.yml`로 띄우는 확인은 Docker가 있는 PC에서 아직 하지 않았다.**
+- 경로 통합·Lambda·운영 종단: AWS 준비 뒤.
 
 ---
 
@@ -375,11 +378,12 @@ promtool 검사를 CI에 넣을지는 §10 미결 7이다. 넣는다면 `build-a
 **결정이 필요한 것.**
 
 3. **토픽 ARN을 레포에 둘지**: AWS는 계정 ID를 비밀로 보지 않지만 공개 레포라면 노출을 줄이는 편이 낫다. 제안은 자리표시자 + `.env`(§4.2).
-4. **디스크 감시 방식**: Spring 디스크 메트릭으로 충분한지 확인한 뒤, 아니면 node-exporter 추가(컨테이너 하나 더, 이미지 `docker load`).
+4. **디스크 감시 방식**: Spring 디스크 메트릭이 노출되는 것은 확인했다(`AlertRuleMetricsIT`). 값이 EC2 루트 디스크와 같은지 운영에서
+   확인한 뒤, 다르면 node-exporter 추가(컨테이너 하나 더, 이미지 `docker load`).
 5. **푸시 브리지와 엔드포인트 비용**: 둘 다 만들면 SQS·SNS 엔드포인트 두 개다. 푸시 발행을 SNS → SQS 팬아웃으로 바꾸면 SNS 엔드포인트
    하나로 합칠 수 있다. 푸시 브리지 착수 때 판단한다.
-6. **메신저**: Discord(제안) 또는 텔레그램.
-7. **promtool을 CI에 넣을지**: 제안은 넣는다. 규칙 문법 오류가 운영 Prometheus 기동 실패로 이어지기 때문이다.
+6. ~~메신저~~ → **Discord로 결정**(2026-11-09).
+7. ~~promtool을 CI에 넣을지~~ → **넣었다**(2026-11-09). 규칙 문법 오류가 운영 Prometheus 기동 실패로 이어지기 때문이다.
 
 **비용(추정, 착수 전 현재 요금표로 확인).** SNS 인터페이스 엔드포인트가 대부분이며 AZ 하나에 월 약 7~10달러다. SNS 이메일·Lambda·
 CloudWatch 알람 10개 이내·`PutMetricData`는 이 규모면 프리 티어 안이고, 커스텀 메트릭 `Heartbeat` 하나가 월 0.3달러 수준이다.
@@ -393,7 +397,7 @@ CloudWatch 알람 10개 이내·`PutMetricData`는 이 규모면 프리 티어 �
 | 0 | §10의 1·2 확인 | 진행 가능 여부 결정 |
 | 1 | SNS 토픽 두 개 + 이메일 구독 + §5.1 인프라 알람 (콘솔만) | `set-alarm-state`로 울린 테스트 알람이 이메일로 온다. **코드 없이 EC2 전체 장애를 먼저 잡는다** |
 | 2 | 엔드포인트 + EC2 역할 + 홉 제한 → EC2에서 수동 발행 | EC2의 컨테이너(aws-cli 이미지를 `docker load`)에서 `sns publish`한 메시지가 이메일로 온다. **가장 위험한 네트워크·권한 경로를 코드 전에 검증한다** |
-| 3 | 경보 규칙 + promtool 테스트 + Alertmanager (로컬 → 운영) | 로컬에서 §9 규칙·통합 검증 통과, 운영에서 앱을 잠깐 내리면 `AppDown`과 해결 알림이 이메일로 온다 |
+| 3 | 경보 규칙 + promtool 테스트 + Alertmanager (로컬 → 운영) | 로컬에서 §9 규칙·통합 검증 통과, 운영에서 앱을 잠깐 내리면 `AppDown`과 해결 알림이 이메일로 온다. **레포 작업은 2026-11-09 구현, 운영 반영은 2단계 뒤** |
 | 4 | Lambda `alert-relay` + Discord + 하트비트 알람 + Lambda 오류 알람 | Discord 수신, Alertmanager를 15분 내리면 `HeartbeatMissing`이 온다 |
 | 5 | 문서 동기화 (§12) | 운영 가이드에 절차·사일런스·알람 설정값 기록 |
 
@@ -401,13 +405,15 @@ CloudWatch 알람 10개 이내·`PutMetricData`는 이 규모면 프리 티어 �
 
 ## 12. 구현 시 같이 바꿀 것
 
-| 문서·파일 | 변경 |
-|---|---|
-| `ops/운영-가이드.md` | "지금은 대시보드를 보는 데까지다" 문장을 경보 절로 교체. 사일런스를 배포 절차 첫 단계로. Alertmanager 이미지 설치, `.env`의 ARN 변수 3개, CloudWatch 알람 설정값, 하트비트 알람이 울렸을 때 점검 순서(§8) |
-| `CLAUDE.md` "바꾸면 같이 바꿀 것" | 도메인 메트릭 이름·태그를 바꾸면 `monitoring/prometheus/alerts.yml`과 promtool 테스트도 같이 바꾼다는 항목 추가(`SuspiciousLogin`이 `caffeine_auth_logins_total`을 쓴다) |
-| `docker-compose.prod.yml`, `docker-compose.monitoring.yml` | Alertmanager 서비스. 이미지 태그는 두 파일이 같게 |
-| `monitoring/prometheus/prometheus.yml` | `rule_files`, `alerting.alertmanagers` |
-| `.env.example` | `ALERT_TOPIC_ARN`, `HEARTBEAT_TOPIC_ARN`, `AWS_REGION` |
+| 문서·파일 | 변경 | 상태 |
+|---|---|---|
+| `ops/운영-가이드.md` | "경보" 절: 규칙 보는 법, Alertmanager 켜기, `.env`의 ARN 변수 3개, 배포 사일런스, 로컬 확인 | 2026-11-09 반영 |
+| 〃 | CloudWatch 알람 설정값, 하트비트 알람이 울렸을 때 점검 순서(§8) | AWS 단계에서 |
+| `CLAUDE.md` "바꾸면 같이 바꿀 것" | 메트릭 이름을 바꾸면 경보 규칙도 같이 바꾼다(`AlertRuleMetricsIT`가 대조), 경보 설정을 바꾸면 테스트·`check.sh` | 2026-11-09 반영 |
+| `docker-compose.prod.yml`, `docker-compose.monitoring.yml` | Alertmanager 서비스(운영은 `alerting` 프로필). 이미지 태그는 두 파일과 `check.sh`가 같게 | 2026-11-09 반영 |
+| `monitoring/prometheus/prometheus.yml` | `rule_files`, `alerting.alertmanagers` | 2026-11-09 반영 |
+| `.env.example` | `ALERT_TOPIC_ARN`, `HEARTBEAT_TOPIC_ARN`, `AWS_REGION` | 2026-11-09 반영 |
+| `.github/workflows/ci.yml` | 빌드 전 `monitoring/check.sh` | 2026-11-09 반영 |
 
 API·DTO·DB 스키마·`features.md`는 바뀌지 않는다. 사용자에게 보이는 기능이 아니다.
 

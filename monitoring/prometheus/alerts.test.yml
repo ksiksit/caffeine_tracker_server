@@ -1,0 +1,292 @@
+# alerts.yml 경계값 테스트. 실행: monitoring/check.sh (CI 도 같은 스크립트를 돌린다)
+#   promtool test rules monitoring/prometheus/alerts.test.yml
+#
+# 각 경보마다 "울리기 직전"과 "울린 직후"를 함께 본다. 시계열 표기 'a+bxN' 은 a 에서 시작해 b 씩 N 번 늘어난다는 뜻이다.
+# 수집 간격은 운영과 같은 15초다. promtool 은 기대 문구(exp_annotations)까지 그대로 비교하므로 문구를 바꾸면 여기도 고친다.
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 15s
+
+tests:
+  # ---- AppDown: 0 이 된 뒤 2분 지나야 울린다 ----
+  - name: AppDown
+    interval: 15s
+    input_series:
+      - series: 'up{job="caffeine-app",instance="app:8081"}'
+        values: '1x4 0x20'                     # 75초부터 0
+    alert_rule_test:
+      - eval_time: 3m                          # 0 이 된 지 105초 — 아직 대기
+        alertname: AppDown
+        exp_alerts: []
+      - eval_time: 3m30s                       # 135초 — 울림
+        alertname: AppDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: caffeine-app, instance: "app:8081" }
+            exp_annotations:
+              summary: "앱 응답 없음"
+              description: "Prometheus 가 2분 넘게 앱 메트릭(app:8081)을 수집하지 못했다."
+              runbook: "운영 가이드 '알려진 함정' — docker compose ps, docker logs caffeine-app"
+
+  # ---- AppRestarted: 시작 시각이 바뀌면 바로 울리고 10분 뒤 풀린다 ----
+  - name: AppRestarted
+    interval: 15s
+    input_series:
+      - series: 'process_start_time_seconds{job="caffeine-app",instance="app:8081"}'
+        values: '1000x20 2000x60'              # 5분 15초에 재시작
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AppRestarted
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: AppRestarted
+        exp_alerts:
+          - exp_labels: { severity: warning, job: caffeine-app, instance: "app:8081" }
+            exp_annotations:
+              summary: "앱 재시작됨"
+              description: "최근 10분 안에 앱 프로세스가 다시 시작됐다. 배포가 아니면 메모리 부족(OOM)이나 크래시다."
+              runbook: "운영 가이드 '경보' — docker inspect caffeine-app 의 OOMKilled, 재시작 직전 로그"
+      - eval_time: 16m                         # 재시작이 10분 창 밖으로 나감
+        alertname: AppRestarted
+        exp_alerts: []
+
+  # ---- High5xxRate: 비율 5% 초과 + 5분 3건 이상이 2분 지속. actuator 요청은 분모에서 빠진다 ----
+  - name: High5xxRate 울림 (actuator 요청이 많아도 비율이 희석되지 않는다)
+    interval: 15s
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="caffeine-app",uri="/api/settings",status="200"}'
+        values: '0+1x40'
+      - series: 'http_server_requests_seconds_count{job="caffeine-app",uri="/api/settings",status="500"}'
+        values: '0+1x40'                       # 비율 50%
+      - series: 'http_server_requests_seconds_count{job="caffeine-app",uri="/actuator/prometheus",status="200"}'
+        values: '0+100x40'                     # 섞이면 비율이 1% 아래로 떨어진다
+    alert_rule_test:
+      - eval_time: 1m30s                       # 조건은 15초부터 참 — 아직 2분 안 됨
+        alertname: High5xxRate
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: High5xxRate
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "서버 오류(5xx) 급증"
+              description: "최근 5분 5xx 비율 50%."
+              runbook: "운영 가이드 '메트릭과 로그' — docker logs --since 로 5xx 의 requestId 를 찾아 추적"
+
+  - name: High5xxRate 안 울림 (비율은 높지만 5분 2건)
+    interval: 15s
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="caffeine-app",uri="/api/settings",status="200"}'
+        values: '0x40'
+      - series: 'http_server_requests_seconds_count{job="caffeine-app",uri="/api/settings",status="500"}'
+        values: '0 1 2x40'                     # 5xx 2건, 비율 100%
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: High5xxRate
+        exp_alerts: []
+
+  # ---- HighLatencyP95: p95 1초 초과가 10분 지속 ----
+  - name: HighLatencyP95
+    interval: 15s
+    input_series:                              # 모든 요청이 1~2.5초 버킷 → p95 = 1 + 1.5 × 0.95 = 2.425초
+      - series: 'http_server_requests_seconds_bucket{job="caffeine-app",uri="/api/caffeine/today",le="1.0"}'
+        values: '0x60'
+      - series: 'http_server_requests_seconds_bucket{job="caffeine-app",uri="/api/caffeine/today",le="2.5"}'
+        values: '0+1x60'
+      - series: 'http_server_requests_seconds_bucket{job="caffeine-app",uri="/api/caffeine/today",le="+Inf"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 10m                         # 조건이 참이 된 지 9분 45초
+        alertname: HighLatencyP95
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: HighLatencyP95
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "응답 지연(p95 1초 초과)"
+              description: "최근 5분 p95 가 10분 넘게 1초를 넘었다. 현재 2.425s."
+              runbook: "Grafana 엔드포인트별 p95 패널로 느린 경로를 찾고, DB 커넥션 패널을 함께 본다"
+
+  # ---- DB ----
+  - name: DbConnectionPending
+    interval: 15s
+    input_series:
+      - series: 'hikaricp_connections_pending{job="caffeine-app",pool="HikariPool-1"}'
+        values: '0 0 2x20'                     # 30초부터 대기
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: DbConnectionPending
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: DbConnectionPending
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "DB 커넥션 대기"
+              description: "커넥션 풀이 2분 넘게 고갈돼 요청이 커넥션을 기다린다. RDS 장애나 느린 쿼리 신호다."
+              runbook: "RDS 상태·CPU 확인, 앱 로그의 SQL 오류 확인"
+
+  - name: DbConnectionTimeout
+    interval: 15s
+    input_series:
+      - series: 'hikaricp_connections_timeout_total{job="caffeine-app",pool="HikariPool-1"}'
+        values: '0x10 1x30'                    # 2분 45초에 1건
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: DbConnectionTimeout
+        exp_alerts: []
+      - eval_time: 3m                          # 대기 없이 바로
+        alertname: DbConnectionTimeout
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "DB 커넥션 타임아웃"
+              description: "최근 5분 안에 30초 동안 커넥션을 받지 못한 요청이 있다."
+              runbook: "RDS 상태·CPU 확인, 앱 로그의 SQL 오류 확인"
+      - eval_time: 9m                          # 5분 창 밖
+        alertname: DbConnectionTimeout
+        exp_alerts: []
+
+  # ---- HeapHigh: 최대값 -1 인 풀은 분모에서 빠진다 ----
+  - name: HeapHigh
+    interval: 15s
+    input_series:
+      - series: 'jvm_memory_used_bytes{job="caffeine-app",area="heap",id="G1 Eden Space"}'
+        values: '450x60'
+      - series: 'jvm_memory_used_bytes{job="caffeine-app",area="heap",id="G1 Old Gen"}'
+        values: '500x60'
+      - series: 'jvm_memory_max_bytes{job="caffeine-app",area="heap",id="G1 Eden Space"}'
+        values: '-1x60'
+      - series: 'jvm_memory_max_bytes{job="caffeine-app",area="heap",id="G1 Old Gen"}'
+        values: '1000x60'                      # 950 / 1000 = 95%
+      - series: 'jvm_memory_used_bytes{job="caffeine-app",area="nonheap",id="Metaspace"}'
+        values: '99999x60'                     # 힙이 아니므로 무관
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: HeapHigh
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: HeapHigh
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "힙 메모리 90% 초과"
+              description: "힙 사용률이 10분 넘게 90% 를 넘었다. 현재 95%."
+              runbook: "Grafana JVM 힙 패널 확인. 계속 오르면 재시작 전에 docker logs 를 보관한다"
+
+  # ---- ErrorLogBurst: 10분 ERROR 5건부터. WARN 은 세지 않는다 ----
+  - name: ErrorLogBurst
+    interval: 15s
+    input_series:
+      - series: 'logback_events_total{job="caffeine-app",level="error"}'
+        values: '0x4 1 2 3 4 5x20'             # 2분에 4건, 2분 15초에 5건
+      - series: 'logback_events_total{job="caffeine-app",level="warn"}'
+        values: '0+50x30'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ErrorLogBurst
+        exp_alerts: []
+      - eval_time: 2m30s
+        alertname: ErrorLogBurst
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "ERROR 로그 급증"
+              description: "최근 10분 ERROR 로그 5건."
+              runbook: "docker logs --since 10m caffeine-app 에서 level=ERROR 를 찾는다"
+
+  # ---- 디스크: 15% 미만 10분이면 warning, 5% 미만 5분이면 critical (둘 다 울리면 Alertmanager 가 warning 을 억제) ----
+  - name: DiskSpaceLow
+    interval: 15s
+    input_series:
+      - series: 'disk_free_bytes{job="caffeine-app",path="/."}'
+        values: '10x60'
+      - series: 'disk_total_bytes{job="caffeine-app",path="/."}'
+        values: '100x60'                       # 10%
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: DiskSpaceLow
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: DiskSpaceLow
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "디스크 여유 15% 미만"
+              description: "디스크 여유 공간이 10% 남았다."
+              runbook: "오래된 배포 tar 와 docker image prune 으로 정리. 운영 가이드 '롤백'의 보관본은 남긴다"
+      - eval_time: 11m
+        alertname: DiskSpaceCritical
+        exp_alerts: []
+
+  - name: DiskSpaceCritical
+    interval: 15s
+    input_series:
+      - series: 'disk_free_bytes{job="caffeine-app",path="/."}'
+        values: '3x30'
+      - series: 'disk_total_bytes{job="caffeine-app",path="/."}'
+        values: '100x30'                       # 3%
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: DiskSpaceCritical
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: DiskSpaceCritical
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "디스크 여유 5% 미만"
+              description: "디스크 여유 공간이 3% 남았다. 가득 차면 로그·DB 연결·배포가 실패한다."
+              runbook: "오래된 배포 tar 와 docker image prune 으로 정리. 운영 가이드 '롤백'의 보관본은 남긴다"
+
+  # ---- SuspiciousLogin: 15분 실패 30회(성공은 세지 않음) 또는 로그인 429 20회 ----
+  - name: SuspiciousLogin 실패 횟수
+    interval: 15s
+    input_series:
+      - series: 'caffeine_auth_logins_total{job="caffeine-app",outcome="UNKNOWN_EMAIL"}'
+        values: '0+1x40'                       # 7분에 28회, 8분에 32회
+      - series: 'caffeine_auth_logins_total{job="caffeine-app",outcome="SUCCESS"}'
+        values: '0+100x40'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: SuspiciousLogin
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: SuspiciousLogin
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations: &suspicious_login
+              summary: "로그인 공격 의심"
+              description: "최근 15분 로그인 실패 30회 이상 또는 시도 제한(429) 20회 이상. 서버의 시도 제한은 이미 동작 중이다."
+              runbook: "운영 가이드 '도메인 메트릭' — UNKNOWN_EMAIL 만 크게 늘면 이메일 목록 대입 공격"
+
+  - name: SuspiciousLogin 시도 제한(429)
+    interval: 15s
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="caffeine-app",uri="/api/auth/login",status="429"}'
+        values: '0+1x40'                       # 4분 30초에 18회, 5분 30초에 22회
+      - series: 'http_server_requests_seconds_count{job="caffeine-app",uri="/api/auth/login",status="401"}'
+        values: '0+1x40'                       # 401 은 HTTP 쪽에서는 세지 않는다(도메인 카운터가 센다)
+    alert_rule_test:
+      - eval_time: 4m30s
+        alertname: SuspiciousLogin
+        exp_alerts: []
+      - eval_time: 5m30s
+        alertname: SuspiciousLogin
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations: *suspicious_login
+
+  # ---- Watchdog: 입력이 없어도 늘 울린다 ----
+  - name: Watchdog
+    interval: 15s
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels: { severity: heartbeat }
+            exp_annotations:
+              summary: "경보 경로 하트비트"
+              description: "늘 울리는 경보. 이 경보가 오지 않으면 경보 경로 어딘가가 끊긴 것이다."
+              runbook: "docs/alerting-plan.md §5.2"
