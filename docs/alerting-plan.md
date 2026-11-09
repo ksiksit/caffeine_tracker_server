@@ -1,7 +1,7 @@
 # 장애 경보 설계 — 외부 인터넷이 없는 EC2에서 운영자에게 알리기
 
 > 작성: 2026-11-09 · 상태: **3단계 중 레포 작업 구현** (경보 규칙·promtool 테스트·Alertmanager 설정·로컬 compose·CI 검사, 2026-11-09).
-> AWS 리소스(SNS·엔드포인트·역할·CloudWatch)와 Lambda는 미착수.
+> AWS 1·2단계는 **스크립트·절차 준비됨, 실행 전** (`ops/경보-AWS-설정.md`, `monitoring/aws/`, 2026-11-09). Lambda는 미착수.
 > 대상: `monitoring/` 경보 규칙·Alertmanager 추가 + AWS SNS·Lambda·CloudWatch 알람
 >
 > 구현된 부분의 원본은 `monitoring/`·`docker-compose.*.yml`·`ops/운영-가이드.md` "경보" 절이다. 이 문서의 예시와 다르면 그쪽이 맞다.
@@ -234,7 +234,7 @@ Alertmanager 설정 파일은 환경변수를 펼치지 않는다. 토픽 ARN에
 
 ## 5. EC2 바깥의 감시 (CloudWatch)
 
-콘솔에서 만든다. 레포에는 설정값을 `ops/운영-가이드.md`에 기록한다.
+`monitoring/aws/1-topics-and-alarms.sh`로 만든다(콘솔도 가능). 설정값은 스크립트가 원본이고, 절차는 `ops/경보-AWS-설정.md`.
 
 ### 5.1 인프라 알람
 
@@ -395,8 +395,8 @@ CloudWatch 알람 10개 이내·`PutMetricData`는 이 규모면 프리 티어 �
 | 단계 | 내용 | 완료 기준 |
 |---|---|---|
 | 0 | §10의 1·2 확인 | 진행 가능 여부 결정 |
-| 1 | SNS 토픽 두 개 + 이메일 구독 + §5.1 인프라 알람 (콘솔만) | `set-alarm-state`로 울린 테스트 알람이 이메일로 온다. **코드 없이 EC2 전체 장애를 먼저 잡는다** |
-| 2 | 엔드포인트 + EC2 역할 + 홉 제한 → EC2에서 수동 발행 | EC2의 컨테이너(aws-cli 이미지를 `docker load`)에서 `sns publish`한 메시지가 이메일로 온다. **가장 위험한 네트워크·권한 경로를 코드 전에 검증한다** |
+| 1 | SNS 토픽 두 개 + 이메일 구독 + §5.1 인프라 알람 (`1-topics-and-alarms.sh`) | `set-alarm-state`로 울린 테스트 알람이 이메일로 온다. **코드 없이 EC2 전체 장애를 먼저 잡는다**. 스크립트 준비됨, 실행 전 |
+| 2 | 엔드포인트 + EC2 역할 + 홉 제한 (`2-ec2-to-sns.sh`) → EC2에서 수동 발행 | EC2의 컨테이너(aws-cli 이미지를 `docker load`)에서 `sns publish`한 메시지가 이메일로 온다. **가장 위험한 네트워크·권한 경로를 코드 전에 검증한다**. 스크립트 준비됨, 실행 전 |
 | 3 | 경보 규칙 + promtool 테스트 + Alertmanager (로컬 → 운영) | 로컬에서 §9 규칙·통합 검증 통과, 운영에서 앱을 잠깐 내리면 `AppDown`과 해결 알림이 이메일로 온다. **레포 작업은 2026-11-09 구현, 운영 반영은 2단계 뒤** |
 | 4 | Lambda `alert-relay` + Discord + 하트비트 알람 + Lambda 오류 알람 | Discord 수신, Alertmanager를 15분 내리면 `HeartbeatMissing`이 온다 |
 | 5 | 문서 동기화 (§12) | 운영 가이드에 절차·사일런스·알람 설정값 기록 |
@@ -408,7 +408,8 @@ CloudWatch 알람 10개 이내·`PutMetricData`는 이 규모면 프리 티어 �
 | 문서·파일 | 변경 | 상태 |
 |---|---|---|
 | `ops/운영-가이드.md` | "경보" 절: 규칙 보는 법, Alertmanager 켜기, `.env`의 ARN 변수 3개, 배포 사일런스, 로컬 확인 | 2026-11-09 반영 |
-| 〃 | CloudWatch 알람 설정값, 하트비트 알람이 울렸을 때 점검 순서(§8) | AWS 단계에서 |
+| `ops/경보-AWS-설정.md` | 1·2단계 절차, 생기는 것, 확인·문제 해결, 콘솔 절차, 되돌리기 | 2026-11-09 반영 |
+| `ops/운영-가이드.md` | 하트비트 알람이 울렸을 때 점검 순서(§8) | 4단계에서 |
 | `CLAUDE.md` "바꾸면 같이 바꿀 것" | 메트릭 이름을 바꾸면 경보 규칙도 같이 바꾼다(`AlertRuleMetricsIT`가 대조), 경보 설정을 바꾸면 테스트·`check.sh` | 2026-11-09 반영 |
 | `docker-compose.prod.yml`, `docker-compose.monitoring.yml` | Alertmanager 서비스(운영은 `alerting` 프로필). 이미지 태그는 두 파일과 `check.sh`가 같게 | 2026-11-09 반영 |
 | `monitoring/prometheus/prometheus.yml` | `rule_files`, `alerting.alertmanagers` | 2026-11-09 반영 |

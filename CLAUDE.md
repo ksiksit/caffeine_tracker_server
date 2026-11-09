@@ -39,6 +39,8 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
   경보 규칙(`monitoring/prometheus/alerts.yml`)은 `AlertRuleMetricsIT`가 메트릭·라벨 이름을 대조하므로, 이름을 바꾸면 규칙도 같이 바꾼다.
 - 경보 규칙·Alertmanager 설정 → `alerts.test.yml` 경계값 테스트 + `sh monitoring/check.sh`. 운영·로컬 Alertmanager 설정의
   route·inhibit_rules는 같아야 한다(스크립트가 대조). 메시지 템플릿을 바꾸면 `monitoring/alertmanager/testdata/*.expected.txt`도 갱신.
+- 경보 AWS 스크립트·정책(`monitoring/aws/`) → `docs/ops/경보-AWS-설정.md`의 "생기는 것" 표·콘솔 절차·되돌리기 명령.
+  스크립트는 더하기만 하고 다시 실행해도 되게 유지한다. 테스트는 문법만 본다 — 동작은 실제 계정이나 moto로 확인.
 - 새 엔드포인트 → `README.md` API 표에도 한 줄. **경로와 `features.md`의 기능 이름만** 적고 동작 세부는 옮기지 않는다.
   테스트가 대조하지 않는 유일한 사본이라, 세부를 적으면 낡아도 빌드가 통과한다.
 

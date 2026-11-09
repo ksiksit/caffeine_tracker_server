@@ -12,6 +12,7 @@
 #   4. 두 파일의 route·inhibit_rules 가 같은지 (로컬에서 확인한 라우팅이 운영과 같다는 보장)
 #   5. 라우팅 결과 — 하트비트는 heartbeat, 나머지는 alerts 수신자로 가는지 (amtool config routes test)
 #   6. 메시지 템플릿 렌더링을 기대 결과와 비교, 제목이 ASCII 인지 (SNS 는 제목에 한글이 있으면 발행을 거부한다)
+#   7. AWS 설정 파일 — 정책 JSON 문법, 자리표시자가 스크립트가 채우는 것뿐인지, 설정 스크립트 문법 (bash -n)
 set -eu
 
 PROMETHEUS_IMAGE=prom/prometheus:v3.5.0
@@ -84,5 +85,23 @@ for case in firing resolved; do
     fi
     echo "$case: $subject"
 done
+
+step "7. AWS 설정 파일 (monitoring/aws)"
+for policy in monitoring/aws/policies/*.json; do
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -m json.tool "$policy" >/dev/null || { echo "FAIL: $policy 가 올바른 JSON 이 아니다" >&2; exit 1; }
+    fi
+    # common.sh 의 render() 가 채우는 것은 __REGION__·__ACCOUNT_ID__ 뿐이다. 다른 자리표시자는 그대로 AWS 에 들어간다
+    unknown=$(grep -o '__[A-Z_]*__' "$policy" | grep -v -e '^__REGION__$' -e '^__ACCOUNT_ID__$' || true)
+    if [ -n "$unknown" ]; then
+        echo "FAIL: $policy 에 채워지지 않는 자리표시자가 있다: $unknown" >&2
+        exit 1
+    fi
+done
+command -v python3 >/dev/null 2>&1 || echo "python3 가 없어 정책 JSON 문법 검사는 건너뛰었다"
+for script in monitoring/aws/*.sh; do
+    bash -n "$script"
+done
+echo "SUCCESS"
 
 printf '\n모든 검사 통과\n'
