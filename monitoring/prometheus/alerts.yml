@@ -1,0 +1,156 @@
+# 운영 경보 규칙. prometheus.yml 의 rule_files 가 읽는다. 설계: docs/alerting-plan.md §3
+#
+# 규칙을 바꾸면 같이 바꿀 것
+#   - alerts.test.yml : 경계값 테스트. monitoring/check.sh 가 promtool 로 돌리고 CI 도 돌린다
+#   - 메트릭 이름     : AlertRuleMetricsIT 가 여기 쓰인 이름이 /actuator/prometheus 에 실제로 나오는지 대조한다
+#                       (그래서 모든 메트릭 선택자에 {job="caffeine-app",...} 처럼 중괄호를 붙인다 — 테스트가 그걸로 이름을 찾는다)
+#
+# 문구 규칙
+#   - 라벨·문구에 userId·이메일 같은 사용자별 값을 넣지 않는다. 메시지가 SNS·Discord 로 나간다
+#   - summary 는 한 줄 제목, runbook 은 운영 가이드의 어느 절을 볼지
+#   - 임계값은 초기값이다. 시연 트래픽을 보고 조정하고 alerts.test.yml 도 같이 고친다
+groups:
+  - name: caffeine-app
+    rules:
+      # ---- 가용성 ----
+      - alert: AppDown
+        expr: up{job="caffeine-app"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "앱 응답 없음"
+          description: "Prometheus 가 2분 넘게 앱 메트릭(app:8081)을 수집하지 못했다."
+          runbook: "운영 가이드 '알려진 함정' — docker compose ps, docker logs caffeine-app"
+
+      - alert: AppRestarted
+        expr: changes(process_start_time_seconds{job="caffeine-app"}[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "앱 재시작됨"
+          description: "최근 10분 안에 앱 프로세스가 다시 시작됐다. 배포가 아니면 메모리 부족(OOM)이나 크래시다."
+          runbook: "운영 가이드 '경보' — docker inspect caffeine-app 의 OOMKilled, 재시작 직전 로그"
+
+      # ---- HTTP ----
+      # 비율만 보면 요청 2건 중 1건 실패가 50% 가 되므로 5분간 5xx 3건 이상이라는 건수 조건을 함께 건다
+      - alert: High5xxRate
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{job="caffeine-app",uri!~"/actuator.*",status=~"5.."}[5m]))
+              / sum(rate(http_server_requests_seconds_count{job="caffeine-app",uri!~"/actuator.*"}[5m]))
+          ) > 0.05
+          and
+          sum(increase(http_server_requests_seconds_count{job="caffeine-app",uri!~"/actuator.*",status=~"5.."}[5m])) >= 3
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "서버 오류(5xx) 급증"
+          description: "최근 5분 5xx 비율 {{ $value | humanizePercentage }}."
+          runbook: "운영 가이드 '메트릭과 로그' — docker logs --since 로 5xx 의 requestId 를 찾아 추적"
+
+      # 1s 는 application-prod.yaml 의 지연 버킷 경계라 보간 오차가 없다
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_requests_seconds_bucket{job="caffeine-app",uri!~"/actuator.*"}[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "응답 지연(p95 1초 초과)"
+          description: "최근 5분 p95 가 10분 넘게 1초를 넘었다. 현재 {{ $value | humanizeDuration }}."
+          runbook: "Grafana 엔드포인트별 p95 패널로 느린 경로를 찾고, DB 커넥션 패널을 함께 본다"
+
+      # ---- DB ----
+      - alert: DbConnectionPending
+        expr: max(hikaricp_connections_pending{job="caffeine-app"}) > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DB 커넥션 대기"
+          description: "커넥션 풀이 2분 넘게 고갈돼 요청이 커넥션을 기다린다. RDS 장애나 느린 쿼리 신호다."
+          runbook: "RDS 상태·CPU 확인, 앱 로그의 SQL 오류 확인"
+
+      - alert: DbConnectionTimeout
+        expr: sum(increase(hikaricp_connections_timeout_total{job="caffeine-app"}[5m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "DB 커넥션 타임아웃"
+          description: "최근 5분 안에 30초 동안 커넥션을 받지 못한 요청이 있다."
+          runbook: "RDS 상태·CPU 확인, 앱 로그의 SQL 오류 확인"
+
+      # ---- JVM·로그 ----
+      # 최대값이 -1(제한 없음)인 풀은 > 0 으로 걸러 낸다. G1 이면 Old Gen 최대값이 힙 전체 최대값이다
+      - alert: HeapHigh
+        expr: |
+          sum(jvm_memory_used_bytes{job="caffeine-app",area="heap"})
+            / sum(jvm_memory_max_bytes{job="caffeine-app",area="heap"} > 0)
+          > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "힙 메모리 90% 초과"
+          description: "힙 사용률이 10분 넘게 90% 를 넘었다. 현재 {{ $value | humanizePercentage }}."
+          runbook: "Grafana JVM 힙 패널 확인. 계속 오르면 재시작 전에 docker logs 를 보관한다"
+
+      - alert: ErrorLogBurst
+        expr: sum(increase(logback_events_total{job="caffeine-app",level="error"}[10m])) >= 5
+        labels:
+          severity: warning
+        annotations:
+          summary: "ERROR 로그 급증"
+          description: "최근 10분 ERROR 로그 {{ $value | humanize }}건."
+          runbook: "docker logs --since 10m caffeine-app 에서 level=ERROR 를 찾는다"
+
+      # ---- 디스크 ----
+      # Spring Boot 기본 디스크 메트릭. 컨테이너 안에서 재지만 overlay 파일시스템이라 EC2 루트 디스크 사용량과 같다
+      - alert: DiskSpaceLow
+        expr: min(disk_free_bytes{job="caffeine-app"} / disk_total_bytes{job="caffeine-app"}) < 0.15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "디스크 여유 15% 미만"
+          description: "디스크 여유 공간이 {{ $value | humanizePercentage }} 남았다."
+          runbook: "오래된 배포 tar 와 docker image prune 으로 정리. 운영 가이드 '롤백'의 보관본은 남긴다"
+
+      - alert: DiskSpaceCritical
+        expr: min(disk_free_bytes{job="caffeine-app"} / disk_total_bytes{job="caffeine-app"}) < 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "디스크 여유 5% 미만"
+          description: "디스크 여유 공간이 {{ $value | humanizePercentage }} 남았다. 가득 차면 로그·DB 연결·배포가 실패한다."
+          runbook: "오래된 배포 tar 와 docker image prune 으로 정리. 운영 가이드 '롤백'의 보관본은 남긴다"
+
+      # ---- 보안 ----
+      # 이메일 하나당 15분 5회 실패면 429 로 막힌다. 15분 실패 30회는 여러 계정이 동시에 두드려진다는 뜻이다
+      - alert: SuspiciousLogin
+        expr: |
+          sum(increase(caffeine_auth_logins_total{job="caffeine-app",outcome!="SUCCESS"}[15m])) >= 30
+          or
+          sum(increase(http_server_requests_seconds_count{job="caffeine-app",uri="/api/auth/login",status="429"}[15m])) >= 20
+        labels:
+          severity: warning
+        annotations:
+          summary: "로그인 공격 의심"
+          description: "최근 15분 로그인 실패 30회 이상 또는 시도 제한(429) 20회 이상. 서버의 시도 제한은 이미 동작 중이다."
+          runbook: "운영 가이드 '도메인 메트릭' — UNKNOWN_EMAIL 만 크게 늘면 이메일 목록 대입 공격"
+
+      # ---- 경보 경로 하트비트 ----
+      # 늘 울린다. Alertmanager 가 5분마다 heartbeat 토픽으로 보내고, 끊기면 CloudWatch 가 알린다 (docs/alerting-plan.md §5.2)
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: heartbeat
+        annotations:
+          summary: "경보 경로 하트비트"
+          description: "늘 울리는 경보. 이 경보가 오지 않으면 경보 경로 어딘가가 끊긴 것이다."
+          runbook: "docs/alerting-plan.md §5.2"

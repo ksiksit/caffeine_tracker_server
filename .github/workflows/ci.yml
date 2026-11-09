@@ -29,6 +29,10 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
+      # 경보 규칙·Alertmanager 설정 문법, 규칙 경계값 테스트, 메시지 템플릿 (promtool·amtool 은 Docker 이미지로 실행)
+      - name: Check monitoring config
+        run: sh monitoring/check.sh
+
       - name: Build and test
         run: ./gradlew build
 

@@ -78,4 +78,9 @@ tasks.named('processTestResources') {
 		include 'api.md', 'openapi.yaml'
 		into 'docs/api'
 	}
+	// 경보 규칙 대조 테스트(AlertRuleMetricsIT)가 규칙이 쓰는 메트릭 이름을 실제 노출 메트릭과 비교한다.
+	from('monitoring/prometheus') {
+		include 'alerts.yml'
+		into 'monitoring/prometheus'
+	}
 }

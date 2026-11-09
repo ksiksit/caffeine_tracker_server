@@ -1,0 +1,42 @@
+# 로컬 Alertmanager 설정 (docker-compose.monitoring.yml 전용). AWS 없이 경보 흐름을 확인한다.
+# SNS 대신 alert-sink 컨테이너로 보내고, 받은 경보를 그 컨테이너 로그에 찍는다:
+#   docker compose -f docker-compose.monitoring.yml logs -f alert-sink
+#
+# route·inhibit_rules 는 alertmanager.yml(운영)과 한 글자도 다르지 않아야 한다 — monitoring/check.sh 가 대조한다.
+
+route:
+  receiver: alerts
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h            # 계속 울리는 warning 은 4시간마다만 다시 알린다
+  routes:
+    - matchers: ['alertname="Watchdog"']
+      receiver: heartbeat
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 5m        # 하트비트 주기. CloudWatch 알람은 15분 동안 오지 않으면 울린다
+    - matchers: ['severity="critical"']
+      receiver: alerts
+      repeat_interval: 1h
+
+inhibit_rules:
+  # DB 문제면 그 결과인 5xx·에러 로그·지연 경보는 보내지 않는다
+  - source_matchers: ['alertname=~"DbConnectionPending|DbConnectionTimeout"']
+    target_matchers: ['alertname=~"High5xxRate|ErrorLogBurst|HighLatencyP95"']
+  # 디스크 critical 이 울리면 같은 원인의 warning 은 보내지 않는다
+  - source_matchers: ['alertname="DiskSpaceCritical"']
+    target_matchers: ['alertname="DiskSpaceLow"']
+
+receivers:
+  - name: alerts
+    webhook_configs:
+      - url: http://alert-sink:8080/alerts
+        send_resolved: true
+  - name: heartbeat
+    webhook_configs:
+      - url: http://alert-sink:8080/heartbeat
+        send_resolved: false
+
+templates:
+  - templates/*.tmpl

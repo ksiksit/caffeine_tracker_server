@@ -9,6 +9,7 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 - `./gradlew build -x test` — 컴파일만
 - `./gradlew bootRun` — 로컬 실행 (환경변수 4개 필요, README 참조)
 - `./gradlew e2eTest` — E2E (Docker 필요, `build`·CI와 별개). `src/e2eTest`는 블랙박스 — main 코드를 import 하지 않는다
+- `sh monitoring/check.sh` — 경보 규칙·Alertmanager 설정 검사 (promtool·amtool 없으면 Docker, CI도 실행)
 
 ## 배치 규칙
 - `com.jongbeom.server.domain.<도메인>/` 아래 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/`.
@@ -35,6 +36,9 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 - 사용자에게 보이는 기능 → `docs/features.md` 표. 동작 조건·임계값은 여기 적는다 — 그 괄호가 그대로 테스트 케이스 목록이다.
 - 도메인 메트릭(`*Metrics`) 이름·태그 → `monitoring/grafana/dashboards/caffeine-app.json` 쿼리 + `docs/ops/운영-가이드.md`
   "도메인 메트릭" 표. 태그에 userId 등 사용자별 값 금지(시계열 폭증). 대시보드 쿼리는 테스트가 대조하지 않는다.
+  경보 규칙(`monitoring/prometheus/alerts.yml`)은 `AlertRuleMetricsIT`가 메트릭·라벨 이름을 대조하므로, 이름을 바꾸면 규칙도 같이 바꾼다.
+- 경보 규칙·Alertmanager 설정 → `alerts.test.yml` 경계값 테스트 + `sh monitoring/check.sh`. 운영·로컬 Alertmanager 설정의
+  route·inhibit_rules는 같아야 한다(스크립트가 대조). 메시지 템플릿을 바꾸면 `monitoring/alertmanager/testdata/*.expected.txt`도 갱신.
 - 새 엔드포인트 → `README.md` API 표에도 한 줄. **경로와 `features.md`의 기능 이름만** 적고 동작 세부는 옮기지 않는다.
   테스트가 대조하지 않는 유일한 사본이라, 세부를 적으면 낡아도 빌드가 통과한다.
 

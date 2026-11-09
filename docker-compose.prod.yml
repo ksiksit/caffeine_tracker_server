@@ -37,9 +37,35 @@ services:
       - --storage.tsdb.retention.size=2GB
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro # 경보 규칙. prometheus.yml 이 같은 폴더에서 읽는다
       - prometheus-data:/prometheus
     ports:
       - "127.0.0.1:9090:9090" # 인증이 없으므로 루프백에만. PC 에서는 SSH 터널로 본다
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 경보 전달. Prometheus 가 평가한 경보를 묶고·억제해 SNS(VPC 엔드포인트)로 보낸다. 설계: docs/alerting-plan.md
+  # AWS 준비(SNS 토픽·엔드포인트·인스턴스 역할) 전에는 띄우지 않는다 — alerting 프로필을 줄 때만 뜬다:
+  #   docker compose -f docker-compose.prod.yml --profile alerting up -d
+  # .env 의 토픽 ARN 이 비면 이 컨테이너만 시작을 거부한다(entrypoint.sh). 앱 기동은 막지 않으려고 :? 필수 변수를 쓰지 않는다.
+  alertmanager:
+    image: prom/alertmanager:v0.28.1 # monitoring/check.sh 의 검사 이미지와 같은 태그
+    container_name: caffeine-alertmanager
+    profiles: ["alerting"]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
+    environment:
+      ALERT_TOPIC_ARN: ${ALERT_TOPIC_ARN:-}
+      HEARTBEAT_TOPIC_ARN: ${HEARTBEAT_TOPIC_ARN:-}
+      AWS_REGION: ${AWS_REGION:-}
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager:ro
+      - alertmanager-data:/alertmanager # 사일런스·알림 기록. 재시작해도 배포 사일런스가 유지된다
+    ports:
+      - "127.0.0.1:9093:9093" # 인증이 없으므로 루프백에만. PC 에서는 SSH 터널로 본다
     logging:
       driver: "json-file"
       options:
@@ -76,3 +102,4 @@ services:
 volumes:
   prometheus-data:
   grafana-data:
+  alertmanager-data:

@@ -1,0 +1,7 @@
+[CRITICAL] High5xxRate
+---
+🔴 서버 오류(5xx) 급증
+상태: 발생 · 시작 11-09 14:03 KST
+내용: 최근 5분 5xx 비율 12.5%.
+대응: 운영 가이드 '메트릭과 로그' — docker logs --since 로 5xx 의 requestId 를 찾아 추적
+
