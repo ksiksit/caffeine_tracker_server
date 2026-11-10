@@ -203,7 +203,7 @@ E2E 환경을 손으로 띄워 Postman 등으로 확인하려면 `docker compose
 ```
 src/main/java/com/jongbeom/server/
 ├── domain/
-│   ├── auth/           # 회원가입, 로그인, JWT(access·refresh) 발급·검증
+│   ├── auth/           # 회원가입, 로그인, JWT(access·refresh) 발급·검증 (JwtConfig 포함)
 │   ├── user/           # 사용자 정보 조회
 │   ├── settings/       # 유저 설정 + 학습 상태 (연산 입력값)
 │   ├── caffeine/       # 카페인 기록 CRUD + 잔류량/마감시각 계산 — 레이어 구성 예시:
@@ -217,7 +217,7 @@ src/main/java/com/jongbeom/server/
 │       ├── sleep/      # 수면 단계·병합·요약
 │       └── learning/   # 베이지안 반감기 갱신·학습용 bedtime 추출·대시보드 통계
 ├── global/
-│   ├── config/         # SecurityConfig, JwtConfig(+JwtProperties), ClockConfig
+│   ├── config/         # SecurityConfig, JwtProperties, ClockConfig
 │   ├── error/          # 전역 에러 (BusinessException·ErrorCode·ApiError·GlobalExceptionHandler·JsonSecurityErrorHandler=401/403)
 │   ├── web/            # 컨트롤러 공용 (ApiResponse 응답 봉투, CurrentUser), 요청 로그 필터
 │   └── entity/         # BaseTimeEntity
@@ -243,5 +243,8 @@ perf/
 > 각 도메인 내부는 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/` 레이어 패키지로 구성한다.
 > 레이어가 아닌 도메인 컴포넌트(`domain/auth/JwtTokenProvider`, `domain/auth/RefreshTokenVerifier`, `domain/learning/LearningSkipReason` 등)는
 > 도메인 루트에 둔다.
+>
+> 도메인끼리는 `service/`와 도메인 루트 타입으로만 연결한다(다른 도메인의 `repository/`·`entity/`·`dto/` 직접 참조 금지).
+> 규칙은 `CLAUDE.md` "배치 규칙", 대조는 `ModuleBoundaryTest`(ArchUnit).
 
 > `domain/calc/`의 도메인 수식은 iOS Swift에서 포팅했으며, Swift 단위테스트의 입력→기대값을 **골든 테스트**로 복제해 부동소수 정합을 검증한다.

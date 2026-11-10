@@ -15,6 +15,10 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 - `com.jongbeom.server.domain.<도메인>/` 아래 `controller/`·`service/`·`repository/`·`entity/`·`dto/`·`exception/`.
   테스트도 같은 구조로 미러링, 통합 테스트는 `*IT` 접미사.
 - 레이어가 아닌 컴포넌트(`JwtTokenProvider`, `RefreshTokenVerifier`, `LearningSkipReason`, `*Metrics`)는 도메인 루트.
+- 모듈 경계: 다른 도메인에서는 `service/`와 도메인 루트 타입만 쓴다. `repository/`·`entity/`·`dto/`·`exception/`·`controller/`는
+  그 도메인 내부 — 밖에 줄 값은 도메인 루트에 읽기용 record로 둔다(`SettingsSnapshot`, `CaffeineStatus`), 바꾸는 일은 그 도메인 서비스 메서드로.
+  `calc/`는 JDK만 의존하고 전체가 공개. `global/`은 도메인을 import 하지 않는다(도메인에 묶인 설정은 그 도메인에 — `JwtConfig`는 `auth`).
+  도메인 간 순환 금지. 예외는 `auth → user` 하나(user 의 애플리케이션 계층). `ModuleBoundaryTest`(ArchUnit)가 대조한다.
 - 인프라는 `global/`(config·error·web·entity). `ServerApplication`은 패키지 루트 고정(컴포넌트 스캔 베이스).
 - 새 엔드포인트는 `SecurityConfig.authorizeHttpRequests`에 등록 (미등록 = authenticated).
 

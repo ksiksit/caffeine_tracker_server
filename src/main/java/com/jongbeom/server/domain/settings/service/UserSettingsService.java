@@ -1,10 +1,13 @@
 package com.jongbeom.server.domain.settings.service;
 
+import com.jongbeom.server.domain.settings.SettingsSnapshot;
 import com.jongbeom.server.domain.settings.dto.NotificationSettingsRequest;
 import com.jongbeom.server.domain.settings.dto.UpdateSettingsRequest;
+import com.jongbeom.server.domain.settings.entity.CaffeineCondition;
 import com.jongbeom.server.domain.settings.entity.UserSettings;
 import com.jongbeom.server.domain.settings.repository.UserSettingsRepository;
 import com.jongbeom.server.domain.user.UserWriteLock;
+import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -35,6 +38,34 @@ public class UserSettingsService {
     public UserSettings getOrCreate(Long userId) {
         return userSettingsRepository.findById(userId)
                 .orElseGet(() -> userSettingsRepository.save(UserSettings.createDefault(userId)));
+    }
+
+    /** 다른 도메인용 조회. 엔티티 대신 읽기 전용 사본을 준다 — 없으면 {@link #getOrCreate}와 같이 기본값으로 생성. */
+    @Transactional
+    public SettingsSnapshot snapshot(Long userId) {
+        return toSnapshot(getOrCreate(userId));
+    }
+
+    /**
+     * 베이지안 학습 1회 결과 반영. 갱신된 사본을 돌려주므로 호출자는 그 값을 다음 night 의 prior 로 쓴다.
+     * 잠금은 호출자(학습 실행)가 트랜잭션 첫 문장으로 이미 잡고 있어야 하므로 그 트랜잭션 안에서만 부른다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public SettingsSnapshot applyLearning(Long userId, double learnedMean, double learnedVariance,
+                                          LocalDate lastLearnedDate) {
+        UserSettings settings = getOrCreate(userId);
+        settings.applyLearning(learnedMean, learnedVariance, lastLearnedDate);
+        return toSnapshot(settings);
+    }
+
+    private static SettingsSnapshot toSnapshot(UserSettings settings) {
+        return new SettingsSnapshot(
+                settings.effectiveHalfLifeHours(),
+                CaffeineCondition.fromRawValue(settings.getCondition()).multiplier(),
+                settings.getBedtimeHour(), settings.getBedtimeMinute(), settings.getReferenceDoseMg(),
+                settings.isLearningEnabled(), settings.getLearnedMean(), settings.getLearnedVariance(),
+                settings.isNotifyCutoff(), settings.isNotifyBedtimeResidual(),
+                settings.isNotifyRecordReminder(), settings.isNotifyCafeNearby());
     }
 
     /** 같은 사용자의 학습 실행과 겹치면 한쪽 갱신이 유실되므로 사용자 쓰기 잠금 뒤에 읽는다. */

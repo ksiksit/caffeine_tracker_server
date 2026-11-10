@@ -1,5 +1,6 @@
 package com.jongbeom.server.domain.caffeine.service;
 
+import com.jongbeom.server.domain.caffeine.CaffeineStatus;
 import com.jongbeom.server.domain.caffeine.dto.CaffeineRecordResponse;
 import com.jongbeom.server.domain.caffeine.dto.CaffeineTodayResponse;
 import com.jongbeom.server.domain.caffeine.dto.CaffeineTodayResponse.CutoffResponse;
@@ -14,7 +15,7 @@ import com.jongbeom.server.domain.calc.time.LocalCalendar;
 import com.jongbeom.server.domain.calc.pk.Pharmacokinetics;
 import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.CutoffResult;
 import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.Dose;
-import com.jongbeom.server.domain.settings.entity.UserSettings;
+import com.jongbeom.server.domain.settings.SettingsSnapshot;
 import com.jongbeom.server.domain.settings.service.UserSettingsService;
 import java.time.Duration;
 import java.time.Instant;
@@ -69,47 +70,104 @@ public class CaffeineService {
      */
     @Transactional(readOnly = true)
     public CaffeineTodayResponse today(Long userId, Instant now, ZoneId zone) {
-        UserSettings settings = settingsService.getOrCreate(userId);
-        // 엔티티 필드 halfLife(슬라이더 값)와 다른 개념 — 학습값·건강상태 배수가 반영된 유효 반감기
-        double effectiveHalfLifeHours = settings.effectiveHalfLifeHours();
-        int referenceDoseMg = settings.getReferenceDoseMg();
+        TodayInputs inputs = loadTodayInputs(userId, now, zone);
+        Instant chartStart = inputs.chartStart();
+        Instant bedtime = inputs.bedtime();
+        double effectiveHalfLifeHours = inputs.effectiveHalfLifeHours();
+        List<Dose> doses = inputs.doses();
 
-        Instant chartStart = LocalCalendar.chartStart(now, zone);
-        Instant chartEnd = LocalCalendar.chartEnd(now, zone);
-        Instant bedtime = LocalCalendar.nextBedtime(
-                now, zone, settings.getBedtimeHour(), settings.getBedtimeMinute());
+        List<CaffeineRecordResponse> carryoverRecords = inputs.recentRecords().stream()
+                .filter(r -> r.getTimestamp().isBefore(chartStart))
+                .map(CaffeineRecordResponse::from).toList();
+
+        ChartAndResiduals computed = computeChartAndResiduals(
+                doses, chartStart, LocalCalendar.chartEnd(now, zone), now, bedtime, effectiveHalfLifeHours);
+
+        List<CaffeineRecordResponse> records = inputs.todayRecords().stream()
+                .map(CaffeineRecordResponse::from).toList();
+        int todayTotal = inputs.todayTotal();
+
+        return new CaffeineTodayResponse(
+                now, bedtime,
+                records,
+                todayTotal, isOverDailyLimit(todayTotal),
+                computed.chart(), computed.currentResidual(), computed.predictedAtBedtime(),
+                toCutoffResponse(inputs.cutoff()), effectiveHalfLifeHours, inputs.referenceDoseMg(),
+                carryoverRecords);
+    }
+
+    /**
+     * 다른 도메인용 오늘 현황 요약. {@link #today}와 같은 입력·같은 정의로 계산하되 차트 시계열은 만들지 않는다.
+     * settings 조회가 첫 접근 시 행을 저장할 수 있어, 호출자가 쓰기 트랜잭션 안에서 부른다(알림 계획).
+     */
+    @Transactional(readOnly = true)
+    public CaffeineStatus status(Long userId, Instant now, ZoneId zone) {
+        TodayInputs inputs = loadTodayInputs(userId, now, zone);
+        List<Dose> doses = inputs.doses();
+        // doses 가 비면 today 와 같이 잔량 0
+        double predictedAtBedtime = doses.isEmpty()
+                ? 0
+                : Pharmacokinetics.totalRemaining(inputs.bedtime(), doses, inputs.effectiveHalfLifeHours());
+        int todayTotal = inputs.todayTotal();
+        return new CaffeineStatus(
+                inputs.bedtime(), todayTotal, isOverDailyLimit(todayTotal), predictedAtBedtime,
+                inputs.cutoff(), inputs.referenceDoseMg());
+    }
+
+    /** 다른 도메인용 조회: [from, ∞) 기록을 시각 오름차순 {@link Dose}로. */
+    @Transactional(readOnly = true)
+    public List<Dose> dosesSince(Long userId, Instant from) {
+        return toDoses(caffeineRecordRepository
+                .findByUserIdAndTimestampGreaterThanEqualOrderByTimestampAsc(userId, from));
+    }
+
+    /** 다른 도메인용 조회: [from, to](양끝 포함) 기록을 시각 오름차순 {@link Dose}로. */
+    @Transactional(readOnly = true)
+    public List<Dose> dosesBetween(Long userId, Instant from, Instant to) {
+        return toDoses(caffeineRecordRepository
+                .findByUserIdAndTimestampBetweenOrderByTimestampAsc(userId, from, to));
+    }
+
+    private static List<Dose> toDoses(List<CaffeineRecord> records) {
+        return records.stream().map(r -> new Dose(r.getTimestamp(), r.getAmount())).toList();
+    }
+
+    private static boolean isOverDailyLimit(int todayTotal) {
+        return todayTotal > Pharmacokinetics.DAILY_RECOMMENDED_LIMIT_MG;
+    }
+
+    /** {@link #today}·{@link #status} 공통 입력: 설정값, 취침 시각, 최근 24시간 기록과 그 Dose, 마감시각. */
+    private record TodayInputs(
+            double effectiveHalfLifeHours, int referenceDoseMg, Instant chartStart, Instant bedtime,
+            List<CaffeineRecord> recentRecords, List<Dose> doses, CutoffResult cutoff) {
+
+        /** 하루 경계(05:00) 이후 기록 — 목록·합계용. */
+        List<CaffeineRecord> todayRecords() {
+            return recentRecords.stream().filter(r -> !r.getTimestamp().isBefore(chartStart)).toList();
+        }
+
+        int todayTotal() {
+            return todayRecords().stream().mapToInt(CaffeineRecord::getAmount).sum();
+        }
+    }
+
+    private TodayInputs loadTodayInputs(Long userId, Instant now, ZoneId zone) {
+        SettingsSnapshot settings = settingsService.snapshot(userId);
+        // 슬라이더 값(halfLife)과 다른 개념 — 학습값·건강상태 배수가 반영된 유효 반감기
+        double effectiveHalfLifeHours = settings.effectiveHalfLifeHours();
+        int referenceDoseMg = settings.referenceDoseMg();
+        Instant bedtime = LocalCalendar.nextBedtime(now, zone, settings.bedtimeHour(), settings.bedtimeMinute());
 
         // 잔량은 하루 경계와 무관하게 몸에 남으므로 학습과 같은 24h 룩백으로 계산한다. 05:00 경계는 목록·합계·차트 범위에만 쓴다.
         List<CaffeineRecord> recentRecords = caffeineRecordRepository
                 .findByUserIdAndTimestampGreaterThanEqualOrderByTimestampAsc(
                         userId, now.minus(Duration.ofHours((long) BayesianHalfLifeUpdater.DOSES_LOOKBACK_HOURS)));
-        List<CaffeineRecord> todayRecords = recentRecords.stream()
-                .filter(r -> !r.getTimestamp().isBefore(chartStart))
-                .toList();
-        List<CaffeineRecordResponse> carryoverRecords = recentRecords.stream()
-                .filter(r -> r.getTimestamp().isBefore(chartStart))
-                .map(CaffeineRecordResponse::from).toList();
-        List<Dose> doses = recentRecords.stream()
-                .map(r -> new Dose(r.getTimestamp(), r.getAmount()))
-                .toList();
-
-        ChartAndResiduals computed = computeChartAndResiduals(
-                doses, chartStart, chartEnd, now, bedtime, effectiveHalfLifeHours);
+        List<Dose> doses = toDoses(recentRecords);
         CutoffResult cutoff = Pharmacokinetics.cutoffTime(
                 doses, bedtime, referenceDoseMg, effectiveHalfLifeHours,
                 Pharmacokinetics.BEDTIME_SAFE_THRESHOLD_MG);
-
-        List<CaffeineRecordResponse> records = todayRecords.stream()
-                .map(CaffeineRecordResponse::from).toList();
-        int todayTotal = todayRecords.stream().mapToInt(CaffeineRecord::getAmount).sum();
-        boolean overDailyLimit = todayTotal > Pharmacokinetics.DAILY_RECOMMENDED_LIMIT_MG;
-
-        return new CaffeineTodayResponse(
-                now, bedtime,
-                records,
-                todayTotal, overDailyLimit,
-                computed.chart(), computed.currentResidual(), computed.predictedAtBedtime(),
-                toCutoffResponse(cutoff), effectiveHalfLifeHours, referenceDoseMg, carryoverRecords);
+        return new TodayInputs(effectiveHalfLifeHours, referenceDoseMg, LocalCalendar.chartStart(now, zone), bedtime,
+                recentRecords, doses, cutoff);
     }
 
     /** 차트 시계열 + 현재/취침 잔량 묶음. */

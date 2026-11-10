@@ -1,8 +1,9 @@
-package com.jongbeom.server.global.config;
+package com.jongbeom.server.domain.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.jongbeom.server.global.config.JwtProperties;
 import java.time.Instant;
 import javax.crypto.SecretKey;
 import org.junit.jupiter.api.BeforeEach;

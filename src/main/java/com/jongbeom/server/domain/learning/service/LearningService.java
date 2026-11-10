@@ -1,7 +1,6 @@
 package com.jongbeom.server.domain.learning.service;
 
-import com.jongbeom.server.domain.caffeine.entity.CaffeineRecord;
-import com.jongbeom.server.domain.caffeine.repository.CaffeineRecordRepository;
+import com.jongbeom.server.domain.caffeine.service.CaffeineService;
 import com.jongbeom.server.domain.calc.learning.BayesianHalfLifeUpdater;
 import com.jongbeom.server.domain.calc.learning.BayesianHalfLifeUpdater.Linearization;
 import com.jongbeom.server.domain.calc.learning.BayesianHalfLifeUpdater.Posterior;
@@ -21,8 +20,7 @@ import com.jongbeom.server.domain.learning.dto.LearningRunResponse;
 import com.jongbeom.server.domain.learning.dto.ObservationResponse;
 import com.jongbeom.server.domain.learning.entity.HalfLifeObservation;
 import com.jongbeom.server.domain.learning.repository.HalfLifeObservationRepository;
-import com.jongbeom.server.domain.settings.entity.CaffeineCondition;
-import com.jongbeom.server.domain.settings.entity.UserSettings;
+import com.jongbeom.server.domain.settings.SettingsSnapshot;
 import com.jongbeom.server.domain.settings.service.UserSettingsService;
 import com.jongbeom.server.domain.sleep.service.SleepService;
 import com.jongbeom.server.domain.sleep.service.SleepService.NightData;
@@ -57,7 +55,7 @@ public class LearningService {
 
     private final UserSettingsService settingsService;
     private final SleepService sleepService;
-    private final CaffeineRecordRepository caffeineRepository;
+    private final CaffeineService caffeineService;
     private final HalfLifeObservationRepository observationRepository;
     private final UserWriteLock userWriteLock;
     private final LearningMetrics learningMetrics;
@@ -74,8 +72,8 @@ public class LearningService {
     @Transactional
     public LearningRunResponse run(Long userId, ZoneId zone) {
         userWriteLock.lock(userId);
-        UserSettings settings = settingsService.getOrCreate(userId);
-        if (!settings.isLearningEnabled()) {
+        SettingsSnapshot settings = settingsService.snapshot(userId);
+        if (!settings.learningEnabled()) {
             return finishRun(0, LearningSkipReason.LEARNING_DISABLED);
         }
 
@@ -96,18 +94,25 @@ public class LearningService {
             if (!learnedDates.contains(date)) {
                 bedtimes.put(date, BedtimeExtractor.extract(
                         night.intervals(), night.bedtimeStart(),
-                        settings.getBedtimeHour(), settings.getBedtimeMinute(), date, zone));
+                        settings.bedtimeHour(), settings.bedtimeMinute(), date, zone));
             }
         });
-        List<CaffeineRecord> records = recordsForBedtimes(userId, bedtimes.values());
+        List<Dose> records = recordsForBedtimes(userId, bedtimes.values());
 
         int updated = 0;
         // 더 최신 날짜의 skip 사유가 이전 사유를 덮어쓰도록 둔다 (← iOS는 데이터 있는 날만 받아 latest date 사유를 표시).
         LearningSkipReason latestReason = null;
+        // 순차 체이닝: 학습에 성공한 night 가 갱신한 설정을 다음 night 의 prior 로 넘긴다
+        SettingsSnapshot prior = settings;
         for (LocalDate date : nights.keySet()) {
-            LearningSkipReason skipReason = learnedDates.contains(date)
-                    ? LearningSkipReason.ALREADY_LEARNED
-                    : learnOneNight(userId, date, settings, bedtimes.get(date), records);
+            LearningSkipReason skipReason;
+            if (learnedDates.contains(date)) {
+                skipReason = LearningSkipReason.ALREADY_LEARNED;
+            } else {
+                NightOutcome outcome = learnOneNight(userId, date, prior, bedtimes.get(date), records);
+                skipReason = outcome.skipReason();
+                prior = outcome.settings();
+            }
             learningMetrics.recordNight(skipReason);
             if (skipReason == null) {
                 updated++;
@@ -119,22 +124,30 @@ public class LearningService {
         return finishRun(updated, updated == 0 ? latestReason : null);
     }
 
+    /** 한 night 의 결과: 성공이면 {@code skipReason} 이 null 이고 {@code settings} 는 갱신된 값, 건너뛰면 받은 값 그대로. */
+    private record NightOutcome(LearningSkipReason skipReason, SettingsSnapshot settings) {
+        static NightOutcome skipped(LearningSkipReason reason, SettingsSnapshot unchanged) {
+            return new NightOutcome(reason, unchanged);
+        }
+    }
+
     /**
-     * 한 night 학습 시도. 성공하면 관측 저장 + settings 반영 후 null, 실패하면 skip 사유 반환.
-     * settings의 learned 값을 그대로 prior로 읽으므로, 직전 night의 성공 갱신이 다음 night의 prior가 된다(순차 체이닝).
+     * 한 night 학습 시도. 성공하면 관측 저장 + settings 반영, 실패하면 skip 사유.
+     * 받은 settings 의 learned 값을 prior 로 쓰고 갱신된 settings 를 돌려주므로, 직전 night 의 성공 갱신이
+     * 다음 night 의 prior 가 된다(순차 체이닝).
      */
-    private LearningSkipReason learnOneNight(
-            Long userId, LocalDate date, UserSettings settings,
-            BedtimeExtractor.Result bedtimeResult, List<CaffeineRecord> records) {
+    private NightOutcome learnOneNight(
+            Long userId, LocalDate date, SettingsSnapshot settings,
+            BedtimeExtractor.Result bedtimeResult, List<Dose> records) {
         if (!bedtimeResult.isOk()) {
-            return LearningSkipReason.from(bedtimeResult.failure());
+            return NightOutcome.skipped(LearningSkipReason.from(bedtimeResult.failure()), settings);
         }
 
-        double priorMean = settings.getLearnedMean();
-        double priorVariance = settings.getLearnedVariance();
-        double multiplier = CaffeineCondition.fromRawValue(settings.getCondition()).multiplier();
+        double priorMean = settings.learnedMean();
+        double priorVariance = settings.learnedVariance();
+        double multiplier = settings.conditionMultiplier();
         if (!hasValidPrior(priorMean, priorVariance, multiplier)) {
-            return LearningSkipReason.INVALID_PRIOR;
+            return NightOutcome.skipped(LearningSkipReason.INVALID_PRIOR, settings);
         }
 
         Instant bedtime = bedtimeResult.bedtime();
@@ -142,7 +155,7 @@ public class LearningService {
 
         Linearization linearization = BayesianHalfLifeUpdater.linearize(bedtime, doses, priorMean, multiplier);
         if (linearization == null) {
-            return LearningSkipReason.INSUFFICIENT_CAFFEINE_RESIDUAL;
+            return NightOutcome.skipped(LearningSkipReason.INSUFFICIENT_CAFFEINE_RESIDUAL, settings);
         }
         Posterior rawPosterior = BayesianHalfLifeUpdater.posteriorEstimate(
                 priorMean, priorVariance, linearization, bedtimeResult.solMinutes());
@@ -157,10 +170,11 @@ public class LearningService {
                     new HalfLifeObservation.Posterior(boundedPosterior.mean(), boundedPosterior.variance()),
                     multiplier);
             observationRepository.save(observation);
-            settings.applyLearning(boundedPosterior.mean(), boundedPosterior.variance(), date); // 저장 성공 후에만 갱신
-            return null;
+            // 저장 성공 후에만 갱신
+            return new NightOutcome(null, settingsService.applyLearning(
+                    userId, boundedPosterior.mean(), boundedPosterior.variance(), date));
         } catch (IllegalArgumentException e) {
-            return LearningSkipReason.INVALID_OBSERVATION;
+            return NightOutcome.skipped(LearningSkipReason.INVALID_OBSERVATION, settings);
         }
     }
 
@@ -172,7 +186,7 @@ public class LearningService {
             Duration.ofHours((long) BayesianHalfLifeUpdater.DOSES_LOOKBACK_HOURS);
 
     /** 학습할 모든 밤의 룩백 윈도우를 덮는 카페인 기록(시각 오름차순)을 한 번에 조회. 취침 시각을 못 구한 밤뿐이면 조회하지 않는다. */
-    private List<CaffeineRecord> recordsForBedtimes(Long userId, Collection<BedtimeExtractor.Result> bedtimes) {
+    private List<Dose> recordsForBedtimes(Long userId, Collection<BedtimeExtractor.Result> bedtimes) {
         List<Instant> ok = bedtimes.stream()
                 .filter(BedtimeExtractor.Result::isOk).map(BedtimeExtractor.Result::bedtime).toList();
         if (ok.isEmpty()) {
@@ -180,16 +194,14 @@ public class LearningService {
         }
         Instant earliest = Collections.min(ok);
         Instant latest = Collections.max(ok);
-        return caffeineRepository.findByUserIdAndTimestampBetweenOrderByTimestampAsc(
-                userId, earliest.minus(DOSES_LOOKBACK), latest);
+        return caffeineService.dosesBetween(userId, earliest.minus(DOSES_LOOKBACK), latest);
     }
 
-    /** bedtime 직전 룩백 윈도우(24h, 양끝 포함 — 이전의 Between 조회와 같은 경계)의 기록을 Dose로 변환. */
-    private static List<Dose> dosesBefore(List<CaffeineRecord> records, Instant bedtime) {
+    /** bedtime 직전 룩백 윈도우(24h, 양끝 포함 — 이전의 Between 조회와 같은 경계)의 기록만 고른다. */
+    private static List<Dose> dosesBefore(List<Dose> records, Instant bedtime) {
         Instant lookbackStart = bedtime.minus(DOSES_LOOKBACK);
         return records.stream()
-                .filter(r -> !r.getTimestamp().isBefore(lookbackStart) && !r.getTimestamp().isAfter(bedtime))
-                .map(r -> new Dose(r.getTimestamp(), r.getAmount()))
+                .filter(d -> !d.timestamp().isBefore(lookbackStart) && !d.timestamp().isAfter(bedtime))
                 .toList();
     }
 

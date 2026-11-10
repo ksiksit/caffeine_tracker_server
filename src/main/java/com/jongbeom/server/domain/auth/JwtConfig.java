@@ -1,6 +1,6 @@
-package com.jongbeom.server.global.config;
+package com.jongbeom.server.domain.auth;
 
-import com.jongbeom.server.domain.auth.JwtTokenProvider;
+import com.jongbeom.server.global.config.JwtProperties;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import java.nio.charset.StandardCharsets;
 import javax.crypto.SecretKey;
