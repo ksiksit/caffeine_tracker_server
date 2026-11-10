@@ -1,6 +1,8 @@
 services:
   db:
-    image: mysql:8.0
+    # 운영 RDS 와 같은 8.4. 8.0 으로 쓰던 mysql_data 볼륨은 첫 기동 때 8.4 형식으로 자동 변환되고 8.0 으로는 되돌릴 수 없다
+    # (지우고 새로 시작: docker compose down -v — 로컬 데이터가 사라진다)
+    image: mysql:8.4
     container_name: caffeine-db
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-localrootpw}

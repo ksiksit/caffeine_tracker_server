@@ -257,7 +257,7 @@ aws ssm delete-parameter --region ap-northeast-2 --name /caffeine/alert-relay/sl
 - 입력값 검사: SSH 전체 개방(`/0`), arm 유형(`t4g.small`)을 거부한다.
 - destroy로 VPC까지 지워졌다(아래 moto 차이 한 곳은 손으로 넘겼다).
 - 앱을 MySQL 8.4.13 컨테이너에 붙여 스키마 검증(`ddl-auto: validate`) 통과, 가입·로그인·기록 저장(한글·이모지)·조회·학습 실행을 확인했다.
-  레포의 E2E(`./gradlew e2eTest`)와 로컬 compose는 아직 `mysql:8.0` 이미지를 쓴다.
+  E2E(`docker-compose.e2e.yml`)와 로컬 compose(`docker-compose.yml`)도 운영과 같은 `mysql:8.4` 이미지를 쓴다.
 
 **moto와 실제가 달랐던 곳.**
 
