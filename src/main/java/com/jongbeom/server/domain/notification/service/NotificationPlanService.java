@@ -1,19 +1,18 @@
 package com.jongbeom.server.domain.notification.service;
 
-import com.jongbeom.server.domain.caffeine.dto.CaffeineTodayResponse;
-import com.jongbeom.server.domain.caffeine.entity.CaffeineRecord;
-import com.jongbeom.server.domain.caffeine.repository.CaffeineRecordRepository;
+import com.jongbeom.server.domain.caffeine.CaffeineStatus;
 import com.jongbeom.server.domain.caffeine.service.CaffeineService;
 import com.jongbeom.server.domain.calc.time.LocalCalendar;
 import com.jongbeom.server.domain.calc.pk.Pharmacokinetics;
 import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.CutoffResult;
+import com.jongbeom.server.domain.calc.pk.Pharmacokinetics.Dose;
 import com.jongbeom.server.domain.notification.CafeNearbyReason;
 import com.jongbeom.server.domain.notification.NotificationType;
 import com.jongbeom.server.domain.notification.UsualFirstRecordTime;
 import com.jongbeom.server.domain.notification.dto.NotificationPlanResponse;
 import com.jongbeom.server.domain.notification.dto.NotificationPlanResponse.CafeNearbyWindow;
 import com.jongbeom.server.domain.notification.dto.NotificationPlanResponse.NotificationItem;
-import com.jongbeom.server.domain.settings.entity.UserSettings;
+import com.jongbeom.server.domain.settings.SettingsSnapshot;
 import com.jongbeom.server.domain.settings.service.UserSettingsService;
 import java.time.Duration;
 import java.time.Instant;
@@ -52,32 +51,30 @@ public class NotificationPlanService {
 
     private final UserSettingsService settingsService;
     private final CaffeineService caffeineService;
-    /** 최근 14일 원시 기록 조회용. 다른 도메인 repository 직접 주입은 LearningService 선례. */
-    private final CaffeineRecordRepository caffeineRecordRepository;
 
-    /** now 이후에 울릴 항목만, fireAt 오름차순. getOrCreate 가 첫 접근 시 설정 행을 저장하므로 readOnly 트랜잭션을 걸지 않는다. */
+    /** now 이후에 울릴 항목만, fireAt 오름차순. 설정 조회가 첫 접근 시 설정 행을 저장하므로 readOnly 트랜잭션을 걸지 않는다. */
     @Transactional
     public NotificationPlanResponse plan(Long userId, Instant now, ZoneId zone) {
-        UserSettings settings = settingsService.getOrCreate(userId);
+        SettingsSnapshot settings = settingsService.snapshot(userId);
         List<NotificationItem> items = new ArrayList<>();
         List<CafeNearbyWindow> windows = new ArrayList<>();
-        if (settings.isNotifyCutoff() || settings.isNotifyBedtimeResidual() || settings.isNotifyCafeNearby()) {
-            CaffeineTodayResponse today = caffeineService.today(userId, now, zone);
-            if (settings.isNotifyCutoff()) {
+        if (settings.notifyCutoff() || settings.notifyBedtimeResidual() || settings.notifyCafeNearby()) {
+            CaffeineStatus today = caffeineService.status(userId, now, zone);
+            if (settings.notifyCutoff()) {
                 cutoffItem(today, now, zone).ifPresent(items::add);
             }
-            if (settings.isNotifyBedtimeResidual()) {
+            if (settings.notifyBedtimeResidual()) {
                 bedtimeResidualItem(today, now, zone).ifPresent(items::add);
             }
-            if (settings.isNotifyCafeNearby()) {
+            if (settings.notifyCafeNearby()) {
                 cafeNearbyWindow(today, now, zone).ifPresent(windows::add);
                 // 새 기록 없는 다음 날의 기본 구간(최근 24시간 잔량은 포함) — 앱을 하루 종일 열지 않아도 동작하게. 다음 날 기록은 앱에서만 생기고
                 // 그때 앱이 재조회하므로, "기록이 없다"는 가정은 틀리는 순간 교체된다.
                 Instant nextDay = LocalCalendar.chartEnd(now, zone);
-                cafeNearbyWindow(caffeineService.today(userId, nextDay, zone), nextDay, zone).ifPresent(windows::add);
+                cafeNearbyWindow(caffeineService.status(userId, nextDay, zone), nextDay, zone).ifPresent(windows::add);
             }
         }
-        if (settings.isNotifyRecordReminder()) {
+        if (settings.notifyRecordReminder()) {
             recordReminderItem(userId, now, zone).ifPresent(items::add);
         }
         // 안정 정렬 — fireAt 동률이면 위 삽입 순서 유지
@@ -96,10 +93,10 @@ public class NotificationPlanService {
      * 끝을 취침이 아니라 05:00으로 둔 건 취침 뒤 새벽 섭취도 막아야 하고, 서버의 "오늘" 경계와 맞추기 위해서다.
      * 마감 시각이 지나면 기준 용량 한 잔이 곧 취침 시 50mg 초과이므로, 문구의 "기준을 넘어요"는 계산 없이 참이다.
      */
-    private static Optional<CafeNearbyWindow> cafeNearbyWindow(CaffeineTodayResponse today, Instant at, ZoneId zone) {
+    private static Optional<CafeNearbyWindow> cafeNearbyWindow(CaffeineStatus today, Instant at, ZoneId zone) {
         Instant until = LocalCalendar.chartEnd(at, zone);
-        String status = today.cutoff().status();
-        if (CutoffResult.Status.ALREADY_EXCEEDED.name().equals(status)) {
+        CutoffResult.Status status = today.cutoff().status();
+        if (status == CutoffResult.Status.ALREADY_EXCEEDED) {
             String body = "지금도 취침 때 카페인이 약 %dmg 남을 것 같아요. 오늘은 디카페인으로 골라 주세요."
                     .formatted(Math.round(today.predictedAtBedtime()));
             return Optional.of(new CafeNearbyWindow(
@@ -111,7 +108,7 @@ public class NotificationPlanService {
             return Optional.of(new CafeNearbyWindow(
                     CafeNearbyReason.DAILY_LIMIT_EXCEEDED.name(), at, until, CAFE_NEARBY_TITLE, body));
         }
-        if (CutoffResult.Status.CUTOFF.name().equals(status)) {
+        if (status == CutoffResult.Status.CUTOFF) {
             Instant cutoff = today.cutoff().cutoff();
             String body = "오늘 마감 %s이 지났어요. 지금 %dmg 한 잔이면 취침 때 기준(%dmg)을 넘어요. 들어간다면 디카페인으로!"
                     .formatted(HH_MM.withZone(zone).format(cutoff), today.referenceDoseMg(),
@@ -127,8 +124,8 @@ public class NotificationPlanService {
      * 마감이 없거나(SAFE_ANYTIME·ALREADY_EXCEEDED) 리드 타임 전 시각이 이미 지났으면 없음 —
      * 홈 화면이 마감시각을 이미 보여주므로 중복 안내하지 않는다.
      */
-    private static Optional<NotificationItem> cutoffItem(CaffeineTodayResponse today, Instant now, ZoneId zone) {
-        if (!CutoffResult.Status.CUTOFF.name().equals(today.cutoff().status())) {
+    private static Optional<NotificationItem> cutoffItem(CaffeineStatus today, Instant now, ZoneId zone) {
+        if (today.cutoff().status() != CutoffResult.Status.CUTOFF) {
             return Optional.empty();
         }
         Instant cutoff = today.cutoff().cutoff();
@@ -150,7 +147,7 @@ public class NotificationPlanService {
      * CUTOFF 항목과는 같은 계획에 함께 나오지 않는다(여유 있으면 마감 알림, 초과면 잔량 예고).
      */
     private static Optional<NotificationItem> bedtimeResidualItem(
-            CaffeineTodayResponse today, Instant now, ZoneId zone) {
+            CaffeineStatus today, Instant now, ZoneId zone) {
         double predicted = today.predictedAtBedtime();
         if (predicted < Pharmacokinetics.BEDTIME_SAFE_THRESHOLD_MG) {
             return Optional.empty();
@@ -177,12 +174,11 @@ public class NotificationPlanService {
         Instant chartEnd = LocalCalendar.chartEnd(now, zone);
         // 쿼리 1회(오름차순) 후 chartStart 기준으로 과거/오늘 분리. Between 은 양끝 포함이라 경계 중복을 피하려고 쓰지 않는다.
         List<Instant> history = new ArrayList<>();
-        for (CaffeineRecord record : caffeineRecordRepository.findByUserIdAndTimestampGreaterThanEqualOrderByTimestampAsc(
-                userId, chartStart.minus(RECORD_REMINDER_HISTORY))) {
-            if (!record.getTimestamp().isBefore(chartStart)) {
+        for (Dose dose : caffeineService.dosesSince(userId, chartStart.minus(RECORD_REMINDER_HISTORY))) {
+            if (!dose.timestamp().isBefore(chartStart)) {
                 return Optional.empty(); // 오늘 기록 있음
             }
-            history.add(record.getTimestamp());
+            history.add(dose.timestamp());
         }
         Optional<Duration> usualOffset = UsualFirstRecordTime.median(history, zone, RECORD_REMINDER_MIN_DAYS);
         if (usualOffset.isEmpty()) {
