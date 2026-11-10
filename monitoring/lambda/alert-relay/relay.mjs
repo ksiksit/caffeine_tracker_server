@@ -114,6 +114,16 @@ export function createHandler({ env, putHeartbeat, getParameter, fetch, log = ()
         return webhookPromise;
     }
 
+    // Slack 오류 본문에서 사유 이름만 꺼낸다. 이름 꼴(영문 소문자·숫자·밑줄)이 아니면 버린다 — 예상 밖의 긴 글이나 주소가 로그에 남지 않게
+    async function slackReason(response) {
+        try {
+            const body = String(await response.text()).trim();
+            return /^[a-z0-9_]{1,60}$/.test(body) ? body : "";
+        } catch {
+            return "";
+        }
+    }
+
     async function postToSlack(text) {
         const response = await fetch(await webhookUrl(), {
             method: "POST",
@@ -121,8 +131,11 @@ export function createHandler({ env, putHeartbeat, getParameter, fetch, log = ()
             body: JSON.stringify({ text }),
         });
         if (!response.ok) {
+            // Slack 은 거부 사유를 본문에 짧은 이름으로 준다(no_service · messages_tab_disabled 등). 상태 번호만으로는 원인을 알 수 없다.
+            // 본문에 웹훅 URL 은 없다. 읽지 못해도 상태 번호는 남긴다
+            const reason = await slackReason(response);
             // 예외를 던지면 SNS 가 Lambda 를 다시 호출한다(비동기 호출 기본 재시도). 오류가 계속되면 Lambda 오류 알람이 이메일로 알린다
-            throw new Error(`Slack 응답 ${response.status}`);
+            throw new Error(`Slack 응답 ${response.status}${reason ? ` ${reason}` : ""}`);
         }
     }
 
