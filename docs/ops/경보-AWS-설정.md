@@ -13,21 +13,31 @@
 이메일만 받을 거면 건너뛴다. 나중에 넣어도 된다 — 넣기 전에는 Lambda가 Slack 전달에 실패해 `caffeine-alert-relay-errors` 메일이 올 수 있다.
 하트비트는 웹훅과 무관하게 동작한다.
 
-**Slack 수신 웹훅 만들기.** 경보를 받을 채널을 먼저 만들어 둔다(예: `#caffeine-alerts`).
+**Slack 수신 웹훅 만들기.** 경보를 받을 **채널**을 먼저 만들어 둔다(예: `#caffeine-alerts`).
 
-1. 브라우저에서 `https://api.slack.com/apps` → **Create New App** → **From scratch** → 앱 이름(예: `caffeine-alerts`)과 워크스페이스를 고른다.
+1. 브라우저에서 `https://api.slack.com/apps` → **Create New App** → **From scratch** 아래의 **Pick features**
+   (2026-11 화면 기준. 예전의 "From scratch" 버튼 자리다) → 앱 이름(예: `caffeine-alerts`)과 워크스페이스를 고른다.
+   이미 만든 앱이 **Your Apps** 목록에 있으면 새로 만들지 말고 그것을 연다.
 2. 왼쪽 **Incoming Webhooks** → **Activate Incoming Webhooks**를 켠다.
-3. 아래 **Add New Webhook to Workspace** → 채널을 고르고 **허용**. 워크스페이스 설정에 따라 관리자 승인이 필요할 수 있다.
-4. 생긴 **Webhook URL**(`https://hooks.slack.com/services/T…/B…/…`)을 복사한다.
+3. 아래 **Add New Webhook** → 목록에서 **`#`로 시작하는 채널**을 고르고 **허용**. 워크스페이스 설정에 따라 관리자 승인이 필요할 수 있다.
+4. 표의 **Channel** 칸이 그 채널 이름인 줄의 **Webhook URL**(`https://hooks.slack.com/services/T…/B…/…`)을 복사한다.
 
+경보는 그 채널에만 올라온다. 채널이 아니라 앱 자신(앱과의 1:1 대화창)을 목적지로 고르면 Slack이 `messages_tab_disabled`(500)로 거부한다.
 URL을 아는 사람은 누구나 그 채널에 글을 쓸 수 있으므로 채팅·레포·셸 기록에 남기지 않는다. 새어 나갔으면 같은 화면에서 지우고 새로 만든다.
 
-**URL을 SSM에 넣기.** 콘솔이 가장 안전하다: Systems Manager → 파라미터 스토어 → 파라미터 생성 →
-이름 `/caffeine/alert-relay/slack-webhook`, 유형 **SecureString**, 값에 URL. CLI로 넣을 때는 입력을 숨기고 JSON으로 넘긴다.
+**URL을 SSM에 넣기.** 콘솔: Systems Manager → 파라미터 스토어 → 파라미터 생성 → 이름 `/caffeine/alert-relay/slack-webhook`,
+유형 **SecureString**, 값에 URL. CLI(macOS)는 복사한 URL을 클립보드에서 바로 읽는다 — 터미널에 붙여 넣지 않아 기록에 남지 않는다.
 
 ```bash
-# --value "$URL" 로 넘기면 AWS CLI v1 이 https:// 로 시작하는 값을 주소로 보고 내려받아, URL 대신 응답을 저장한다
-read -rs URL && aws ssm put-parameter --region ap-northeast-2 --cli-input-json "{\"Name\":\"/caffeine/alert-relay/slack-webhook\",\"Type\":\"SecureString\",\"Value\":\"$URL\"}"; unset URL
+# 1) Slack 화면에서 URL 을 복사한 뒤, 이 줄은 손으로 입력한다 (이 줄을 복사하면 클립보드의 URL 이 사라진다)
+URL=$(pbpaste | tr -d '[:space:]')
+# 2) 값은 보이지 않게 형식만 확인
+[[ $URL == https://hooks.slack.com/services/* ]] && echo "형식 맞음" || echo "형식 틀림 (길이 ${#URL})"
+# 3) 저장 (바꿀 때는 --overwrite 를 붙인다). "Version" 이 나와야 저장된 것이다. AWS CLI v2 기준 — v1 은 https:// 값을 주소로 보고 내려받는다
+aws ssm put-parameter --region ap-northeast-2 --name /caffeine/alert-relay/slack-webhook --type SecureString --value "$URL"; unset URL
+# 4) Lambda 를 거치지 않고 웹훅만 확인 — "ok" 와 200 이 나오고 채널에 글이 올라와야 한다. 거부되면 사유 이름이 나온다
+curl -s -w '\n상태: %{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{"text":"웹훅 확인"}' \
+  "$(aws ssm get-parameter --region ap-northeast-2 --name /caffeine/alert-relay/slack-webhook --with-decryption --query Parameter.Value --output text)"
 ```
 
 웹훅은 Terraform이 다루지 않는다. state에 남기지 않으려는 것이고, 그래서 `destroy`해도 파라미터는 남는다.
@@ -61,6 +71,7 @@ read -rs URL && aws ssm put-parameter --region ap-northeast-2 --cli-input-json "
 ## 1단계 확인 — 이메일과 인프라 알람
 
 1. 메일함의 "AWS Notification - Subscription Confirmation" 메일에서 **Confirm subscription**을 누른다. 안 보이면 스팸함을 본다.
+   승인 여부: `aws sns list-subscriptions --query "Subscriptions[?Protocol=='email'].SubscriptionArn" --output text` — `PendingConfirmation`이면 아직이다.
 2. 알람을 강제로 울려 메일이 오는지 본다. 1분 안에 실제 상태로 돌아오므로 `ALARM` 메일 뒤에 `OK` 메일이 이어서 온다.
 
 ```bash
@@ -76,7 +87,7 @@ aws cloudwatch set-alarm-state --region ap-northeast-2 --alarm-name caffeine-ec2
 ```bash
 # PC: 확인용 이미지 저장·전송
 docker pull --platform linux/amd64 amazon/aws-cli:2.22.0
-docker save -o aws-cli-image.tar amazon/aws-cli:2.22.0
+docker save --platform linux/amd64 -o aws-cli-image.tar amazon/aws-cli:2.22.0
 scp -i ~/.ssh/caffeine-key aws-cli-image.tar ec2-user@<고정 IP>:~/
 ```
 
@@ -121,8 +132,9 @@ terraform -chdir=infra/terraform apply    # "1 to add" 가 하트비트 알람�
 
 | 증상 | 원인 | 볼 곳 |
 |---|---|---|
-| 이메일은 오는데 Slack 은 안 온다 | Lambda 오류 | `aws logs tail /aws/lambda/caffeine-alert-relay --since 10m`(CLI v2), 아래 메시지 |
+| 이메일은 오는데 Slack 은 안 온다 | Lambda 오류 | `aws logs tail /aws/lambda/caffeine-alert-relay --since 10m`(CLI v2). 오류 줄의 `Slack 응답 <번호> <사유>`에서 사유가 Slack이 준 이름이다. 파라미터가 있는지: `aws ssm describe-parameters --parameter-filters "Key=Name,Values=/caffeine/alert-relay/slack-webhook"` |
 | 로그에 `Slack 수신 웹훅 URL 형식이 아니다` | 파라미터 값이 `https://hooks.slack.com/services/` 로 시작하지 않는다(다른 주소·앱 토큰 등) | SSM 파라미터 값. 보안상 다른 주소로는 보내지 않는다 |
+| 로그에 `Slack 응답 500 messages_tab_disabled` | 웹훅의 목적지가 채널이 아니라 앱과의 대화창이다 | 웹훅을 채널로 새로 만들어 파라미터 값을 바꾼다(`--overwrite`) |
 | 로그에 `Slack 응답 404` / `403` | 웹훅이 지워졌거나(`no_service`) 앱이 채널에서 빠졌다 | Slack 앱 설정의 Incoming Webhooks 에서 새로 만들어 파라미터 값을 바꾼다. 재배포는 필요 없다 |
 | 로그에 `Slack 응답 410` | 채널이 보관(archive)됐다 | 채널을 되살리거나 다른 채널로 웹훅을 새로 만든다 |
 | 로그에 `Slack 응답 429` | 웹훅 속도 제한(대략 초당 1건) | 일시적이다. SNS 가 다시 호출한다 |

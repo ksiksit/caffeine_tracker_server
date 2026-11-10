@@ -1,8 +1,8 @@
 # 장애 경보 설계 — 외부 인터넷이 없는 EC2에서 운영자에게 알리기
 
-> 작성: 2026-11-09 · 상태: **3단계 중 레포 작업 구현** (경보 규칙·promtool 테스트·Alertmanager 설정·로컬 compose·CI 검사, 2026-11-09).
-> AWS 1·2·4단계는 **Terraform으로 구현, moto로 동작 확인, 실제 계정에서 실행 전** (`infra/terraform/modules/alerting/`, `ops/경보-AWS-설정.md`, 2026-11-09).
-> Lambda `caffeine-alert-relay`는 코드·테스트 구현, 배포 전(Terraform이 함께 올린다).
+> 작성: 2026-11-09 · 상태: **구현·운영 반영 완료** (레포 작업 2026-11-09, 운영에서 Alertmanager를 켠 것은 2026-11-10).
+> AWS 1·2·4단계는 **Terraform으로 구현, 2026-11-10 실제 계정에 적용해 단계별 확인을 마쳤다** (`infra/terraform/modules/alerting/`, `ops/경보-AWS-설정.md`, 2026-11-09).
+> Lambda `caffeine-alert-relay`도 같은 날 배포해 Slack 수신과 하트비트 메트릭을 확인했다.
 > 대상: `monitoring/` 경보 규칙·Alertmanager 추가 + AWS SNS·Lambda·CloudWatch 알람
 >
 > 구현된 부분의 원본은 `monitoring/`·`docker-compose.*.yml`·`ops/운영-가이드.md` "경보" 절이다. 이 문서의 예시와 다르면 그쪽이 맞다.
@@ -378,7 +378,10 @@ docker exec caffeine-alertmanager amtool silence add 'alertname=~"AppDown|AppRes
 - AWS 자원: 처음에는 bash 스크립트로 만들어 moto에서 확인했고, 같은 날 Terraform(`infra/terraform/`)으로 옮겼다. Terraform의 검증 결과와
   moto가 실제와 다른 곳(CloudWatch 알람 프로토콜 등)은 `ops/기반-AWS-설정.md` "검증 기록"에 있다. 알람 7개의 지표·통계·주기·횟수·임계값·누락 데이터 처리가 §5와 같고,
   Lambda는 nodejs22.x·arm64·128MB·10초·환경변수 3개인 것을 확인했다. 이메일 구독 승인과 IAM 권한 부족(`AccessDenied`)은 실제 계정에서만 확인된다.
-- 경로 통합·운영 종단: AWS 계정에서 1·2·4단계를 실행한 뒤.
+- 운영 종단(2026-11-10): 실제 계정에서 1~4단계를 차례로 확인했다 — `set-alarm-state`로 울린 알람의 ALARM·OK 메일, EC2 컨테이너에서 인스턴스 역할로
+  SNS 엔드포인트 발행(메일 수신), Alertmanager의 `Watchdog`, CloudWatch `Heartbeat` 메트릭, `sns publish` 시험 메시지의 이메일·Slack 수신.
+  Slack은 처음에 `messages_tab_disabled`(500)로 거부됐다 — 웹훅 목적지가 채널이 아니었다. Lambda가 상태 번호만 남겨 원인을 찾는 데 `curl`이 한 번 더 필요했고,
+  그래서 Slack이 준 사유 이름을 오류에 함께 남기게 고쳤다. `AppDown`을 실제로 울려 보는 확인과 하트비트 끊김 확인은 하지 않았다.
 
 ---
 
@@ -410,10 +413,10 @@ CloudWatch 알람 10개 이내·`PutMetricData`는 이 규모면 프리 티어 �
 | 단계 | 내용 | 완료 기준 |
 |---|---|---|
 | 0 | §10의 1·2 확인 | 진행 가능 여부 결정 |
-| 1 | SNS 토픽 두 개 + 이메일 구독 + §5.1 인프라 알람 (`modules/alerting/sns.tf`·`alarms.tf`) | `set-alarm-state`로 울린 테스트 알람이 이메일로 온다. **EC2 전체 장애를 먼저 잡는다**. Terraform 구현, 실행 전 |
-| 2 | 엔드포인트 + EC2 역할 + 홉 제한 (`modules/alerting/endpoint.tf`, 역할·홉 제한은 `ec2.tf`) → EC2에서 수동 발행 | EC2의 컨테이너(aws-cli 이미지를 `docker load`)에서 `sns publish`한 메시지가 이메일로 온다. **가장 위험한 네트워크·권한 경로를 Alertmanager를 켜기 전에 검증한다**. Terraform 구현, 실행 전 |
-| 3 | 경보 규칙 + promtool 테스트 + Alertmanager (로컬 → 운영) | 로컬에서 §9 규칙·통합 검증 통과, 운영에서 앱을 잠깐 내리면 `AppDown`과 해결 알림이 이메일로 온다. **레포 작업은 2026-11-09 구현, 운영 반영은 2단계 뒤** |
-| 4 | Lambda `caffeine-alert-relay` + Slack + 하트비트 알람 + Lambda 오류 알람 (`modules/alerting/lambda.tf`) | Slack 수신, Alertmanager를 15분 내리면 `HeartbeatMissing`이 온다. 코드·Terraform 구현, 배포 전 |
+| 1 | SNS 토픽 두 개 + 이메일 구독 + §5.1 인프라 알람 (`modules/alerting/sns.tf`·`alarms.tf`) | `set-alarm-state`로 울린 테스트 알람이 이메일로 온다. **EC2 전체 장애를 먼저 잡는다**. 2026-11-10 확인 |
+| 2 | 엔드포인트 + EC2 역할 + 홉 제한 (`modules/alerting/endpoint.tf`, 역할·홉 제한은 `ec2.tf`) → EC2에서 수동 발행 | EC2의 컨테이너(aws-cli 이미지를 `docker load`)에서 `sns publish`한 메시지가 이메일로 온다. **가장 위험한 네트워크·권한 경로를 Alertmanager를 켜기 전에 검증한다**. 2026-11-10 확인 |
+| 3 | 경보 규칙 + promtool 테스트 + Alertmanager (로컬 → 운영) | 로컬에서 §9 규칙·통합 검증 통과, 운영에서 앱을 잠깐 내리면 `AppDown`과 해결 알림이 이메일로 온다. **레포 작업은 2026-11-09 구현, 운영에서는 2026-11-10 Alertmanager를 켜고 `Watchdog` 전달을 확인했다**(앱을 내려 `AppDown`을 울려 보는 확인은 하지 않았다) |
+| 4 | Lambda `caffeine-alert-relay` + Slack + 하트비트 알람 + Lambda 오류 알람 (`modules/alerting/lambda.tf`) | Slack 수신, Alertmanager를 15분 내리면 `HeartbeatMissing`이 온다. 2026-11-10 Slack 수신·하트비트 알람 생성 확인(Alertmanager를 15분 내려 보는 확인은 하지 않았다) |
 | 5 | 문서 동기화 (§12) | 운영 가이드에 절차·사일런스·알람 설정값 기록 |
 
 ---

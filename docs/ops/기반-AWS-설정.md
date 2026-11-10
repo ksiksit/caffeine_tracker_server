@@ -34,7 +34,7 @@ EC2 ──✗──▶ 인터넷   (보안 그룹에 나가는 규칙이 없다)
 
 ## 준비
 
-**PC에 필요한 것**: Terraform 1.11 이상(macOS: `brew install hashicorp/tap/terraform`), AWS CLI, ssh, MySQL 클라이언트(스키마 적용용. 없으면 아래 Docker 방법).
+**PC에 필요한 것**: Terraform 1.11 이상(macOS: `brew install hashicorp/tap/terraform`), AWS CLI, ssh, MySQL 클라이언트(스키마 적용용. macOS: `brew install mysql-client` — PATH 에 걸리지 않으므로 `$(brew --prefix mysql-client)/bin/mysql`로 부른다. 없으면 아래 Docker 방법).
 `aws sts get-caller-identity`가 쓰려는 계정을 가리키는지 확인한다. 명령은 모두 **레포 루트에서** 실행한다.
 
 ```bash
@@ -99,16 +99,19 @@ terraform -chdir=infra/terraform init
 terraform -chdir=infra/terraform apply -var ec2_egress_open=true
 
 # 3. PC: Docker 설치 확인 — 버전이 나오면 끝난 것이다. 안 나오면 1~2분 뒤 다시
-$(terraform -chdir=infra/terraform output -raw ssh_command) 'docker compose version'
+$(terraform -chdir=infra/terraform output -raw ssh_command) 'docker compose version && docker ps'
 
 # 4. PC: 나가는 길 닫기 — 변수 없이 다시 apply 하면 기본값(닫힘)으로 돌아간다. "1 to destroy" 가 그 규칙이다
 terraform -chdir=infra/terraform apply
 
 # 5. PC: 스키마 적용 — RDS 는 비공개라 EC2 를 거치는 SSH 터널로 접속한다 (PC 의 13306 → RDS 3306)
-$(terraform -chdir=infra/terraform output -raw db_tunnel_command) &
-MYSQL_PWD=$(aws ssm get-parameter --region ap-northeast-2 --name /caffeine/db-password --with-decryption --query Parameter.Value --output text) \
-  mysql -h 127.0.0.1 -P 13306 -u caffeine caffeine_tracker < docs/db/db-schema.sql
-kill %1   # 터널 종료
+#    -f 는 인증 뒤 터널을 뒤로 보낸다(호스트 앞에 둔다). macOS 는 mysql 대신 $(brew --prefix mysql-client)/bin/mysql
+ssh -i ~/.ssh/caffeine-key -f -N -L 13306:$(terraform -chdir=infra/terraform output -raw db_endpoint):3306 \
+  ec2-user@$(terraform -chdir=infra/terraform output -raw ec2_public_ip)
+export MYSQL_PWD=$(aws ssm get-parameter --region ap-northeast-2 --name /caffeine/db-password --with-decryption --query Parameter.Value --output text)
+mysql -h 127.0.0.1 -P 13306 -u caffeine caffeine_tracker < docs/db/db-schema.sql
+mysql -h 127.0.0.1 -P 13306 -u caffeine caffeine_tracker -e "SELECT VERSION(); SHOW TABLES;"   # 8.4.x 와 테이블 5개
+pkill -f "13306:"; unset MYSQL_PWD   # 터널 종료, 비밀번호 변수 삭제
 ```
 
 MySQL 클라이언트가 없으면 5번의 `mysql` 줄 대신 Docker로 실행한다(Docker Desktop — macOS·Windows).
@@ -118,9 +121,23 @@ docker run --rm -i -e MYSQL_PWD="$(aws ssm get-parameter --region ap-northeast-2
   mysql:8.4 mysql -h host.docker.internal -P 13306 -u caffeine caffeine_tracker < docs/db/db-schema.sql
 ```
 
-**6. EC2의 `.env`.** `~/.env`를 만든다. `terraform -chdir=infra/terraform output -raw env_file`이 `DB_URL`·`DB_USERNAME`(경보를 켰으면
-`ALERT_TOPIC_ARN`·`HEARTBEAT_TOPIC_ARN`·`AWS_REGION`도)을 출력한다. `DB_PASSWORD`는 위 `get-parameter` 명령의 값,
-`JWT_SECRET`·`GRAFANA_ADMIN_PASSWORD`는 `.env.example`의 생성 명령으로 만든다.
+**6. EC2의 `.env`.** PC에서 값을 모아 만든 뒤 보내고 PC의 사본은 지운다. 비밀 값이 화면에 나오지 않는다.
+`env_file` 출력이 `DB_URL`·`DB_USERNAME`(경보를 켰으면 `ALERT_TOPIC_ARN`·`HEARTBEAT_TOPIC_ARN`·`AWS_REGION`도)을 준다.
+**서버를 새로 만들 때만 한다** — 다시 실행하면 `JWT_SECRET`이 바뀌어 발급된 토큰이 모두 무효가 되고, Grafana 비밀번호는 첫 기동 때의 값으로 남는다.
+
+```bash
+EC2=ec2-user@$(terraform -chdir=infra/terraform output -raw ec2_public_ip)
+( umask 077; {
+  terraform -chdir=infra/terraform output -raw env_file; echo
+  echo "DB_PASSWORD=$(aws ssm get-parameter --region ap-northeast-2 --name /caffeine/db-password --with-decryption --query Parameter.Value --output text)"
+  echo "JWT_SECRET=$(openssl rand -base64 48)"
+  echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 24)"
+} > /tmp/caffeine.env )
+scp -i ~/.ssh/caffeine-key /tmp/caffeine.env $EC2:.env && rm /tmp/caffeine.env
+ssh -i ~/.ssh/caffeine-key $EC2 'chmod 600 .env; cut -d= -f1 .env'   # 항목 이름만 확인
+```
+
+Grafana 비밀번호는 필요할 때 EC2에서 `grep GRAFANA ~/.env`로 본다.
 
 **7. 앱 배포.** `운영-가이드.md` "수동 배포 절차"와 "Prometheus·Grafana 설치". `<ec2-user>@<ec2-host>`는 `ec2-user@<고정 IP>`이고
 `ssh`·`scp`에 `-i ~/.ssh/caffeine-key`를 붙인다. 고정 IP: `terraform -chdir=infra/terraform output -raw ec2_public_ip`.
@@ -149,7 +166,8 @@ terraform -chdir=infra/terraform plan
 |---|---|---|
 | `couldn't find resource` (`/caffeine/db-password`) | SSM 파라미터가 없거나 리전이 다르다 | "준비" 2번. plan·apply·destroy 모두 이 파라미터를 읽는다 |
 | `SSM /caffeine/db-password 값은 영문·숫자 16~41자` | 직접 넣은 값에 특수문자가 있거나 짧다 | `--overwrite`로 다시 넣는다 |
-| `ssh`가 시간 초과 | 내 PC 주소가 바뀌었다(집·학교·테더링) | `terraform.tfvars`의 `ssh_cidr`을 새 주소로 고치고 apply — 규칙이 교체된다 |
+| `ssh`가 시간 초과 | 내 PC 주소가 바뀌었다(집·학교·테더링·통신사 재배정). 허용하지 않은 주소의 요청은 오류 없이 버려져 시간 초과로 보인다 | `curl -s https://checkip.amazonaws.com`과 `terraform.tfvars`의 `ssh_cidr`을 비교한다. 다르면 새 주소로 고치고 apply — 규칙이 교체된다("1 to change"). Docker 설치 확인 전이면 `-var ec2_egress_open=true`를 붙여 나가는 길을 유지한다 |
+| 주소는 같은데 `ssh`가 시간 초과 | 지금 네트워크가 22번을 막거나(회사·학교), 서버까지 길이 없다 | `nc -vz -G 5 <고정 IP> 8080` — `Connection refused`면 서버까지는 닿는다(앱을 올리기 전 기준). 시간 초과면 `aws ec2 describe-instance-status`로 인스턴스 상태를 본다 |
 | `docker: command not found` | 첫 부팅 설치가 아직 안 끝났거나 실패 | EC2: `sudo tail -30 /var/log/cloud-init-output.log`. 실패했으면 `apply -var ec2_egress_open=true` 뒤 `sudo bash /var/lib/cloud/instance/user-data.txt`, 끝나면 `apply` |
 | `docker`가 `permission denied` | 그룹 반영 전 세션 | SSH를 끊고 다시 접속한다 |
 | RDS 생성이 엔진 버전 오류로 실패 | `db_engine_version`이 연장 지원 대상(8.0 등)이다 | 기본값 8.4를 쓴다 |
@@ -209,9 +227,25 @@ aws ssm delete-parameter --region ap-northeast-2 --name /caffeine/alert-relay/sl
 
 다시 만들 때는 "준비" 2번(비밀번호)부터 한다. SSH 키와 `terraform.tfvars`는 그대로 쓴다.
 
-## 검증 기록 (2026-11-09)
+## 검증 기록
 
-실제 계정에서는 아직 실행하지 않았다. 확인한 것(Terraform 1.17.1, AWS 공급자 6.72.0):
+### 실제 계정 (2026-11-10)
+
+빈 계정에서 이 문서 순서대로 실행했다(macOS arm64, Terraform 1.17.1, AWS CLI 2.39). 확인된 것:
+
+- `plan`이 44개 추가(`-var ec2_egress_open=true` 기준), `apply`가 한 번에 44개를 만들었다. moto에서 실패하던 CloudWatch 알람도 만들어졌다.
+- 첫 부팅 설치: SSH 접속 후 `Docker Compose version v2.39.4`, `docker ps` 동작.
+- 변수 없이 apply → "1 to destroy". 그 뒤 EC2에서 `curl -m 5 https://example.com`이 시간 초과, SSH는 그대로 된다.
+- `ssh_cidr`만 바꿔 apply → "1 to change"(SSH 규칙만).
+- SSH 터널로 스키마 적용(RDS MySQL 8.4, 테이블 5개), 앱 기동(`ddl-auto: validate` 통과, 헬스 `UP`), 인터넷에서 8080으로 가입·로그인.
+- 경보 1~4단계 확인(`경보-AWS-설정.md`): 테스트 알람 메일, EC2 컨테이너 → SNS 엔드포인트 발행, Alertmanager의 `Watchdog`, 하트비트 메트릭 뒤
+  `heartbeat_alarm_enabled = true` apply → "1 to add", Slack 수신.
+
+**아직 실행하지 않은 것**: `destroy`, `alerting_enabled = false`, DB 비밀번호 교체(`db_password_version`), `-replace=aws_instance.app`, MySQL 8.0 거부 동작.
+
+### moto (2026-11-09)
+
+실제 계정에서 실행하기 전에 확인한 것(Terraform 1.17.1, AWS 공급자 6.72.0):
 
 - `terraform fmt -check`·`validate` 통과. `monitoring/check.sh` 7번과 CI가 같은 검사를 돌린다.
 - moto 5.2.5 서버에 대고 apply했다. CloudWatch 알람을 뺀 나머지 자원이 모두 만들어졌고, EC2(유형·고정 IP·IMDSv2·홉 제한·키·인스턴스 프로필),
@@ -225,10 +259,10 @@ aws ssm delete-parameter --region ap-northeast-2 --name /caffeine/alert-relay/sl
 - 앱을 MySQL 8.4.13 컨테이너에 붙여 스키마 검증(`ddl-auto: validate`) 통과, 가입·로그인·기록 저장(한글·이모지)·조회·학습 실행을 확인했다.
   레포의 E2E(`./gradlew e2eTest`)와 로컬 compose는 아직 `mysql:8.0` 이미지를 쓴다.
 
-**moto와 실제가 다른 곳 — 실제 계정에서만 확인된다.**
+**moto와 실제가 달랐던 곳.**
 
 - CloudWatch 알람: 이 공급자 버전이 쓰는 프로토콜을 moto가 받지 못해 생성이 실패했다. 같은 알람 블록 7개를 옛 프로토콜을 쓰는 공급자(5.60.0)로
   moto에 적용해 지표·통계·주기·횟수·임계값·누락 데이터 처리가 설계 §5와 같은 것은 확인했다.
 - destroy: moto는 종료된 인스턴스의 네트워크 인터페이스를 계속 "붙어 있음"으로 돌려줘 인터페이스 삭제가 멈춘다. 실제 AWS는 종료와 함께 떼어 낸다.
 - moto는 RDS의 `engine_lifecycle_support`를 돌려주지 않아 plan에 늘 변경 한 건이 보였다. 연장 지원 버전을 거부하는 동작도 확인하지 못했다.
-- `user-data.sh`의 실제 설치(내려받기 주소와 체크섬 값만 확인), 보안 그룹이 실제로 트래픽을 막는지, RDS 생성 시간, 이메일 구독 승인 흐름.
+- `user-data.sh`의 실제 설치, 보안 그룹의 실제 차단, 이메일 구독 승인 흐름은 moto로 볼 수 없었다 — 위 "실제 계정"에서 확인했다.

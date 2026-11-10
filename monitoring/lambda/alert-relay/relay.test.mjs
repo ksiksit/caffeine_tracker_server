@@ -47,7 +47,7 @@ function cloudWatchAlarm(state, overrides = {}) {
     });
 }
 
-function setup({ status = 200, parameter = WEBHOOK } = {}) {
+function setup({ status = 200, parameter = WEBHOOK, body } = {}) {
     const clock = { ms: 1_000_000 };
     const deps = {
         clock,
@@ -55,7 +55,12 @@ function setup({ status = 200, parameter = WEBHOOK } = {}) {
         env: ENV,
         putHeartbeat: mock.fn(async () => {}),
         getParameter: mock.fn(async () => parameter),
-        fetch: mock.fn(async () => ({ ok: status >= 200 && status < 300, status })),
+        // body 를 주지 않으면 text() 가 없는 응답 — 본문을 읽지 못해도 상태 번호는 남겨야 한다
+        fetch: mock.fn(async () => ({
+            ok: status >= 200 && status < 300,
+            status,
+            ...(body === undefined ? {} : { text: async () => body }),
+        })),
     };
     return { deps, handler: createHandler(deps) };
 }
@@ -242,6 +247,20 @@ describe("Slack 실패", () => {
                 assert.ok(!error.message.includes("secret-token"));
                 return true;
             });
+        });
+    }
+
+    it("Slack 이 준 사유 이름을 오류에 붙인다", async () => {
+        const { handler } = setup({ status: 500, body: "messages_tab_disabled\n" });
+        await assert.rejects(handler(snsEvent(ALERTS, "a", "[CRITICAL] AppDown")), {
+            message: "Slack 응답 500 messages_tab_disabled",
+        });
+    });
+
+    for (const body of ["", "<html>Internal Server Error</html>", `see ${WEBHOOK}`, "x".repeat(61)]) {
+        it(`사유 이름 꼴이 아닌 본문(${JSON.stringify(body.slice(0, 20))})은 남기지 않는다`, async () => {
+            const { handler } = setup({ status: 500, body });
+            await assert.rejects(handler(snsEvent(ALERTS, "a", "[CRITICAL] AppDown")), { message: "Slack 응답 500" });
         });
     }
 });
