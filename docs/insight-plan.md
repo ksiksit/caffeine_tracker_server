@@ -36,22 +36,22 @@
 ### 2.1 데이터 단위: 밤(night)
 
 - 날짜 키는 학습과 같다: **그 밤이 끝나는 아침의 로컬 날짜**(`HalfLifeObservation.date`와 동일 규칙, `../src/main/java/com/jongbeom/server/domain/learning/entity/HalfLifeObservation.java`).
-- 밤 데이터는 `SleepService.mergedNight(userId, date, zone)`을 재사용한다(`../src/main/java/com/jongbeom/server/domain/sleep/service/SleepService.java:80`). 학습이 이미 이 메서드를 쓰고 있어서 새 병합 로직이 필요 없다.
-- 수면 지표는 `SleepSummaryCalc.compute(intervals, bedtimeStart)` 결과를 쓴다(`../src/main/java/com/jongbeom/server/domain/calc/SleepSummaryCalc.java:51`).
+- 밤 데이터는 `SleepService.mergedNight(userId, date, zone)`을 재사용한다(`../src/main/java/com/jongbeom/server/domain/sleep/service/SleepService.java`). 학습이 이미 이 메서드를 쓰고 있어서 새 병합 로직이 필요 없다.
+- 수면 지표는 `SleepSummaryCalc.compute(intervals, bedtimeStart)` 결과를 쓴다(`../src/main/java/com/jongbeom/server/domain/calc/sleep/SleepSummaryCalc.java`).
   - SOL(분): `sleepOnsetLatency`. Apple Watch가 없으면 null이다. null인 밤은 SOL 평균에서만 빠지고, 효율·총 수면 평균에는 들어간다.
   - 수면 효율: `sleepEfficiency`
   - 총 수면: `totalSleepSeconds`
   - 깊은 수면 비율: `stageBreakdown`의 deep ÷ 총 수면. 단계 데이터가 없으면 null.
 
 > **관측 테이블(`half_life_observations`)을 쓰지 않는 이유.**
-> 학습은 취침 잔량이 1mg 미만인 밤을 `INSUFFICIENT_CAFFEINE_RESIDUAL`로 건너뛰고(`BayesianHalfLifeUpdater.MIN_RESIDUAL_FOR_LEARNING = 1.0`, `../src/main/java/com/jongbeom/server/domain/calc/BayesianHalfLifeUpdater.java:32`), SOL이 없는 밤도 건너뛴다(`../src/main/java/com/jongbeom/server/domain/learning/LearningSkipReason.java`).
+> 학습은 취침 잔량이 1mg 미만인 밤을 `INSUFFICIENT_CAFFEINE_RESIDUAL`로 건너뛰고(`BayesianHalfLifeUpdater.MIN_RESIDUAL_FOR_LEARNING = 1.0`, `../src/main/java/com/jongbeom/server/domain/calc/learning/BayesianHalfLifeUpdater.java`), SOL이 없는 밤도 건너뛴다(`../src/main/java/com/jongbeom/server/domain/learning/LearningSkipReason.java`).
 > 그래서 관측에는 **카페인을 안 마신 밤, 즉 비교의 대조군이 빠져 있다.** 리포트는 원시 수면 샘플과 카페인 기록에서 밤마다 직접 계산한다.
 
 ### 2.2 취침 시 잔량
 
 - 취침 시각: 병합된 밤의 `bedtimeStart`(실제로 침대에 든 시각). 없으면 그 밤은 리포트에서 제외한다.
-- 섭취 기록: 취침 직전 24시간 기록. 학습의 `dosesBefore`와 같은 창이다(`../src/main/java/com/jongbeom/server/domain/learning/service/LearningService.java`, `DOSES_LOOKBACK_HOURS = 24`). 조회는 기존 `CaffeineRecordRepository.findByUserIdAndTimestampBetweenOrderByTimestampAsc`를 쓴다.
-- 잔량: `Pharmacokinetics.totalRemaining(bedtime, doses, halfLifeHours)`(`../src/main/java/com/jongbeom/server/domain/calc/Pharmacokinetics.java:85`).
+- 섭취 기록: 취침 직전 24시간 기록. 학습의 `dosesBefore`와 같은 창이다(`../src/main/java/com/jongbeom/server/domain/learning/service/LearningService.java`, `BayesianHalfLifeUpdater.DOSES_LOOKBACK_HOURS = 24`). 조회는 기존 `CaffeineRecordRepository.findByUserIdAndTimestampBetweenOrderByTimestampAsc`를 쓴다.
+- 잔량: `Pharmacokinetics.totalRemaining(bedtime, doses, halfLifeHours)`(`../src/main/java/com/jongbeom/server/domain/calc/pk/Pharmacokinetics.java`).
 - 반감기: **요청 시점의 유효 반감기 하나로 기간 전체를 계산한다.** `CaffeineService.today`가 쓰는 반감기 결정 로직(학습값/설정값 × 건강 상태 배수)을 그대로 재사용한다. 밤마다 그때의 prior를 쓰면 밤끼리 비교 기준이 달라지기 때문이다. → §7 미결 1
 
 ### 2.3 비교 A — 취침 잔량 기준
@@ -61,7 +61,7 @@
 | 높은 밤 | 취침 잔량 ≥ **50mg** |
 | 낮은 밤 | 취침 잔량 < 50mg (카페인 0mg 밤 포함) |
 
-- 50mg은 홈 화면 안전선과 같은 상수 `Pharmacokinetics.BEDTIME_SAFE_THRESHOLD_MG`를 쓴다(`Pharmacokinetics.java:27`). 새 상수를 만들지 않는다.
+- 50mg은 홈 화면 안전선과 같은 상수 `Pharmacokinetics.BEDTIME_SAFE_THRESHOLD_MG`를 쓴다. 새 상수를 만들지 않는다.
 - 그룹마다 SOL 평균·효율 평균·총 수면 평균·깊은 수면 비율 평균과 밤 수를 계산한다.
 - 차이 = 높은 밤 평균 − 낮은 밤 평균.
 
@@ -70,7 +70,7 @@
 "마감을 지켰나"를 밤마다 다음처럼 판정한다.
 
 1. 그날(로컬 05:00 경계, `LocalCalendar`) 마지막 섭취를 `last`라고 한다. 그날 섭취가 없으면 이 비교에서 **제외**한다(무카페인 밤은 비교 A가 다룬다).
-2. `last` 직전까지의 기록으로 `Pharmacokinetics.cutoffTime(doses, bedtime, referenceDoseMg, halfLife, 50)`을 계산한다(`Pharmacokinetics.java:175`). 홈 화면 마감 시각과 같은 함수다.
+2. `last` 직전까지의 기록으로 `Pharmacokinetics.cutoffTime(doses, bedtime, referenceDoseMg, halfLife, 50)`을 계산한다. 홈 화면 마감 시각과 같은 함수다.
 3. 판정
    - `SAFE_ANYTIME` → 지킴
    - `CUTOFF` 이고 `last.timestamp ≤ cutoff` → 지킴, `>` → 넘김
@@ -92,7 +92,7 @@
 
 ### 2.6 기간별 섭취 통계
 
-- 하루 경계는 홈과 같이 **로컬 05:00**이다(`LocalCalendar.chartStart`, `../src/main/java/com/jongbeom/server/domain/calc/LocalCalendar.java:32`).
+- 하루 경계는 홈과 같이 **로컬 05:00**이다(`LocalCalendar.chartStart`, `../src/main/java/com/jongbeom/server/domain/calc/time/LocalCalendar.java`).
 - 날짜별로 총 섭취량, 기록 수, 첫·마지막 섭취 시각, 400mg 초과 여부(`Pharmacokinetics.DAILY_RECOMMENDED_LIMIT_MG`)를 낸다.
 - 요약에는 기록이 있는 날의 하루 평균, 최대, 400mg 초과 일수, 마지막 섭취 시각 평균(로컬 시:분)을 낸다.
 - 기록이 없는 날은 `totalMg = 0`, `recordCount = 0`으로 포함해 차트 칸이 비지 않게 한다. 평균은 기록이 있는 날만으로 계산한다.
@@ -203,8 +203,8 @@ public record CaffeineSleepReportResponse(
 | `domain/insight/controller/InsightController.java` | 두 GET, 파라미터 검증 |
 | `domain/insight/service/InsightService.java` | 기간 루프, `SleepService.mergedNight`·`CaffeineRecordRepository`·`UserSettingsService` 조합 |
 | `domain/insight/dto/*` | §3.2 |
-| `domain/calc/InsightCalc.java` | 순수 계산: 그룹 나누기, 평균, 마감 판정, 표본 기준, 차이 판정. `Clock`·DB에 의존하지 않음 |
-| 테스트 | `calc/InsightCalcTest`(골든 값), `insight/InsightControllerIT`(기간 검증·사용자 격리·표본 부족) |
+| `domain/calc/insight/InsightCalc.java` | 순수 계산: 그룹 나누기, 평균, 마감 판정, 표본 기준, 차이 판정. `Clock`·DB에 의존하지 않음 |
+| 테스트 | `calc/insight/InsightCalcTest`(골든 값), `insight/InsightControllerIT`(기간 검증·사용자 격리·표본 부족) |
 
 - 문장 생성은 `InsightService`(또는 같은 패키지의 `InsightSentences`)에 둔다. `calc`에는 숫자만 둔다.
 - `calc`의 기존 상수(`CLAUDE.md` 절대 규칙)는 읽기만 하고 바꾸지 않는다.
@@ -280,4 +280,4 @@ Features/Insight/
 
 - iOS 로드맵: `../../captest1/docs/feature-roadmap.md` (§3.1 인사이트, §4 착수 순서, §5 배치 메모)
 - 서버 규칙: `../CLAUDE.md`, 문서 색인: `README.md`
-- 학습 수식·상수: `../src/main/java/com/jongbeom/server/domain/calc/BayesianHalfLifeUpdater.java`, `LearningStatsCalc.java`
+- 학습 수식·상수: `../src/main/java/com/jongbeom/server/domain/calc/learning/BayesianHalfLifeUpdater.java`, `../src/main/java/com/jongbeom/server/domain/calc/learning/LearningStatsCalc.java`
