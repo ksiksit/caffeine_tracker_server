@@ -37,7 +37,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>요청마다 별도 트랜잭션이어야 경합이 생기므로 베이스의 테스트 트랜잭션(롤백 격리)을 끄고,
  * 만든 계정은 {@link #cleanUp()}에서 지운다(사용자 종속 테이블은 ON DELETE CASCADE).
  * H2 는 잠금·격리 동작이 MySQL 과 완전히 같지 않다 — 경합 자체는 H2 에서도 재현되지만,
- * MySQL REPEATABLE READ 에서만 생기는 문제는 {@code UserWriteLock} javadoc 의 순서 규칙으로 막는다.
+ * MySQL REPEATABLE READ 에서만 생기는 문제({@code UserWriteLock} javadoc 의 순서 규칙 위반)는 같은 시나리오를
+ * 실제 MySQL 로 돌리는 E2E {@code ConcurrentWriteE2ETest}가 잡는다.
  */
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class ConcurrentRequestIT extends AbstractIntegrationTest {

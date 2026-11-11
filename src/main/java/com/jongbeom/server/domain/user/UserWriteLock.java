@@ -14,7 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
  * <p><b>트랜잭션의 첫 문장으로 호출한다.</b> MySQL(InnoDB) 기본 격리 수준 REPEATABLE READ 에서는 트랜잭션의 첫
  * 일반 SELECT 시점에 스냅숏이 고정된다. 잠금보다 먼저 읽으면, 잠금을 기다리는 동안 앞 트랜잭션이 커밋한 내용이
  * 이후 읽기에서 보이지 않는다. 잠금이 먼저면 스냅숏은 잠금을 얻은 뒤에 잡힌다.
- * (H2 테스트는 READ COMMITTED 라 순서를 어겨도 통과할 수 있으므로 이 규칙은 코드 리뷰로 지킨다.)
+ * (H2 통합 테스트는 READ COMMITTED 라 순서를 어겨도 통과한다. 순서 위반은 실제 MySQL 에 같은 사용자의 동시 요청을 보내는
+ * E2E {@code ConcurrentWriteE2ETest}가 잡는다 — CI 밖이므로 이 순서를 건드리면 {@code ./gradlew e2eTest}를 돌린다.)
  *
  * <p>잠금은 트랜잭션이 끝날 때 풀리므로, 바깥에 트랜잭션이 없으면 의미가 없다 — {@code MANDATORY}로 강제한다.
  */
