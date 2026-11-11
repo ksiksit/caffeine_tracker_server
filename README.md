@@ -244,7 +244,9 @@ perf/
 > 레이어가 아닌 도메인 컴포넌트(`domain/auth/JwtTokenProvider`, `domain/auth/RefreshTokenVerifier`, `domain/learning/LearningSkipReason` 등)는
 > 도메인 루트에 둔다.
 >
+> 구조는 **모듈러 모놀리스**다 — 배포 단위는 하나이고, 도메인 하나가 모듈 하나다.
 > 도메인끼리는 `service/`와 도메인 루트 타입으로만 연결한다(다른 도메인의 `repository/`·`entity/`·`dto/` 직접 참조 금지).
+> 어느 도메인이 어느 도메인을 쓰는지는 `ModuleBoundaryTest`의 `MODULE_DEPENDENCIES` 표에 선언한 연결만 허용한다.
 > 규칙은 `CLAUDE.md` "배치 규칙", 대조는 `ModuleBoundaryTest`(ArchUnit).
 
 > `domain/calc/`의 도메인 수식은 iOS Swift에서 포팅했으며, Swift 단위테스트의 입력→기대값을 **골든 테스트**로 복제해 부동소수 정합을 검증한다.
