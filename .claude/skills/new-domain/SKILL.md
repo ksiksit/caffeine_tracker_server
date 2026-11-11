@@ -23,4 +23,6 @@ CLAUDE.md의 배치 규칙·동반 갱신 규칙을 전제로, 빠뜨리기 쉬�
 9. **다른 도메인과의 연결**: 다른 도메인은 그 `service/`와 도메인 루트 타입으로만 쓴다(`repository/`·`entity/`·`dto/` 직접 참조 금지).
    필요한 조회가 없으면 그 도메인 서비스에 메서드를 추가하고, 반환 타입은 `calc/` 값 타입이나 도메인 루트의 읽기용 record로 둔다
    (견본: `CaffeineService.dosesBetween`, `SettingsSnapshot`). 새 도메인이 밖에 줄 값도 같은 방식. `ModuleBoundaryTest`가 대조한다.
+   새 도메인은 `ModuleBoundaryTest.MODULE_DEPENDENCIES`에 항목을 추가하고 쓰는 도메인을 적는다(없으면 빈 `Set`).
+   새 도메인을 쓰기 시작하는 기존 도메인의 항목에도 연결을 추가한다 — 표에 없는 도메인·연결은 실패한다.
 10. **테스트**: JUnit 5, 통합 테스트는 `*IT`. `./gradlew build`로 `ApiDocsConsistencyIT`와 DDL 대조까지 통과 확인.
