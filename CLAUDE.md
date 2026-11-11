@@ -73,7 +73,8 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
 - 시간 의존 로직은 주입 `Clock`(`ClockConfig`) 사용, 테스트는 `@MockBean Clock`으로 고정.
 - 같은 사용자의 "읽고→판단→쓰기" 트랜잭션(확인 후 삽입, 설정 행 갱신)은 **첫 문장으로** `UserWriteLock.lock(userId)`.
   MySQL REPEATABLE READ는 첫 SELECT에서 스냅숏이 고정돼 잠금보다 먼저 읽으면 앞 트랜잭션의 커밋이 안 보인다.
-  H2 테스트는 READ COMMITTED라 순서를 어겨도 통과한다. 동시성 회귀 테스트는 `ConcurrentRequestIT`.
+  H2 테스트는 READ COMMITTED라 순서를 어겨도 통과한다. 동시성 회귀 테스트는 `ConcurrentRequestIT`, 순서 위반은
+  MySQL E2E `ConcurrentWriteE2ETest`만 잡는다(CI 밖 — 순서를 건드리면 `./gradlew e2eTest`).
 
 ## 환경
 - `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`/`JWT_SECRET` 없으면 부팅 즉시 실패. `JWT_SECRET`은 32바이트 이상.
