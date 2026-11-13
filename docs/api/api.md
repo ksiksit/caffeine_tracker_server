@@ -82,7 +82,7 @@ HTTP 상태 코드는 그대로 의미를 가진다(201 생성, 400/401/404/409 
 | `FORBIDDEN` | 403 | 접근 권한이 없습니다. | 권한 부족(현재 발생 경로 없음, 예비) |
 | `VALIDATION_FAILED` | 400 | 입력값이 올바르지 않습니다. | 바디 필드 검증 실패. `error.fieldErrors` 포함 |
 | `MALFORMED_JSON` | 400 | 잘못된 요청 형식입니다. | JSON 파싱 실패·바디 필드 타입 불일치 |
-| `INVALID_PARAMETER` | 400 | 요청 파라미터가 올바르지 않습니다. | 쿼리·경로 파라미터 누락·형식 오류(잘못된 `tz`·`now`·`date`, 숫자가 아닌 `id`) |
+| `INVALID_PARAMETER` | 400 | 요청 파라미터가 올바르지 않습니다. | 쿼리·경로 파라미터 누락·형식 오류(잘못된 `tz`·`now`·`date`·`from`·`to`, 숫자가 아닌 `id`), 인사이트 기간 검증 실패(`from > to`, 31일 초과, `to`가 오늘 이후) |
 | `NOT_FOUND` | 404 | 요청한 리소스를 찾을 수 없습니다. | 존재하지 않는 경로 |
 | `METHOD_NOT_ALLOWED` | 405 | 허용되지 않은 HTTP 메서드입니다. | 경로는 있으나 메서드 미지원 |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | 지원하지 않는 Content-Type 입니다. | JSON이 아닌 바디 |
@@ -118,6 +118,8 @@ HTTP 상태 코드는 그대로 의미를 가진다(201 생성, 400/401/404/409 
 | 학습 대시보드 화면 | 학습 관측 이력 조회 | `GET` | `/api/learning/observations` | Bearer |
 | 학습 대시보드 화면 | 학습 대시보드 | `GET` | `/api/learning/dashboard` | Bearer |
 | (화면 없음 — 로컬 알림) | 알림 계획 조회 | `GET` | `/api/notifications/plan` | Bearer |
+| 인사이트 화면 | 기간별 섭취 통계 | `GET` | `/api/insight/intake-stats` | Bearer |
+| 인사이트 화면 | 카페인·수면 상관 리포트 | `GET` | `/api/insight/caffeine-sleep` | Bearer |
 
 ## 인증
 
@@ -620,6 +622,164 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
   { "reason": "CUTOFF_PASSED", "activeFrom": "2026-06-01T11:04:30.675Z", "activeUntil": "2026-06-01T20:00:00Z", "title": "카페 근처예요", "body": "오늘 마감 20:04이 지났어요. 지금 75mg 한 잔이면 취침 때 기준(50mg)을 넘어요. 들어간다면 디카페인으로!" },
   { "reason": "CUTOFF_PASSED", "activeFrom": "2026-06-02T11:04:30.675Z", "activeUntil": "2026-06-02T20:00:00Z", "title": "카페 근처예요", "body": "오늘 마감 20:04이 지났어요. 지금 75mg 한 잔이면 취침 때 기준(50mg)을 넘어요. 들어간다면 디카페인으로!" }
 ] }, "error": null, "message": null }
+```
+
+## 인사이트
+
+기간을 정해 섭취 통계와 카페인·수면 비교를 서버가 계산한다. 문장도 서버가 만들고(한국어) 앱은 그대로 표시한다.
+문장은 비교 결과를 서술만 하고 인과·통계 단정("때문에", "유의미하게")은 쓰지 않는다. p값·신뢰구간은 내지 않는다.
+
+**쿼리(두 엔드포인트 공통)**
+
+| 파라미터 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `from` | string(date) | ✔ | 시작 날짜(로컬), 포함 |
+| `to` | string(date) | ✔ | 끝 날짜(로컬), 포함 |
+| `tz` | string | ✔ | IANA 타임존 |
+
+- `from ≤ to`, 기간(양 끝 포함) **31일 이하**, `to ≤ 오늘`(`tz` 기준 로컬 날짜). 어기면 400 `INVALID_PARAMETER`. 앱은 7·14·30일 프리셋만 보낸다.
+- 섭취 통계의 날짜는 **섭취일**(로컬 05:00 ~ 다음 날 05:00), 리포트의 날짜는 **밤이 끝나는 아침 날짜**(수면 요약 `date`와 같다)다. 키가 하루 어긋난다.
+
+### GET /api/insight/intake-stats — 기간별 섭취 통계
+
+`from`~`to` 각 섭취일의 총량·기록 수·첫/마지막 섭취 시각과 요약을 돌려준다.
+
+- 기록이 없는 날도 `totalMg = 0`, `recordCount = 0`으로 `days`에 들어간다(날짜 오름차순, 기간 일수만큼).
+- 요약(평균·최대·400mg 초과 일수·마지막 섭취 시각 평균)은 **기록이 있는 날**만으로 내고, **오늘**(`to`가 오늘일 때)은 끝나지 않은 날이라 뺀다. 그런 날이 없으면 평균·최대·시각 평균은 null.
+- 마지막 섭취 시각 평균은 05:00 기준 경과 분으로 평균한 뒤 벽시계 분으로 되돌린다(새벽 1시 섭취가 평균을 끌어내리지 않게).
+
+**응답 200** `data: IntakeStatsResponse`
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `from` / `to` | string(date) | 요청 값 |
+| `dayCount` | integer | 기간 일수(= `days` 길이) |
+| `recordedDayCount` | integer | 기록이 있는 날 수(오늘 포함) |
+| `averageDailyMg` | number · null | 기록 있는 날(오늘 제외)의 하루 평균 mg. 그런 날이 없으면 null |
+| `maxDailyMg` | number · null | 같은 조건의 최대 mg |
+| `overLimitDayCount` | integer | 하루 400mg 초과 일수(오늘 제외) |
+| `averageLastIntakeMinuteOfDay` | integer · null | 마지막 섭취 로컬 시각 평균, 벽시계 분 0~1439(예: 1000 = 16:40). 같은 조건, 없으면 null |
+| `summarySentence` | string | 요약 문장 |
+| `days` | DayItem[] | 섭취일 오름차순 |
+| `days[].date` | string(date) | 섭취일(로컬, 05:00 경계) |
+| `days[].totalMg` | number | 총 섭취량 mg |
+| `days[].recordCount` | integer | 기록 수 |
+| `days[].firstIntakeAt` / `days[].lastIntakeAt` | string(date-time) · null | 첫·마지막 섭취 시각(UTC). 기록 없으면 null |
+| `days[].overLimit` | boolean | `totalMg` > 400 |
+
+`summarySentence` 규칙 — `{기간}`은 `to`가 오늘이면 `최근 {dayCount}일`, 아니면 `{M}월 {d}일~{M}월 {d}일`. mg는 반올림 정수.
+- 평균을 낼 날이 있음: `{기간} 하루 평균 {averageDailyMg}mg, 400mg을 넘긴 날은 {overLimitDayCount}일이에요. 마지막 한 잔은 평균 {H}시 {m}분이에요.`
+  (`overLimitDayCount`가 0이면 `400mg을 넘긴 날은 없어요.`, 분이 0이면 `{H}시`)
+- 없음: `{기간} 하루 평균을 낼 섭취 기록이 아직 없어요.`
+
+```json
+{ "success": true, "data": {
+  "from": "2026-06-01", "to": "2026-06-07", "dayCount": 7, "recordedDayCount": 2,
+  "averageDailyMg": 210.0, "maxDailyMg": 420.0, "overLimitDayCount": 1, "averageLastIntakeMinuteOfDay": 1000,
+  "summarySentence": "최근 7일 하루 평균 210mg, 400mg을 넘긴 날은 1일이에요. 마지막 한 잔은 평균 16시 40분이에요.",
+  "days": [
+    { "date": "2026-06-01", "totalMg": 0.0, "recordCount": 0, "firstIntakeAt": null, "lastIntakeAt": null, "overLimit": false },
+    { "date": "2026-06-02", "totalMg": 420.0, "recordCount": 3, "firstIntakeAt": "2026-06-02T00:00:00Z", "lastIntakeAt": "2026-06-02T08:00:00Z", "overLimit": true }
+  ]
+}, "error": null, "message": null }
+```
+
+### GET /api/insight/caffeine-sleep — 카페인·수면 상관 리포트
+
+`from`~`to`(아침 날짜) 각 밤의 취침 잔량·마감 준수와 수면 지표를 모아 두 비교를 계산한다.
+
+**밤(night)** — `date` 아침에 끝나는 밤. 수면 윈도우·병합은 `GET /api/sleep/summary`와 같고, 수면 지표도 같은 계산이다.
+- 수면 데이터가 없거나 `bedtimeStart`가 null인 밤은 **전부에서 제외**한다(`nights`에도 없다). 설정 취침 시각으로 폴백하지 않는다.
+- 취침 시각 = `bedtimeStart`. 취침 잔량 = 취침 직전 24시간 기록의 잔량(학습과 같은 창). 기록이 없으면 0.
+- 반감기는 **요청 시점의 유효 반감기** 하나로 기간 전체를 계산한다(`halfLifeHoursUsed`, 홈과 같은 값). 그래서 학습 관측의
+  `predictedResidualAtBedtime`(그 밤 학습 당시 반감기)과 같은 밤이라도 값이 다를 수 있다.
+- 짝지은 섭취일: 아침 날짜 D의 밤은 섭취일 D−1(로컬 D−1 05:00 ~ D 05:00)의 **취침 전** 기록과 짝짓는다. `dayTotalMg`·`lastIntakeAt`·`cutoffKept`가 이 규칙을 따른다.
+- 깊은 수면 비율 = deep ÷ 총 수면. 단계 구분 데이터(core·deep·rem)가 없거나 총 수면이 0이면 null.
+
+**비교 A — 취침 잔량**: `high` = 잔량 ≥ 50mg, `low` = 50mg 미만(카페인 0mg 밤 포함). 50mg은 홈 안전선과 같은 값이다.
+
+**비교 B — 마감 시각**: 짝지은 섭취일에 기록이 있는 밤만. 그 날 마지막 기록을 `last`라 하고, `last` 이전(취침 전 24시간 안) 기록으로
+홈과 같은 마감 시각 계산(현재 설정 `referenceDoseMg`, 유효 반감기, 50mg)을 한다.
+`SAFE_ANYTIME` → 지킴, `CUTOFF`면 `last` ≤ 마감 → 지킴 / 늦으면 넘김, `ALREADY_EXCEEDED` → 넘김. `high` = 넘김, `low` = 지킴.
+과거 당시가 아니라 **지금 설정 기준** 판정이라, 비교 B `sentence`는 항상 `지금 기준 용량({referenceDoseMg}mg)으로 따지면, `으로 시작한다.
+
+**표본 기준**
+- 리포트: 밤 **5밤** 이상이면 최상위 `sufficient = true`. 모자라도 응답 형태는 같고 `nights`는 항상 내린다.
+- 비교: 리포트가 충분하고 두 그룹이 각각 **3밤** 이상일 때 `sufficient = true`. 아니면 `moreNightsNeeded` = 두 그룹의 `max(0, 3 − nightCount)` 합, 차이는 null.
+- `solDiffMinutes`는 두 그룹 모두 SOL 있는 밤이 3밤 이상일 때만. 모자라면 null이고 효율만으로 문장을 낸다(`sufficient`는 그대로).
+- "차이 있음": |SOL 차이| ≥ **5분** 또는 |효율 차이| ≥ **0.03**(3%p). 둘 다 미만이면 "뚜렷한 차이 없음" 문장.
+
+**응답 200** `data: CaffeineSleepReportResponse`
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `from` / `to` | string(date) | 요청 값 |
+| `nightCount` | integer | 리포트에 들어간 밤 수(= `nights` 길이) |
+| `sufficient` | boolean | 5밤 이상. false여도 모든 필드가 채워진다 |
+| `residualThresholdMg` | number | 비교 A 경계 50.0 (차트·문구용) |
+| `halfLifeHoursUsed` | number | 잔량 계산에 쓴 유효 반감기(시간, 요청 시점) |
+| `residualComparison` | Comparison | 비교 A. `high` = 잔량 ≥ 50mg, `low` = 미만 |
+| `cutoffComparison` | Comparison | 비교 B. `high` = 마감 넘김, `low` = 지킴 |
+| `*Comparison.high` / `*Comparison.low` | Group | 그룹 지표 |
+| `*Comparison.high.nightCount` / `*Comparison.low.nightCount` | integer | 그룹 밤 수 |
+| `*Comparison.high.solNightCount` / `*Comparison.low.solNightCount` | integer | 그중 SOL이 있는 밤 수 |
+| `*Comparison.high.avgSolMinutes` / `*Comparison.low.avgSolMinutes` | number · null | SOL 평균(분). SOL 있는 밤이 없으면 null |
+| `*Comparison.high.avgSleepEfficiency` / `*Comparison.low.avgSleepEfficiency` | number · null | 수면 효율 평균(0~1). 밤이 없으면 null |
+| `*Comparison.high.avgTotalSleepMinutes` / `*Comparison.low.avgTotalSleepMinutes` | number · null | 총 수면 평균(분). 밤이 없으면 null |
+| `*Comparison.high.avgDeepSleepRatio` / `*Comparison.low.avgDeepSleepRatio` | number · null | 깊은 수면 비율 평균(0~1). 값 있는 밤이 없으면 null |
+| `*Comparison.sufficient` | boolean | 이 비교의 표본 충족 |
+| `*Comparison.moreNightsNeeded` | integer · null | 모자란 밤 수 합. `sufficient`면 null |
+| `*Comparison.solDiffMinutes` | number · null | `high − low` SOL 평균(분). 계산 불가면 null |
+| `*Comparison.efficiencyDiff` | number · null | `high − low` 효율 평균(0~1). `sufficient`가 false면 null |
+| `*Comparison.sentence` | string | 비교 문장(아래 규칙) |
+| `headlines` | string[] | 화면 상단 문장 1~2개(아래 규칙) |
+| `nights` | NightItem[] | 밤 날짜 오름차순. `sufficient`와 무관하게 항상 |
+| `nights[].date` | string(date) | 밤이 끝나는 아침 날짜(수면 요약 `date`와 같다) |
+| `nights[].bedtime` | string(date-time) | `bedtimeStart`(UTC) |
+| `nights[].residualAtBedtimeMg` | number | 취침 잔량 mg, 반올림 없음. 취침 전 24시간 기록이 없으면 0(null 아님) |
+| `nights[].dayTotalMg` | number | 짝지은 섭취일의 취침 전 섭취 총량 mg. 없으면 0 |
+| `nights[].lastIntakeAt` | string(date-time) · null | 짝지은 섭취일의 취침 전 마지막 섭취 시각. 없으면 null |
+| `nights[].cutoffKept` | boolean · null | 비교 B 판정(true = 지킴). 짝지은 섭취일 기록이 없으면 null |
+| `nights[].solMinutes` | number · null | 같은 `date` 수면 요약 `sleepOnsetLatencySeconds` ÷ 60. null 조건도 같다 |
+| `nights[].sleepEfficiency` | number | 0~1 |
+| `nights[].totalSleepMinutes` | number | 분 |
+| `nights[].deepSleepRatio` | number · null | 깊은 수면 비율(0~1) |
+
+**문장 규칙** — 분·%p·mg는 반올림 정수. `{d}` = |SOL 차이|분, `{e}` = |효율 차이|×100 %p.
+
+| 경우 | 비교 A `sentence` | 비교 B `sentence`(앞에 `지금 기준 용량({referenceDoseMg}mg)으로 따지면, `) |
+|---|---|---|
+| 표본 부족 | `비교하려면 잔량이 높았던 밤이 {n}밤 더 필요해요` (낮은 쪽은 `잔량이 낮았던 밤이`, 둘 다면 `잔량이 높았던 밤이 {n}밤, 낮았던 밤이 {m}밤`) | `마감을 넘긴 밤이 {n}밤 더 있어야 비교할 수 있어요` (지킨 쪽은 `마감을 지킨 밤이`, 둘 다면 `마감을 넘긴 밤이 {n}밤, 지킨 밤이 {m}밤`) |
+| SOL 차이 있음 | `취침 때 카페인이 50mg 이상 남아 있던 밤은 잠드는 데 평균 {d}분 더(덜) 걸렸어요` — 효율 차이도 있으면 `…걸렸고, 수면 효율은 {e}%p 낮았어요(높았어요)` | `마감 시각을 지킨 밤은 평균 {low SOL}분 만에 잠들었고 넘긴 밤은 {high SOL}분 걸렸어요` — 효율 차이도 있으면 `. 수면 효율은 넘긴 밤이 {e}%p 낮았어요(높았어요)` |
+| 효율 차이만 있음 | `취침 때 카페인이 50mg 이상 남아 있던 밤은 수면 효율이 평균 {e}%p 낮았어요(높았어요)` | `마감 시각을 넘긴 밤은 지킨 밤보다 수면 효율이 평균 {e}%p 낮았어요(높았어요)` |
+| 차이 없음 | `취침 잔량에 따른 뚜렷한 차이는 아직 보이지 않아요` | `마감 시각을 지켰는지에 따른 뚜렷한 차이는 아직 보이지 않아요` |
+
+표본이 충분하면 끝에 밤 수를 붙인다 — 비교 A ` ({high}밤 vs {low}밤)`, 비교 B ` (지킨 밤 {low}밤 · 넘긴 밤 {high}밤)`.
+
+`headlines`: 리포트가 5밤 미만이면 `["리포트를 보려면 수면 기록이 있는 밤이 {5 − nightCount}밤 더 필요해요"]`.
+아니면 "차이 있음"인 비교의 `sentence`를 A, B 순으로 담고, 하나도 없으면 비교 A `sentence` 하나.
+
+```json
+{ "success": true, "data": {
+  "from": "2026-06-01", "to": "2026-06-14", "nightCount": 12, "sufficient": true,
+  "residualThresholdMg": 50.0, "halfLifeHoursUsed": 5.0,
+  "residualComparison": {
+    "high": { "nightCount": 5, "solNightCount": 5, "avgSolMinutes": 27.0, "avgSleepEfficiency": 0.86, "avgTotalSleepMinutes": 402.0, "avgDeepSleepRatio": 0.14 },
+    "low": { "nightCount": 7, "solNightCount": 7, "avgSolMinutes": 16.0, "avgSleepEfficiency": 0.9, "avgTotalSleepMinutes": 431.0, "avgDeepSleepRatio": 0.17 },
+    "sufficient": true, "moreNightsNeeded": null, "solDiffMinutes": 11.0, "efficiencyDiff": -0.04,
+    "sentence": "취침 때 카페인이 50mg 이상 남아 있던 밤은 잠드는 데 평균 11분 더 걸렸고, 수면 효율은 4%p 낮았어요 (5밤 vs 7밤)"
+  },
+  "cutoffComparison": {
+    "high": { "nightCount": 2, "solNightCount": 2, "avgSolMinutes": 30.0, "avgSleepEfficiency": 0.85, "avgTotalSleepMinutes": 395.0, "avgDeepSleepRatio": 0.13 },
+    "low": { "nightCount": 8, "solNightCount": 8, "avgSolMinutes": 18.0, "avgSleepEfficiency": 0.89, "avgTotalSleepMinutes": 425.0, "avgDeepSleepRatio": 0.16 },
+    "sufficient": false, "moreNightsNeeded": 1, "solDiffMinutes": null, "efficiencyDiff": null,
+    "sentence": "지금 기준 용량(75mg)으로 따지면, 마감을 넘긴 밤이 1밤 더 있어야 비교할 수 있어요"
+  },
+  "headlines": [ "취침 때 카페인이 50mg 이상 남아 있던 밤은 잠드는 데 평균 11분 더 걸렸고, 수면 효율은 4%p 낮았어요 (5밤 vs 7밤)" ],
+  "nights": [
+    { "date": "2026-06-02", "bedtime": "2026-06-01T14:00:00Z", "residualAtBedtimeMg": 114.87, "dayTotalMg": 200.0, "lastIntakeAt": "2026-06-01T10:00:00Z", "cutoffKept": false, "solMinutes": 30.0, "sleepEfficiency": 0.9375, "totalSleepMinutes": 450.0, "deepSleepRatio": null }
+  ]
+}, "error": null, "message": null }
 ```
 
 ## 운영
