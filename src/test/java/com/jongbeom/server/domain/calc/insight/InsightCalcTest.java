@@ -289,6 +289,35 @@ class InsightCalcTest {
     }
 
     @Test
+    void 섭취일_기준_오늘은_0459까지_전날_0500부터_당일() {
+        assertThat(InsightCalc.intakeDayOf(kst("2026-11-14T00:00:00"), SEOUL)).isEqualTo(LocalDate.of(2026, 11, 13));
+        assertThat(InsightCalc.intakeDayOf(kst("2026-11-14T04:59:59"), SEOUL)).isEqualTo(LocalDate.of(2026, 11, 13));
+        assertThat(InsightCalc.intakeDayOf(kst("2026-11-14T05:00:00"), SEOUL)).isEqualTo(LocalDate.of(2026, 11, 14));
+    }
+
+    @Test
+    void 섭취일_기준_오늘과_그_이후_날은_요약에서_빠진다() {
+        // 11/14 04:59 → 섭취일 기준 오늘 11/13. 11/13(끝나지 않음)·11/14(시작 전) 모두 제외, 11/12 만 남는다.
+        List<DayIntake> days = List.of(
+                InsightCalc.dayIntake(LocalDate.of(2026, 11, 12), List.of(dose("2026-11-12T15:00:00", 100))),
+                InsightCalc.dayIntake(LocalDate.of(2026, 11, 13), List.of(dose("2026-11-14T00:00:00", 500))),
+                InsightCalc.dayIntake(LocalDate.of(2026, 11, 14), List.of()));
+        IntakeSummary before = InsightCalc.summarize(days,
+                InsightCalc.intakeDayOf(kst("2026-11-14T04:59:00"), SEOUL), SEOUL);
+        assertThat(before.recordedDayCount()).isEqualTo(2);
+        assertThat(before.averageDailyMg()).isEqualTo(100.0);
+        assertThat(before.maxDailyMg()).isEqualTo(100.0);
+        assertThat(before.overLimitDayCount()).isZero();
+
+        // 05:00 → 섭취일 기준 오늘 11/14. 11/13 이 끝난 날로 들어간다.
+        IntakeSummary after = InsightCalc.summarize(days,
+                InsightCalc.intakeDayOf(kst("2026-11-14T05:00:00"), SEOUL), SEOUL);
+        assertThat(after.averageDailyMg()).isEqualTo(300.0);
+        assertThat(after.maxDailyMg()).isEqualTo(500.0);
+        assertThat(after.overLimitDayCount()).isEqualTo(1);
+    }
+
+    @Test
     void 요약할_날이_없으면_null() {
         LocalDate today = LocalDate.of(2026, 6, 4);
         IntakeSummary summary = InsightCalc.summarize(List.of(

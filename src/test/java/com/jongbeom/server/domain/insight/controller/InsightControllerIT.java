@@ -107,6 +107,38 @@ class InsightControllerIT extends AbstractIntegrationTest {
         assertThat(days.get(3).get("totalMg").asDouble()).isEqualTo(900.0);
     }
 
+    /** 검증 재현: 00:00 KST 500mg. 04:59 에는 섭취일 11/13 이 끝나지 않아 요약에서 빠지고, 05:00 부터 들어간다. */
+    @Test
+    void 섭취통계_0459까지는_달력_전날이_끝나지_않은_날() throws Exception {
+        given(clock.instant()).willReturn(Instant.parse("2026-11-13T19:59:00Z"));   // 11/14 04:59 KST
+        String token = authToken("insight@b.com", "인사이트");
+        createCaffeineRecord(token, 100, "2026-11-12T15:00:00+09:00");
+        createCaffeineRecord(token, 500, "2026-11-14T00:00:00+09:00");   // 섭취일 11/13
+
+        // 검증 상한은 달력 날짜 그대로: to = 11/14 허용, 11/15 는 400
+        call(token, "intake-stats", "2026-11-06", "2026-11-15").andExpect(status().isBadRequest());
+        JsonNode before = dataOf(call(token, "intake-stats", "2026-11-06", "2026-11-14")
+                .andExpect(status().isOk()).andReturn());
+        assertThat(before.get("recordedDayCount").asInt()).isEqualTo(2);
+        assertThat(before.get("averageDailyMg").asDouble()).isEqualTo(100.0);
+        assertThat(before.get("maxDailyMg").asDouble()).isEqualTo(100.0);
+        assertThat(before.get("overLimitDayCount").asInt()).isZero();
+        assertThat(before.get("summarySentence").asText()).startsWith("최근 9일 ");
+        // to 가 섭취일 기준 오늘(11/13)이어도 "최근"
+        assertThat(dataOf(call(token, "intake-stats", "2026-11-06", "2026-11-13")
+                .andExpect(status().isOk()).andReturn()).get("summarySentence").asText()).startsWith("최근 8일 ");
+
+        given(clock.instant()).willReturn(Instant.parse("2026-11-13T20:00:00Z"));   // 11/14 05:00 KST
+        JsonNode after = dataOf(call(token, "intake-stats", "2026-11-06", "2026-11-14")
+                .andExpect(status().isOk()).andReturn());
+        assertThat(after.get("averageDailyMg").asDouble()).isEqualTo(300.0);
+        assertThat(after.get("maxDailyMg").asDouble()).isEqualTo(500.0);
+        assertThat(after.get("overLimitDayCount").asInt()).isEqualTo(1);
+        // 이제 to = 11/13 은 끝난 과거 기간
+        assertThat(dataOf(call(token, "intake-stats", "2026-11-06", "2026-11-13")
+                .andExpect(status().isOk()).andReturn()).get("summarySentence").asText()).startsWith("11월 6일~11월 13일 ");
+    }
+
     @Test
     void 섭취통계_과거기간_기록없음() throws Exception {
         String token = authToken("insight@b.com", "인사이트");

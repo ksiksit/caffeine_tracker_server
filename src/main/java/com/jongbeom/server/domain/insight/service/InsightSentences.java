@@ -20,8 +20,9 @@ final class InsightSentences {
 
     // ---------------------------------------------------------------- 섭취 통계
 
-    static String intakeSummary(LocalDate from, LocalDate to, LocalDate today, int dayCount, IntakeSummary summary) {
-        String period = to.equals(today)
+    /** @param intakeToday 섭취일 기준 오늘. to 가 그 날 이후(00:00~05:00 의 달력 오늘 포함)면 "최근 N일". */
+    static String intakeSummary(LocalDate from, LocalDate to, LocalDate intakeToday, int dayCount, IntakeSummary summary) {
+        String period = !to.isBefore(intakeToday)
                 ? "최근 " + dayCount + "일"
                 : from.getMonthValue() + "월 " + from.getDayOfMonth() + "일~" + to.getMonthValue() + "월 " + to.getDayOfMonth() + "일";
         if (summary.averageDailyMg() == null) {

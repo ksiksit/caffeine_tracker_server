@@ -564,8 +564,9 @@ paths:
       summary: 기간별 섭취 통계(서버 계산)
       description: |
         from~to 각 섭취일(로컬 05:00 경계)의 총량·기록 수·첫/마지막 섭취 시각과 요약. 기록 없는 날도 0 으로 days 에 들어간다.
-        요약(평균·최대·400mg 초과 일수·마지막 섭취 시각 평균)은 기록 있는 날만, 오늘(to 가 오늘일 때)은 제외. 그런 날이 없으면 null.
-        기간 검증: from ≤ to, 31일 이하, to ≤ 오늘(tz). 위반하면 400 INVALID_PARAMETER. 문장 규칙은 api.md 인사이트 절.
+        요약(평균·최대·400mg 초과 일수·마지막 섭취 시각 평균)은 기록 있는 날만, 섭취일 기준 오늘(05:00 경계 — 00:00~05:00 에는 달력 전날)과
+        그 이후 날은 끝나지 않은 날이라 제외. 그런 날이 없으면 null.
+        기간 검증: from ≤ to, 31일 이하, to ≤ 오늘(tz 달력 날짜). 위반하면 400 INVALID_PARAMETER. 문장 규칙은 api.md 인사이트 절.
       operationId: insightIntakeStats
       parameters:
         - $ref: '#/components/parameters/from'
@@ -763,7 +764,7 @@ components:
       name: to
       in: query
       required: true
-      description: 기간 끝 날짜(로컬, 포함), YYYY-MM-DD. 오늘(tz) 이후면 400 INVALID_PARAMETER.
+      description: 기간 끝 날짜(로컬, 포함), YYYY-MM-DD. 오늘(tz 달력 날짜) 이후면 400 INVALID_PARAMETER.
       schema:
         type: string
         format: date
@@ -1695,12 +1696,12 @@ components:
           description: 기간 일수(= days 길이)
         recordedDayCount:
           type: integer
-          description: 기록이 있는 날 수(오늘 포함)
+          description: 기록이 있는 날 수(끝나지 않은 날 포함)
         averageDailyMg:
           type: number
           format: double
           nullable: true
-          description: 기록 있는 날(오늘 제외)의 하루 평균 mg. 그런 날이 없으면 null
+          description: 기록 있는 날(섭취일 기준 오늘·이후 제외)의 하루 평균 mg. 그런 날이 없으면 null
         maxDailyMg:
           type: number
           format: double
@@ -1708,7 +1709,7 @@ components:
           description: 같은 조건의 최대 mg
         overLimitDayCount:
           type: integer
-          description: 하루 400mg 초과 일수(오늘 제외)
+          description: 하루 400mg 초과 일수(섭취일 기준 오늘·이후 제외)
         averageLastIntakeMinuteOfDay:
           type: integer
           nullable: true

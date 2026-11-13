@@ -52,6 +52,15 @@ public final class InsightCalc {
         return date.atStartOfDay(zone).plusHours(LocalCalendar.CHART_START_HOUR).toInstant();
     }
 
+    /**
+     * time 이 속한 섭취일 = 로컬 시각에서 {@value LocalCalendar#CHART_START_HOUR}시간을 뺀 날짜(00:00~05:00 은 전날).
+     * 기록을 날에 묶는 규칙과 같다(평소 첫 기록 시각과 같은 산술). 홈의 {@link LocalCalendar#chartStart}(달력 날짜 기준)와는
+     * 00:00~05:00 에 하루 다르다.
+     */
+    public static LocalDate intakeDayOf(Instant time, ZoneId zone) {
+        return time.atZone(zone).minusHours(LocalCalendar.CHART_START_HOUR).toLocalDate();
+    }
+
     // ---------------------------------------------------------------- 밤 단위
 
     /** 한 밤의 수면 지표(분 단위). */
@@ -220,13 +229,14 @@ public final class InsightCalc {
     }
 
     /**
-     * 기록 있는 날 수는 전체(오늘 포함), 나머지 요약은 기록 있는 날 중 {@code today}가 아닌 날만으로 낸다(끝나지 않은 날).
+     * 기록 있는 날 수는 전체(오늘 포함), 나머지 요약은 기록 있는 날 중 끝난 날({@code intakeToday} 이전)만으로 낸다.
+     * {@code intakeToday}는 섭취일 기준 오늘({@link #intakeDayOf}) — 00:00~05:00 에는 달력 전날이 아직 끝나지 않은 날이다.
      * 마지막 섭취 시각 평균은 05:00 기준 경과 분(벽시계)으로 평균한 뒤 벽시계 분(0~1439)으로 되돌린다.
      */
-    public static IntakeSummary summarize(List<DayIntake> days, LocalDate today, ZoneId zone) {
+    public static IntakeSummary summarize(List<DayIntake> days, LocalDate intakeToday, ZoneId zone) {
         int recorded = (int) days.stream().filter(d -> d.recordCount() > 0).count();
         List<DayIntake> complete = days.stream()
-                .filter(d -> d.recordCount() > 0 && !d.date().equals(today))
+                .filter(d -> d.recordCount() > 0 && d.date().isBefore(intakeToday))
                 .toList();
         if (complete.isEmpty()) {
             return new IntakeSummary(recorded, null, null, 0, null);

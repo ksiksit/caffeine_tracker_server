@@ -638,6 +638,7 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | `tz` | string | ✔ | IANA 타임존 |
 
 - `from ≤ to`, 기간(양 끝 포함) **31일 이하**, `to ≤ 오늘`(`tz` 기준 로컬 날짜). 어기면 400 `INVALID_PARAMETER`. 앱은 7·14·30일 프리셋만 보낸다.
+- **오늘**은 두 가지다. 기간 검증의 `to ≤ 오늘`은 `tz` 기준 **달력 날짜**, 섭취 통계에서 끝나지 않은 날을 가르는 오늘은 **섭취일 기준 오늘**(05:00 경계 — 00:00~05:00 에는 달력 전날)이다.
 - 섭취 통계의 날짜는 **섭취일**(로컬 05:00 ~ 다음 날 05:00), 리포트의 날짜는 **밤이 끝나는 아침 날짜**(수면 요약 `date`와 같다)다. 키가 하루 어긋난다.
 
 ### GET /api/insight/intake-stats — 기간별 섭취 통계
@@ -645,7 +646,7 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 `from`~`to` 각 섭취일의 총량·기록 수·첫/마지막 섭취 시각과 요약을 돌려준다.
 
 - 기록이 없는 날도 `totalMg = 0`, `recordCount = 0`으로 `days`에 들어간다(날짜 오름차순, 기간 일수만큼).
-- 요약(평균·최대·400mg 초과 일수·마지막 섭취 시각 평균)은 **기록이 있는 날**만으로 내고, **오늘**(`to`가 오늘일 때)은 끝나지 않은 날이라 뺀다. 그런 날이 없으면 평균·최대·시각 평균은 null.
+- 요약(평균·최대·400mg 초과 일수·마지막 섭취 시각 평균)은 **기록이 있는 날**만으로 내고, **섭취일 기준 오늘과 그 이후 날**은 끝나지 않은 날이라 뺀다(예: 11/14 04:59 요청이면 11/13·11/14 제외, 05:00 부터 11/13 포함). 그런 날이 없으면 평균·최대·시각 평균은 null.
 - 마지막 섭취 시각 평균은 05:00 기준 경과 분으로 평균한 뒤 벽시계 분으로 되돌린다(새벽 1시 섭취가 평균을 끌어내리지 않게).
 
 **응답 200** `data: IntakeStatsResponse`
@@ -654,10 +655,10 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 |---|---|---|
 | `from` / `to` | string(date) | 요청 값 |
 | `dayCount` | integer | 기간 일수(= `days` 길이) |
-| `recordedDayCount` | integer | 기록이 있는 날 수(오늘 포함) |
-| `averageDailyMg` | number · null | 기록 있는 날(오늘 제외)의 하루 평균 mg. 그런 날이 없으면 null |
+| `recordedDayCount` | integer | 기록이 있는 날 수(끝나지 않은 날 포함) |
+| `averageDailyMg` | number · null | 기록 있는 날(섭취일 기준 오늘·이후 제외)의 하루 평균 mg. 그런 날이 없으면 null |
 | `maxDailyMg` | number · null | 같은 조건의 최대 mg |
-| `overLimitDayCount` | integer | 하루 400mg 초과 일수(오늘 제외) |
+| `overLimitDayCount` | integer | 하루 400mg 초과 일수(섭취일 기준 오늘·이후 제외) |
 | `averageLastIntakeMinuteOfDay` | integer · null | 마지막 섭취 로컬 시각 평균, 벽시계 분 0~1439(예: 1000 = 16:40). 같은 조건, 없으면 null |
 | `summarySentence` | string | 요약 문장 |
 | `days` | DayItem[] | 섭취일 오름차순 |
@@ -667,7 +668,7 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 | `days[].firstIntakeAt` / `days[].lastIntakeAt` | string(date-time) · null | 첫·마지막 섭취 시각(UTC). 기록 없으면 null |
 | `days[].overLimit` | boolean | `totalMg` > 400 |
 
-`summarySentence` 규칙 — `{기간}`은 `to`가 오늘이면 `최근 {dayCount}일`, 아니면 `{M}월 {d}일~{M}월 {d}일`. mg는 반올림 정수.
+`summarySentence` 규칙 — `{기간}`은 `to`가 섭취일 기준 오늘 이후(그날 포함)면 `최근 {dayCount}일`, 아니면 `{M}월 {d}일~{M}월 {d}일`. mg는 반올림 정수.
 - 평균을 낼 날이 있음: `{기간} 하루 평균 {averageDailyMg}mg, 400mg을 넘긴 날은 {overLimitDayCount}일이에요. 마지막 한 잔은 평균 {H}시 {m}분이에요.`
   (`overLimitDayCount`가 0이면 `400mg을 넘긴 날은 없어요.`, 분이 0이면 `…평균 {H}시예요.`)
 - 없음: `{기간} 하루 평균을 낼 섭취 기록이 아직 없어요.`

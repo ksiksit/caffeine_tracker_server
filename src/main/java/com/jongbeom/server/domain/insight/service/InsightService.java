@@ -53,7 +53,9 @@ public class InsightService {
 
     @Transactional(readOnly = true)
     public IntakeStatsResponse intakeStats(Long userId, LocalDate from, LocalDate to, ZoneId zone) {
-        LocalDate today = validatePeriod(from, to, zone);
+        validatePeriod(from, to, zone);
+        // 끝나지 않은 날은 섭취일 기준 오늘로 판단한다(00:00~05:00 에는 달력 전날). 검증 상한은 달력 날짜 그대로
+        LocalDate intakeToday = InsightCalc.intakeDayOf(clock.instant(), zone);
         Instant rangeStart = InsightCalc.intakeDayStart(from, zone);
         Instant rangeEnd = InsightCalc.intakeDayStart(to.plusDays(1), zone);
         List<Dose> doses = caffeineService.dosesBetween(userId, rangeStart, rangeEnd);
@@ -66,12 +68,12 @@ public class InsightService {
                     .filter(d -> !d.timestamp().isBefore(start) && d.timestamp().isBefore(end))
                     .toList()));
         }
-        IntakeSummary summary = InsightCalc.summarize(days, today, zone);
+        IntakeSummary summary = InsightCalc.summarize(days, intakeToday, zone);
         return new IntakeStatsResponse(
                 from, to, days.size(), summary.recordedDayCount(),
                 summary.averageDailyMg(), summary.maxDailyMg(), summary.overLimitDayCount(),
                 summary.averageLastIntakeMinuteOfDay(),
-                InsightSentences.intakeSummary(from, to, today, days.size(), summary),
+                InsightSentences.intakeSummary(from, to, intakeToday, days.size(), summary),
                 days.stream().map(d -> new DayItem(d.date(), d.totalMg(), d.recordCount(),
                         d.firstIntakeAt(), d.lastIntakeAt(), d.overLimit())).toList());
     }
@@ -127,8 +129,8 @@ public class InsightService {
                 nights);
     }
 
-    /** from ≤ to, 기간 ≤ 31일, to ≤ 오늘(tz). 통과하면 오늘(로컬 날짜)을 돌려준다. */
-    private LocalDate validatePeriod(LocalDate from, LocalDate to, ZoneId zone) {
+    /** from ≤ to, 기간 ≤ 31일, to ≤ 오늘(tz 달력 날짜 — 앱이 보내는 값과 같다). */
+    private void validatePeriod(LocalDate from, LocalDate to, ZoneId zone) {
         LocalDate today = LocalDate.ofInstant(clock.instant(), zone);
         if (from.isAfter(to)) {
             throw new InvalidInsightPeriodException("from(" + from + ") > to(" + to + ")");
@@ -139,7 +141,6 @@ public class InsightService {
         if (to.isAfter(today)) {
             throw new InvalidInsightPeriodException("to(" + to + ") > 오늘(" + today + ")");
         }
-        return today;
     }
 
     private static Comparison toComparison(ComparisonResult result, String sentence) {
