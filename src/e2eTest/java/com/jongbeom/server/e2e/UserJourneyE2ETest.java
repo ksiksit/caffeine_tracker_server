@@ -89,11 +89,13 @@ class UserJourneyE2ETest {
         api(access).when().get("/api/learning/dashboard")
                 .then().statusCode(200).body("data.count", equalTo(1));
 
-        // 6. 학습 후 오늘 잔량은 학습된 반감기로 계산된다
+        // 6. 학습 후 오늘 잔량은 학습된 반감기로 계산된다. 잔량은 최근 24시간 기록으로 계산하므로
+        //    4단계의 어제 19:00 200mg(19시간 전)도 포함된다 → 100·2^(-1/m) + 200·2^(-19/m), m = 학습된 반감기
         api(access).queryParam("now", nowParam).queryParam("tz", TZ)
                 .when().get("/api/caffeine/today")
                 .then().statusCode(200)
-                .body("data.currentResidual", closeTo(100 * Math.pow(2, -1 / learnedMean), 1e-6));
+                .body("data.currentResidual", closeTo(
+                        100 * Math.pow(2, -1 / learnedMean) + 200 * Math.pow(2, -19 / learnedMean), 1e-6));
 
         // 7. 알림 계획: 지금 이후·시각 오름차순
         List<String> fireAts = api(access).queryParam("now", nowParam).queryParam("tz", TZ)
