@@ -1,6 +1,6 @@
 # 인사이트 기획 — 카페인·수면 상관 리포트 + 기간별 섭취 통계
 
-> 작성: 2026-10-16 · 갱신: 2026-11-13(iOS 요청 응답 계약 §3.4, 미결 추천안 §7) · 상태: **기획만** (코드·API 문서·`features.md` 미변경)
+> 작성: 2026-10-16 · 갱신: 2026-11-13(iOS 요청 응답 계약 §3.4, 미결 추천안 §7, ★1~★5 확정) · 상태: **기획만** (코드·API 문서·`features.md` 미변경)
 >
 > API 문서(`api/api.md`·`api/openapi.yaml`)에는 구현과 같은 PR에서 옮긴다. `ApiDocsConsistencyIT`는 컨트롤러가 없는데 문서에만 있는
 > 엔드포인트와 DTO를 허용하지 않는다. 그 전까지 API 형태의 원본은 이 문서 §3이다.
@@ -56,7 +56,7 @@
   그 밤은 리포트 전체(비교 A·B, `nightCount`, `nights`)에서 제외한다. 학습은 이때 설정 취침 시각으로 폴백하지만(`BedtimeExtractor`) 리포트는 폴백하지 않는다.
 - 섭취 기록: 취침 직전 24시간 기록. 학습의 `dosesBefore`와 같은 창이다(`../src/main/java/com/jongbeom/server/domain/learning/service/LearningService.java`, `BayesianHalfLifeUpdater.DOSES_LOOKBACK_HOURS = 24`). 조회는 기존 `CaffeineRecordRepository.findByUserIdAndTimestampBetweenOrderByTimestampAsc`를 쓴다.
 - 잔량: `Pharmacokinetics.totalRemaining(bedtime, doses, halfLifeHours)`(`../src/main/java/com/jongbeom/server/domain/calc/pk/Pharmacokinetics.java`).
-- 반감기: **요청 시점의 유효 반감기 하나로 기간 전체를 계산한다.** `CaffeineService.today`가 쓰는 반감기 결정 로직(학습값/설정값 × 건강 상태 배수)을 그대로 재사용한다. 밤마다 그때의 prior를 쓰면 밤끼리 비교 기준이 달라지기 때문이다. → §7 ★1 (사용자 결정 대기)
+- 반감기: **요청 시점의 유효 반감기 하나로 기간 전체를 계산한다.** `CaffeineService.today`가 쓰는 반감기 결정 로직(학습값/설정값 × 건강 상태 배수)을 그대로 재사용한다. 밤마다 그때의 prior를 쓰면 밤끼리 비교 기준이 달라지기 때문이다. → §7 ★1 (확정 2026-11-13)
 
 ### 2.3 비교 A — 취침 잔량 기준
 
@@ -79,14 +79,14 @@
    - `SAFE_ANYTIME` → 지킴
    - `CUTOFF` 이고 `last.timestamp ≤ cutoff` → 지킴, `>` → 넘김
    - `ALREADY_EXCEEDED`(마지막 잔 전에 이미 초과) → 넘김
-- `referenceDoseMg`는 요청 시점 설정값을 쓴다. 비교 A와 같은 이유다. → §7 ★4 (사용자 결정 대기)
+- `referenceDoseMg`는 요청 시점 설정값을 쓴다. 비교 A와 같은 이유다. → §7 ★4 (확정 2026-11-13)
 - 그룹 지표는 비교 A와 같다.
 
 ### 2.5 최소 표본 수와 문장 규칙
 
-아래 값은 모두 **추천안 · 사용자 결정 대기**다(§7 ★2·★3).
+아래 값은 §7 ★2·★3에서 **확정(2026-11-13, 사용자 결정)**됐다. 구현 때 `calc/insight/InsightCalc` 상수로 둔다.
 
-| 규칙 | 값(제안) | 근거 |
+| 규칙 | 값 | 근거 |
 |---|---|---|
 | 리포트를 보여 줄 최소 밤 수 | 기간 내 수면 데이터가 있는 밤 **5밤** | 7일 기간에서도 대부분 채워지는 값 |
 | 그룹당 최소 밤 수 | **3밤** | 학습 대시보드의 상세 표시 기준과 같다(`LearningStatsCalc.MIN_POINTS_FOR_R_SQUARED = 3`, 앱 "3회부터 상세 표시") |
@@ -228,12 +228,12 @@ public record CaffeineSleepReportResponse(
 | `residualAtBedtimeMg` | number, mg, 반올림하지 않은 소수. 취침 전 24시간 기록이 없는 밤은 **0**(null 아님) |
 | `solMinutes` | 같은 `date`의 `GET /api/sleep/summary` 응답 `sleepOnsetLatencySeconds`를 60으로 나눈 값이다. 같은 `SleepSummaryCalc`·같은 `bedtimeStart`로 계산한다. null 조건도 같다 |
 | 반감기 | 잔량은 요청 시점 유효 반감기 하나로 계산한다(§2.2, `halfLifeHoursUsed`). 학습 탭 관측의 `predictedResidualAtBedtime`은 그 밤 학습 당시 prior로 계산하므로 **같은 밤이라도 값이 다를 수 있다**. 앱은 두 값을 한 화면에 나란히 두지 않는다 |
-| `dayTotalMg` | 그 밤과 짝지은 섭취일(05:00 경계)의 섭취 총량이다. 짝짓기 규칙은 §7 ★5를 따른다(결정 대기) |
+| `dayTotalMg` | 그 밤과 짝지은 섭취일(05:00 경계)의 섭취 총량이다. 짝짓기 규칙은 §7 ★5(확정 2026-11-13)를 따른다 |
 
 `dayTotalMg`는 **넣는 것을 추천**한다. 근거는 다음과 같다.
 - 섭취 통계 `days[].date`는 섭취일, `nights[].date`는 아침 날짜라서 키가 하루 어긋난다. 앱이 둘을 이으면 짝짓기 규칙을 클라이언트가 다시 구현하게 되어 thin-client 원칙에 어긋난다.
 - 서버는 비교 B 판정을 위해 그 섭취일 기록을 이미 조회하므로 추가 쿼리가 없다.
-- 단점: ★5 결정에 값의 의미가 묶인다. ★5가 바뀌면 이 필드의 정의도 함께 바뀐다.
+- 단점: 값의 의미가 ★5 짝짓기 규칙에 묶인다. 그 규칙을 바꾸면 이 필드의 정의도 함께 바뀐다.
 
 ### 3.3 서버 배치
 
@@ -307,19 +307,20 @@ Features/Insight/
 
 ## 7. 미결 사항
 
-★ 표시는 도메인 계산식이나 상수에 걸리는 항목이다. 모두 **추천안 · 사용자 결정 대기**이며 확정이 아니다. 결정 전에는 `calc` 상수나 코드를 만들지 않는다.
+★ 표시는 도메인 계산식이나 상수에 걸리는 항목이다. 다섯 개 모두 **확정(2026-11-13, 사용자 결정)** 됐다. `calc` 상수와 코드는 구현 PR에서 만든다.
+대안·트레이드오프 열은 결정 당시 검토한 기록으로 남긴다.
 나머지(6~12)는 계산식을 바꾸지 않는 응답 형태·검증 규칙이다. 추천안대로 §2·§3에 반영해 두었고, 구현 PR 리뷰에서 바꿀 수 있다.
 코드 경로는 `src/main/java/com/jongbeom/server/domain/` 기준이다.
 
-### ★ 결정 대기
+### ★ 확정 (2026-11-13, 사용자 결정)
 
-| # | 항목 | 추천안 (결정 대기) | 근거 | 대안과 트레이드오프 |
+| # | 항목 | 확정안 | 근거 | 대안과 트레이드오프 (검토 기록) |
 |---|---|---|---|---|
 | ★1 | 잔량 계산 반감기 | 요청 시점 유효 반감기 하나로 기간 전체를 계산한다 | 홈과 같은 값이다(`caffeine/service/CaffeineService.java:157` `settings.effectiveHalfLifeHours()`). 밤끼리 같은 기준으로 비교된다. 관측 행은 학습된 밤에만 있어(`calc/learning/BayesianHalfLifeUpdater.java:37` 잔량 1mg 미만 skip) 대조군 밤에는 당시 값이 없다 | 밤마다 관측의 `posteriorMean × conditionMultiplier`(`learning/entity/HalfLifeObservation.java:50,56`)를 쓴다. 학습 탭 `predictedResidualAtBedtime`과 일치하지만, 관측 없는 밤은 다른 값으로 메워야 해서 한 리포트 안에 기준이 두 가지 섞인다 |
-| ★2 | "차이 있음" 기준값 | SOL 차이 ≥ 5분, 효율 차이 ≥ 3%p. `calc/insight/InsightCalc` 새 상수로 두고 골든 테스트에 포함한다 | SOL 5분은 학습 모델 기울기 `BETA = 0.10`분/mg(`calc/learning/BayesianHalfLifeUpdater.java:25`) × 그룹 경계 50mg(`calc/pk/Pharmacokinetics.java:26`)로, 모델이 예측하는 차이 크기와 같다. 효율 3%p는 대응하는 기존 상수가 없는 제안값이다 | 기준 없이 차이를 항상 서술하면 2~3분 같은 잡음도 "차이"로 말하게 된다. 기준을 더 높이면(예: 10분) 작은 표본에서는 거의 항상 "차이 없음"이 된다 |
+| ★2 | "차이 있음" 기준값 | SOL 차이 ≥ 5분, 효율 차이 ≥ 3%p. `calc/insight/InsightCalc` 새 상수로 두고 골든 테스트에 포함한다 | SOL 5분은 학습 모델 기울기 `BETA = 0.10`분/mg(`calc/learning/BayesianHalfLifeUpdater.java:25`) × 그룹 경계 50mg(`calc/pk/Pharmacokinetics.java:26`)로, 모델이 예측하는 차이 크기와 같다. 효율 3%p는 대응하는 기존 상수가 없다(경험값으로 확정) | 기준 없이 차이를 항상 서술하면 2~3분 같은 잡음도 "차이"로 말하게 된다. 기준을 더 높이면(예: 10분) 작은 표본에서는 거의 항상 "차이 없음"이 된다 |
 | ★3 | 최소 표본 | 리포트 5밤, 그룹당 3밤, SOL 있는 밤 3밤. `InsightCalc`에 자체 상수로 둔다 | 3은 학습 대시보드 R² 최소 관측 수와 같다(`calc/learning/LearningStatsCalc.java:20`). 다만 이 상수는 `private`라서 공유하려면 기존 `calc` 파일을 고쳐야 하므로 값만 맞춘다. 5밤은 7일 프리셋(학습 범위 `learning/service/LearningService.java:50` `RECENT_DAYS = 7`과 같은 길이)에서도 대부분 채워진다 | 더 높이면(7밤·4밤) 수치는 안정되지만 7일 프리셋에서 대부분 "표본 부족"이 된다. `LearningStatsCalc` 상수를 public으로 바꿔 공유하면 값이 한곳에서 관리되지만, 학습 대시보드 기준과 리포트 기준이 함께 움직이게 묶인다 |
-| ★4 | 비교 B 기준 섭취량 | 요청 시점 설정 `referenceDoseMg`를 쓴다. 문장에 "지금 기준 용량(Nmg) 기준" 같은 표현을 넣을지도 함께 결정한다 | 홈 마감 시각과 같은 입력이다(`caffeine/service/CaffeineService.java:158`). 설정은 사용자당 한 행이고 이력이 없어 당시 값을 복원할 수 없다. 실제 마지막 잔 용량을 넣으면 `cutoffTime`(`calc/pk/Pharmacokinetics.java:174-192`) 정의상 "마감 지킴 ⇔ 취침 잔량 ≤ 50mg"이 되어 비교 A와 같은 비교가 된다 | 실제 잔 용량: 과거 설정 변경의 영향은 없지만 비교 B가 A의 복사본이 된다. 설정 이력 테이블 추가: 정확하지만 DDL이 바뀌어 이번 기능 범위(§2.7 스키마 무변경)를 넘는다 |
-| ★5 | 섭취일과 밤 짝짓기 | 아침 날짜 D의 밤은 섭취일 D−1(로컬 D−1 05:00 ~ D 05:00)과 짝짓는다. 그중 `bedtime` 이전 기록만 쓴다. `dayTotalMg`·`lastIntakeAt`·`cutoffKept`가 이 규칙을 따른다 | 밤 D의 수면 창은 D−1 18:00 ~ D 12:00이다(`calc/time/LocalCalendar.java:51-58`). 섭취일 경계는 05:00이다(`calc/time/LocalCalendar.java:29,37`). 취침이 18:00~05:00 사이인 일반적인 경우 그 밤 직전의 하루가 정확히 섭취일 D−1이 된다 | "취침 전 24시간 창의 마지막 기록"(`calc/learning/BayesianHalfLifeUpdater.java:36` `DOSES_LOOKBACK_HOURS = 24`): 비교 A와 같은 창이고 날짜 경계가 없다. 대신 섭취가 없던 날에 전날 늦게 마신 잔을 "그날 마지막 잔"으로 집어 판정이 흐려진다. 추천안의 약점은 05:00 이후 취침(교대 근무)에서 05:00 ~ 취침 사이 기록이 빠지는 것이다 |
+| ★4 | 비교 B 기준 섭취량 | 요청 시점 설정 `referenceDoseMg`를 쓴다. 문장에 "지금 기준 용량(Nmg) 기준" 같은 표현을 넣을지는 **아직 정하지 않았다**(미결, 계산식과 무관한 문구 문제) | 홈 마감 시각과 같은 입력이다(`caffeine/service/CaffeineService.java:158`). 설정은 사용자당 한 행이고 이력이 없어 당시 값을 복원할 수 없다. 실제 마지막 잔 용량을 넣으면 `cutoffTime`(`calc/pk/Pharmacokinetics.java:174-192`) 정의상 "마감 지킴 ⇔ 취침 잔량 ≤ 50mg"이 되어 비교 A와 같은 비교가 된다 | 실제 잔 용량: 과거 설정 변경의 영향은 없지만 비교 B가 A의 복사본이 된다. 설정 이력 테이블 추가: 정확하지만 DDL이 바뀌어 이번 기능 범위(§2.7 스키마 무변경)를 넘는다 |
+| ★5 | 섭취일과 밤 짝짓기 | 아침 날짜 D의 밤은 섭취일 D−1(로컬 D−1 05:00 ~ D 05:00)과 짝짓는다. 그중 `bedtime` 이전 기록만 쓴다. `dayTotalMg`·`lastIntakeAt`·`cutoffKept`가 이 규칙을 따른다 | 밤 D의 수면 창은 D−1 18:00 ~ D 12:00이다(`calc/time/LocalCalendar.java:51-58`). 섭취일 경계는 05:00이다(`calc/time/LocalCalendar.java:29,37`). 취침이 18:00~05:00 사이인 일반적인 경우 그 밤 직전의 하루가 정확히 섭취일 D−1이 된다 | "취침 전 24시간 창의 마지막 기록"(`calc/learning/BayesianHalfLifeUpdater.java:36` `DOSES_LOOKBACK_HOURS = 24`): 비교 A와 같은 창이고 날짜 경계가 없다. 대신 섭취가 없던 날에 전날 늦게 마신 잔을 "그날 마지막 잔"으로 집어 판정이 흐려진다. 확정안의 약점은 05:00 이후 취침(교대 근무)에서 05:00 ~ 취침 사이 기록이 빠지는 것이다 |
 
 ### 응답 형태·검증 (추천안 반영)
 
