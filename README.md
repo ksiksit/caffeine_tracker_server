@@ -133,6 +133,12 @@ DB_URL=jdbc:mysql://localhost:3306/caffeine_tracker?serverTimezone=UTC&character
 | `GET` | `/api/learning/observations` | 학습 관측 이력 조회 |
 | `GET` | `/api/learning/dashboard` | 학습 대시보드 |
 
+**인사이트** (전부 Bearer)
+| 메서드 | 경로 | 기능 |
+|---|---|---|
+| `GET` | `/api/insight/intake-stats?from=&to=&tz=` | 기간별 섭취 통계 |
+| `GET` | `/api/insight/caffeine-sleep?from=&to=&tz=` | 카페인·수면 상관 리포트 |
+
 > 연산 엔드포인트는 기기 로컬 타임존 재현을 위해 `tz`(IANA, 예 `Asia/Seoul`)와 필요 시 `now`(ISO-8601+오프셋)를 받는다.
 
 ### 공통 응답 구조
@@ -211,11 +217,13 @@ src/main/java/com/jongbeom/server/
 │   ├── sleep/          # 수면 원시 샘플 업로드 + 병합/요약
 │   ├── learning/       # 베이지안 반감기 학습 + 대시보드
 │   ├── notification/   # 로컬 알림 계획 (서버가 종류·시각·문구 계산, iOS 가 예약)
+│   ├── insight/        # 기간별 섭취 통계 + 카페인·수면 상관 리포트 (요청마다 계산, 문장 포함)
 │   └── calc/           # 순수 연산(iOS Swift 포팅) — 레이어·Spring 의존 없음, 다른 도메인을 import 하지 않음
 │       ├── pk/         # 카페인 약동학 (잔량·시계열·마감시각)
 │       ├── time/       # 타임존 로컬 달력·차트 경계(LocalCalendar), 경과 시간(Elapsed)
 │       ├── sleep/      # 수면 단계·병합·요약
-│       └── learning/   # 베이지안 반감기 갱신·학습용 bedtime 추출·대시보드 통계
+│       ├── learning/   # 베이지안 반감기 갱신·학습용 bedtime 추출·대시보드 통계
+│       └── insight/    # 인사이트 그룹 비교·마감 판정·기간 요약
 ├── global/
 │   ├── config/         # SecurityConfig, JwtProperties, ClockConfig
 │   ├── error/          # 전역 에러 (BusinessException·ErrorCode·ApiError·GlobalExceptionHandler·JsonSecurityErrorHandler=401/403)
