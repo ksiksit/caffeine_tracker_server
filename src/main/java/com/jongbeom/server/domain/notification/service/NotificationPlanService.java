@@ -91,6 +91,7 @@ public class NotificationPlanService {
      *   <li>마감 없음(SAFE_ANYTIME)이고 400mg 이하면 구간 없음</li>
      * </ul>
      * 끝을 취침이 아니라 05:00으로 둔 건 취침 뒤 새벽 섭취도 막아야 하고, 서버의 "오늘" 경계와 맞추기 위해서다.
+     * 00:00~05:00 의 {@code at}은 전날 섭취일에 속하므로 끝은 그날(달력 당일) 05:00 이다.
      * 마감 시각이 지나면 기준 용량 한 잔이 곧 취침 시 50mg 초과이므로, 문구의 "기준을 넘어요"는 계산 없이 참이다.
      */
     private static Optional<CafeNearbyWindow> cafeNearbyWindow(CaffeineStatus today, Instant at, ZoneId zone) {
@@ -166,8 +167,9 @@ public class NotificationPlanService {
     /**
      * 기록 리마인더: 오늘(05:00 경계) 기록이 없고 최근 {@link #RECORD_REMINDER_HISTORY} 중 기록 있는 날이
      * {@link #RECORD_REMINDER_MIN_DAYS} 이상이면 "평소 첫 기록 시각({@link UsualFirstRecordTime}) + {@link #RECORD_REMINDER_DELAY}" 에.
-     * 오늘 창(05:00 + 24h) 밖이면 없음. 00:00~05:00 에는 chartStart 가 미래라 오늘 기록이 없는 것으로 보고
-     * 그날 낮으로 예약된다 — {@code CaffeineService.today()} 와 같은 기준이며 앱이 재조회하며 정정한다.
+     * 오늘 창(05:00 + 24h) 밖이면 없음. 00:00~05:00 의 오늘은 전날 섭취일(전날 05:00 ~ 당일 05:00)이라
+     * 그 시각 기록도 오늘 기록이고, 평소 시각이 이미 지났으면 없다 — {@code CaffeineService.today()} 와 같은 기준.
+     * 다음 섭취일 리마인더는 05:00 이후 앱이 재조회할 때 예약된다.
      */
     private Optional<NotificationItem> recordReminderItem(Long userId, Instant now, ZoneId zone) {
         Instant chartStart = LocalCalendar.chartStart(now, zone);

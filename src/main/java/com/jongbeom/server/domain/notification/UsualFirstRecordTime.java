@@ -15,7 +15,7 @@ import java.util.TreeMap;
 /**
  * "평소 첫 기록 시각" — 과거 기록을 로컬 하루(차트 시작 05:00 경계, 05:00 이전은 전날)로 묶어
  * 날마다 첫 기록이 그날 05:00 으로부터 얼마나 뒤인지 구한 뒤 그 중앙값을 낸다. 기록 리마인더(RECORD_REMINDER)의 기준.
- * 하루 시작 산술은 {@code LocalCalendar.chartStart}(자정 + 5h)와 동일하게 둔다.
+ * 날 묶기는 {@code LocalCalendar.intakeDayOf}, 하루 시작 산술은 {@code LocalCalendar.chartStart}(자정 + 5h)와 동일하게 둔다.
  */
 public final class UsualFirstRecordTime {
 
@@ -32,7 +32,7 @@ public final class UsualFirstRecordTime {
     public static Optional<Duration> median(List<Instant> history, ZoneId zone, int minDays) {
         Map<LocalDate, Duration> firstOffsetByDay = new TreeMap<>();
         for (Instant ts : history) {
-            LocalDate day = ts.atZone(zone).minusHours(DAY_START_HOUR).toLocalDate();
+            LocalDate day = LocalCalendar.intakeDayOf(ts, zone);
             Instant dayStart = day.atStartOfDay(zone).plusHours(DAY_START_HOUR).toInstant();
             Duration offset = Duration.between(dayStart, ts);
             firstOffsetByDay.merge(day, offset, (a, b) -> a.compareTo(b) <= 0 ? a : b);
