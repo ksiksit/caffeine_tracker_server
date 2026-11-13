@@ -58,6 +58,9 @@ class QueryCountIT extends AbstractIntegrationTest {
         budgets.put(LEARN_FIRST, 13L);
         budgets.put(LEARN_AGAIN, 4L);
         budgets.put("GET /api/learning/dashboard", 1L);
+        budgets.put("GET /api/insight/intake-stats (14일)", 1L);
+        // 인사이트: 기간 전체를 한 번씩 묶어 읽는다(설정·수면·카페인). 밤·날 수에 비례하면 회귀다
+        budgets.put("GET /api/insight/caffeine-sleep (14일·7박)", 3L);
         budgets.put("POST /api/sleep/samples (재업로드 6건)", 2L);
         return budgets;
     }
@@ -101,6 +104,10 @@ class QueryCountIT extends AbstractIntegrationTest {
         counts.put(LEARN_AGAIN, count(post("/api/learning/run").header("Authorization", auth)
                 .param("tz", TZ)));
         counts.put("GET /api/learning/dashboard", count(get("/api/learning/dashboard").header("Authorization", auth)));
+        counts.put("GET /api/insight/intake-stats (14일)", count(get("/api/insight/intake-stats")
+                .header("Authorization", auth).param("from", "2026-06-02").param("to", "2026-06-15").param("tz", TZ)));
+        counts.put("GET /api/insight/caffeine-sleep (14일·7박)", count(get("/api/insight/caffeine-sleep")
+                .header("Authorization", auth).param("from", "2026-06-02").param("to", "2026-06-15").param("tz", TZ)));
         counts.put("POST /api/sleep/samples (재업로드 6건)", count(post("/api/sleep/samples").header("Authorization", auth)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"samples\":" + nightSamples(LocalDate.parse("2026-06-15")) + "}")));
 
