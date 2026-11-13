@@ -50,6 +50,7 @@ class ModuleBoundaryTest {
             "caffeine", Set.of("settings"),
             "notification", Set.of("settings", "caffeine"),
             "learning", Set.of("settings", "sleep", "caffeine", "user"),
+            "insight", Set.of("settings", "sleep", "caffeine"),
             "auth", Set.of("user", "settings"));
 
     /** iOS 포팅 수식이 프레임워크·저장 방식과 무관하게 골든 테스트만으로 검증되도록. */

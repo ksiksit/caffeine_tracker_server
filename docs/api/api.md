@@ -669,7 +669,7 @@ access 토큰의 클레임을 그대로 돌려준다. DB 조회 없음.
 
 `summarySentence` 규칙 — `{기간}`은 `to`가 오늘이면 `최근 {dayCount}일`, 아니면 `{M}월 {d}일~{M}월 {d}일`. mg는 반올림 정수.
 - 평균을 낼 날이 있음: `{기간} 하루 평균 {averageDailyMg}mg, 400mg을 넘긴 날은 {overLimitDayCount}일이에요. 마지막 한 잔은 평균 {H}시 {m}분이에요.`
-  (`overLimitDayCount`가 0이면 `400mg을 넘긴 날은 없어요.`, 분이 0이면 `{H}시`)
+  (`overLimitDayCount`가 0이면 `400mg을 넘긴 날은 없어요.`, 분이 0이면 `…평균 {H}시예요.`)
 - 없음: `{기간} 하루 평균을 낼 섭취 기록이 아직 없어요.`
 
 ```json
