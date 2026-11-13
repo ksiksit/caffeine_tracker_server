@@ -31,11 +31,21 @@ public final class LocalCalendar {
     public static final int CHART_INTERVAL_MINUTES = 15;
 
     /**
-     * 차트 시작 = now가 속한 zone 로컬 날짜의 자정 + {@value #CHART_START_HOUR}시.
-     * (← Swift filterTodayRecords / updateChartData start)
+     * time 이 속한 섭취일 = 로컬 시각에서 {@value #CHART_START_HOUR}시간을 뺀 날짜(00:00~05:00 은 전날).
+     * 홈의 "오늘"({@link #chartStart}), 인사이트 섭취일, 평소 첫 기록 시각이 모두 이 정의를 쓴다.
+     */
+    public static LocalDate intakeDayOf(Instant time, ZoneId zone) {
+        return time.atZone(zone).minusHours(CHART_START_HOUR).toLocalDate();
+    }
+
+    /**
+     * 차트 시작(= 오늘의 시작) = now가 속한 섭취일({@link #intakeDayOf}) 자정 + {@value #CHART_START_HOUR}시.
+     * 00:00~05:00 의 now 는 전날 05:00 — 아직 오지 않은 그날 05:00 이 아니다.
+     * 자정 + 경과 시간 산술은 iOS 원본(Swift filterTodayRecords / updateChartData start)과 같게 유지한다.
+     * 날짜 선택(섭취일)은 iOS 원본의 달력 날짜에서 바꿨다(00:00~05:00 기록이 어느 날 합계에도 안 들어가던 문제).
      */
     public static Instant chartStart(Instant now, ZoneId zone) {
-        LocalDate today = now.atZone(zone).toLocalDate();
+        LocalDate today = intakeDayOf(now, zone);
         return today.atStartOfDay(zone).plusHours(CHART_START_HOUR).toInstant();
     }
 

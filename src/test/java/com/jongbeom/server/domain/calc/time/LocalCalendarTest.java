@@ -27,11 +27,28 @@ class LocalCalendarTest {
     }
 
     @Test
-    void chartStart_nowBeforeFiveAm_returnsSameDayFiveAm() {
-        // 현재 동작 고정: 05:00 이전의 now 는 그날 05:00(now 보다 미래)을 반환한다.
-        // UsualFirstRecordTime 은 05:00 이전을 "전날"로 묶는다 — 두 규칙이 다르다는 점을 여기서 드러내 둔다.
+    void chartStart_nowBeforeFiveAm_returnsPreviousDayFiveAm() {
+        // 05:00 이전의 now 는 전날 섭취일 — 그날의 시작인 전날 05:00(아직 오지 않은 당일 05:00 이 아니다)
         assertThat(LocalCalendar.chartStart(kst("2026-06-01T02:00:00"), KST))
+                .isEqualTo(kst("2026-05-31T05:00:00"));
+        assertThat(LocalCalendar.chartEnd(kst("2026-06-01T02:00:00"), KST))
                 .isEqualTo(kst("2026-06-01T05:00:00"));
+    }
+
+    @Test
+    void chartStart_boundary_0459_isPreviousDay_0500_isSameDay() {
+        assertThat(LocalCalendar.chartStart(kst("2026-06-01T00:00:00"), KST)).isEqualTo(kst("2026-05-31T05:00:00"));
+        assertThat(LocalCalendar.chartStart(kst("2026-06-01T04:59:59"), KST)).isEqualTo(kst("2026-05-31T05:00:00"));
+        assertThat(LocalCalendar.chartStart(kst("2026-06-01T05:00:00"), KST)).isEqualTo(kst("2026-06-01T05:00:00"));
+    }
+
+    @Test
+    void intakeDayOf_0459_isPreviousDay_0500_isSameDay() {
+        assertThat(LocalCalendar.intakeDayOf(kst("2026-06-01T04:59:59"), KST)).isEqualTo(LocalDate.of(2026, 5, 31));
+        assertThat(LocalCalendar.intakeDayOf(kst("2026-06-01T05:00:00"), KST)).isEqualTo(LocalDate.of(2026, 6, 1));
+        // chartStart(now) 는 언제나 now 이하 — 그날의 시작이 미래가 되지 않는다
+        Instant now = kst("2026-06-01T03:00:00");
+        assertThat(LocalCalendar.chartStart(now, KST)).isBeforeOrEqualTo(now);
     }
 
     @Test
@@ -54,6 +71,18 @@ class LocalCalendarTest {
         Instant now = OffsetDateTime.parse("2026-03-08T12:00:00-04:00").toInstant();
         assertThat(LocalCalendar.chartStart(now, NEW_YORK))
                 .isEqualTo(OffsetDateTime.parse("2026-03-08T06:00:00-04:00").toInstant());
+    }
+
+    @Test
+    void chartStart_onDstStartDay_boundaryIsFiveElapsedHours() {
+        // 섭취일 경계도 자정 + 경과 5시간과 같은 순간이다: 05:59 EDT 는 아직 전날, 06:00 EDT 부터 당일.
+        Instant before = OffsetDateTime.parse("2026-03-08T05:59:00-04:00").toInstant();
+        Instant at = OffsetDateTime.parse("2026-03-08T06:00:00-04:00").toInstant();
+        assertThat(LocalCalendar.intakeDayOf(before, NEW_YORK)).isEqualTo(LocalDate.of(2026, 3, 7));
+        assertThat(LocalCalendar.chartStart(before, NEW_YORK))
+                .isEqualTo(OffsetDateTime.parse("2026-03-07T05:00:00-05:00").toInstant());
+        assertThat(LocalCalendar.intakeDayOf(at, NEW_YORK)).isEqualTo(LocalDate.of(2026, 3, 8));
+        assertThat(LocalCalendar.chartStart(at, NEW_YORK)).isEqualTo(at);
     }
 
     // ---- sleepWindowStart / sleepWindowEnd ----

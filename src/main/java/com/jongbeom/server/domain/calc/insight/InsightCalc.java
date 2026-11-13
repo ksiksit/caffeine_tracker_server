@@ -52,13 +52,9 @@ public final class InsightCalc {
         return date.atStartOfDay(zone).plusHours(LocalCalendar.CHART_START_HOUR).toInstant();
     }
 
-    /**
-     * time 이 속한 섭취일 = 로컬 시각에서 {@value LocalCalendar#CHART_START_HOUR}시간을 뺀 날짜(00:00~05:00 은 전날).
-     * 기록을 날에 묶는 규칙과 같다(평소 첫 기록 시각과 같은 산술). 홈의 {@link LocalCalendar#chartStart}(달력 날짜 기준)와는
-     * 00:00~05:00 에 하루 다르다.
-     */
+    /** time 이 속한 섭취일 — {@link LocalCalendar#intakeDayOf}에 위임(홈의 "오늘"과 같은 정의). */
     public static LocalDate intakeDayOf(Instant time, ZoneId zone) {
-        return time.atZone(zone).minusHours(LocalCalendar.CHART_START_HOUR).toLocalDate();
+        return LocalCalendar.intakeDayOf(time, zone);
     }
 
     // ---------------------------------------------------------------- 밤 단위

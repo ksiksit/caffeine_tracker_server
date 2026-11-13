@@ -305,6 +305,86 @@ class NotificationControllerIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.cafeNearbyWindows[0].body", containsString("400mg")));
     }
 
+    /** 카페 근처·기록 리마인더만 켠 설정. */
+    private void enableCafeNearbyAndReminder(String accessToken) throws Exception {
+        mockMvc.perform(put("/api/settings").header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"halfLife":5.0,"condition":0,"bedtimeHour":23,"bedtimeMinute":0,\
+                        "referenceDoseMg":75,"isLearningEnabled":true,\
+                        "notifications":{"cutoff":false,"bedtimeResidual":false,"recordReminder":true,"cafeNearby":true}}"""))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void 새벽2시_계획은_전날_섭취일_기준_DAILY_LIMIT_구간은_당일05시까지_리마인더는_다가오는_섭취일() throws Exception {
+        String accessToken = authToken("n@b.com", "알림");
+        enableCafeNearbyAndReminder(accessToken);
+        addHistory(accessToken, FIVE_DAYS);
+        addRecord(accessToken, 300, "2026-06-01T10:00:00+09:00");
+        addRecord(accessToken, 200, "2026-06-02T01:00:00+09:00");   // 00~05시 → 섭취일 06-01, 합계 500mg
+
+        // now 06-02 02:00 KST: 오늘 = 06-01 섭취일. 취침 06-02 23:00 잔량 ≈ 11mg < 50 → 사유는 400mg 초과
+        plan(accessToken, "2026-06-02T02:00:00+09:00")
+                .andExpect(status().isOk())
+                // 06-01 섭취일은 기록 있음 → 없음. 다가오는 06-02 섭취일(새벽 기록은 06-01 소속이라 기록 없음):
+                // 첫 기록 오프셋 4h×5일·5h(06-01 10:00) → 중앙값 4h → 09:00 + 2h = 06-02 11:00 KST
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].type").value("RECORD_REMINDER"))
+                .andExpect(jsonPath("$.data.items[0].fireAt").value("2026-06-02T02:00:00Z"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows.length()").value(2))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].reason").value("DAILY_LIMIT_EXCEEDED"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].activeFrom").value("2026-06-01T17:00:00Z"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].activeUntil").value("2026-06-01T20:00:00Z"))  // 06-02 05:00 KST
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[0].body", containsString("500mg")))
+                // 다음 날(06-02 05:00~) 기본 구간 — 새 섭취일이라 400mg 초과가 아니다
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[1].reason").value("CUTOFF_PASSED"))
+                .andExpect(jsonPath("$.data.cafeNearbyWindows[1].activeUntil").value("2026-06-02T20:00:00Z"));
+    }
+
+    @Test
+    void 리마인더_새벽계획에도_다가오는_섭취일_리마인더가_있고_0500계획과_같다() throws Exception {
+        String accessToken = authToken("n@b.com", "알림");
+        putSettings(accessToken, 75, false, false, true);
+        addHistory(accessToken, FIVE_DAYS);
+
+        // 02:00·04:59:59 의 오늘은 05-31 섭취일(09:00 기록 있음 → 그날 리마인더 없음). 다가오는 06-01 섭취일은 기록이 없어
+        // 평소 09:00 + 2h = 06-01 11:00 KST. 05:00 에 만든 계획과 같다.
+        for (String now : new String[] {"2026-06-01T02:00:00+09:00", "2026-06-01T04:59:59+09:00", "2026-06-01T05:00:00+09:00"}) {
+            plan(accessToken, now)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.items.length()").value(1))
+                    .andExpect(jsonPath("$.data.items[0].type").value("RECORD_REMINDER"))
+                    .andExpect(jsonPath("$.data.items[0].fireAt").value("2026-06-01T02:00:00Z"))
+                    .andExpect(jsonPath("$.data.items[0].title").value("오늘 카페인 기록이 없어요"))
+                    .andExpect(jsonPath("$.data.items[0].body", containsString("09:00")));
+        }
+    }
+
+    @Test
+    void 리마인더_새벽계획도_기록일수_5일미만이면_없다() throws Exception {
+        String accessToken = authToken("n@b.com", "알림");
+        putSettings(accessToken, 75, false, false, true);
+        addHistory(accessToken, FOUR_DAYS);
+
+        for (String now : new String[] {"2026-06-01T02:00:00+09:00", "2026-06-01T05:00:00+09:00"}) {
+            plan(accessToken, now)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.items").isEmpty());
+        }
+    }
+
+    @Test
+    void 리마인더_새벽계획도_토글off면_없다() throws Exception {
+        String accessToken = authToken("n@b.com", "알림");
+        putSettings(accessToken, 75, false, false, false);
+        addHistory(accessToken, FIVE_DAYS);
+
+        plan(accessToken, "2026-06-01T02:00:00+09:00")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isEmpty());
+    }
+
     @Test
     void 카페근처_기준용량이_헤드룸_이하면_구간없음() throws Exception {
         String accessToken = authToken("n@b.com", "알림");

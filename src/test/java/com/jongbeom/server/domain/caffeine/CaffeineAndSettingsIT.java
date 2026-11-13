@@ -216,7 +216,7 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
     @Test
     void caffeine_today_05시이전에도_최근24시간_잔량을_계산() throws Exception {
         String accessToken = authToken("c@b.com", "테스터");
-        // 서울 2026-06-01 23:00 200mg, 다음 날 00:30 조회 — 그날 05:00 경계 이전이지만 몸에는 남아 있다.
+        // 서울 2026-06-01 23:00 200mg, 다음 날 00:30 조회 — 00:30 은 아직 06-01 섭취일이라 오늘 기록이다.
         mockMvc.perform(post("/api/caffeine-records").header("Authorization", "Bearer " + accessToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"amount\":200,\"drinkName\":\"콜드브루\",\"timestamp\":\"2026-06-01T23:00:00+09:00\"}"))
@@ -226,10 +226,10 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .param("now", "2026-06-02T00:30:00+09:00")
                 .param("tz", "Asia/Seoul"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.records.length()").value(0))
-                .andExpect(jsonPath("$.data.todayTotal").value(0))
-                .andExpect(jsonPath("$.data.carryoverRecords.length()").value(1))
-                .andExpect(jsonPath("$.data.carryoverRecords[0].amount").value(200))
+                .andExpect(jsonPath("$.data.records.length()").value(1))
+                .andExpect(jsonPath("$.data.records[0].amount").value(200))
+                .andExpect(jsonPath("$.data.todayTotal").value(200))
+                .andExpect(jsonPath("$.data.carryoverRecords.length()").value(0))
                 // 200 × 2^(-1.5/5) = 162.45mg
                 .andExpect(jsonPath("$.data.currentResidual").value(Matchers.closeTo(162.45, 0.01)));
 
@@ -240,6 +240,36 @@ class CaffeineAndSettingsIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.carryoverRecords.length()").value(0))
                 .andExpect(jsonPath("$.data.currentResidual").value(0.0));
+    }
+
+    @Test
+    void caffeine_today_0459까지는_00시이후_기록도_오늘합계와_400mg판정에_들어간다() throws Exception {
+        String accessToken = authToken("c@b.com", "테스터");
+        createCaffeineRecord(accessToken, 300, "2026-06-01T10:00:00+09:00");
+        createCaffeineRecord(accessToken, 200, "2026-06-02T01:00:00+09:00");   // 00~05시 → 섭취일 06-01
+
+        mockMvc.perform(get("/api/caffeine/today").header("Authorization", "Bearer " + accessToken)
+                .param("now", "2026-06-02T04:59:00+09:00").param("tz", "Asia/Seoul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records.length()").value(2))
+                .andExpect(jsonPath("$.data.todayTotal").value(500))
+                .andExpect(jsonPath("$.data.overDailyLimit").value(true))
+                .andExpect(jsonPath("$.data.carryoverRecords.length()").value(0))
+                .andExpect(jsonPath("$.data.chart[0].time").value("2026-05-31T20:00:00Z"));   // 06-01 05:00 KST
+        mockMvc.perform(get("/api/caffeine-records").header("Authorization", "Bearer " + accessToken)
+                .param("now", "2026-06-02T04:59:00+09:00").param("tz", "Asia/Seoul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", Matchers.hasSize(2)));
+
+        // 05:00 부터 새 섭취일: 둘 다 지난 24시간 기록(잔량에는 남음)
+        mockMvc.perform(get("/api/caffeine/today").header("Authorization", "Bearer " + accessToken)
+                .param("now", "2026-06-02T05:00:00+09:00").param("tz", "Asia/Seoul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records.length()").value(0))
+                .andExpect(jsonPath("$.data.todayTotal").value(0))
+                .andExpect(jsonPath("$.data.overDailyLimit").value(false))
+                .andExpect(jsonPath("$.data.carryoverRecords.length()").value(2))
+                .andExpect(jsonPath("$.data.chart[0].time").value("2026-06-01T20:00:00Z"));   // 06-02 05:00 KST
     }
 
     @Test
