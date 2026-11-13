@@ -75,7 +75,7 @@ public class NotificationPlanService {
             }
         }
         if (settings.notifyRecordReminder()) {
-            recordReminderItem(userId, now, zone).ifPresent(items::add);
+            items.addAll(recordReminderItems(userId, now, zone));
         }
         // 안정 정렬 — fireAt 동률이면 위 삽입 순서 유지
         items.sort(Comparator.comparing(NotificationItem::fireAt));
@@ -165,30 +165,54 @@ public class NotificationPlanService {
     }
 
     /**
-     * 기록 리마인더: 오늘(05:00 경계) 기록이 없고 최근 {@link #RECORD_REMINDER_HISTORY} 중 기록 있는 날이
+     * 기록 리마인더: 그 섭취일(05:00 경계) 기록이 없고 직전 {@link #RECORD_REMINDER_HISTORY} 중 기록 있는 날이
      * {@link #RECORD_REMINDER_MIN_DAYS} 이상이면 "평소 첫 기록 시각({@link UsualFirstRecordTime}) + {@link #RECORD_REMINDER_DELAY}" 에.
-     * 오늘 창(05:00 + 24h) 밖이면 없음. 00:00~05:00 의 오늘은 전날 섭취일(전날 05:00 ~ 당일 05:00)이라
-     * 그 시각 기록도 오늘 기록이고, 평소 시각이 이미 지났으면 없다 — {@code CaffeineService.today()} 와 같은 기준.
-     * 다음 섭취일 리마인더는 05:00 이후 앱이 재조회할 때 예약된다.
+     * 그 섭취일 창(05:00 + 24h) 밖이거나 이미 지났으면 없음.
+     *
+     * <p>대상 섭취일은 오늘({@code now}가 속한 섭취일) 하나, 00:00~05:00 이면 다가오는 섭취일(당일 05:00 시작)도 함께다.
+     * 00:00~05:00 의 오늘은 전날 섭취일이라 평소 시각이 대개 지났고, 앱은 시각 경과로 계획을 재조회하지 않으므로
+     * 마지막 사용이 새벽이어도 그날 리마인더가 울리게 미리 넣는다. 다가오는 섭취일은 아직 시작 전이라 기록이 없고
+     * (새벽 기록은 전날 섭취일 소속), 결과는 05:00 에 만든 계획과 같다.
      */
-    private Optional<NotificationItem> recordReminderItem(Long userId, Instant now, ZoneId zone) {
-        Instant chartStart = LocalCalendar.chartStart(now, zone);
-        Instant chartEnd = LocalCalendar.chartEnd(now, zone);
-        // 쿼리 1회(오름차순) 후 chartStart 기준으로 과거/오늘 분리. Between 은 양끝 포함이라 경계 중복을 피하려고 쓰지 않는다.
+    private List<NotificationItem> recordReminderItems(Long userId, Instant now, ZoneId zone) {
+        Instant todayStart = LocalCalendar.chartStart(now, zone);
+        // 달력 당일 05:00 — 00:00~05:00 이면 아직 오지 않은 다가오는 섭취일의 시작(05:00 에 만든 계획의 chartStart 와 같은 산술)
+        Instant upcomingStart = now.atZone(zone).toLocalDate().atStartOfDay(zone)
+                .plusHours(LocalCalendar.CHART_START_HOUR).toInstant();
+        // 쿼리 1회(오름차순). 다가오는 섭취일의 이력 구간은 오늘 이력 구간의 시작 이후라 같은 결과로 판단한다.
+        List<Instant> timestamps = caffeineService.dosesSince(userId, todayStart.minus(RECORD_REMINDER_HISTORY))
+                .stream().map(Dose::timestamp).toList();
+        List<NotificationItem> items = new ArrayList<>();
+        recordReminderItem(todayStart, timestamps, now, zone).ifPresent(items::add);
+        if (upcomingStart.isAfter(now)) {
+            recordReminderItem(upcomingStart, timestamps, now, zone).ifPresent(items::add);
+        }
+        return items;
+    }
+
+    /** dayStart 에 시작하는 섭취일 하나의 리마인더. timestamps 는 오름차순. */
+    private static Optional<NotificationItem> recordReminderItem(
+            Instant dayStart, List<Instant> timestamps, Instant now, ZoneId zone) {
+        Instant dayEnd = dayStart.plus(Duration.ofHours(LocalCalendar.CHART_FORWARD_HOURS));
+        Instant historyStart = dayStart.minus(RECORD_REMINDER_HISTORY);
+        // 경계 중복을 피하려고 [historyStart, dayStart) 를 이력, dayStart 이후를 그날 기록으로 나눈다
         List<Instant> history = new ArrayList<>();
-        for (Dose dose : caffeineService.dosesSince(userId, chartStart.minus(RECORD_REMINDER_HISTORY))) {
-            if (!dose.timestamp().isBefore(chartStart)) {
-                return Optional.empty(); // 오늘 기록 있음
+        for (Instant ts : timestamps) {
+            if (ts.isBefore(historyStart)) {
+                continue;
             }
-            history.add(dose.timestamp());
+            if (!ts.isBefore(dayStart)) {
+                return Optional.empty(); // 그날 기록 있음
+            }
+            history.add(ts);
         }
         Optional<Duration> usualOffset = UsualFirstRecordTime.median(history, zone, RECORD_REMINDER_MIN_DAYS);
         if (usualOffset.isEmpty()) {
             return Optional.empty();
         }
-        Instant usual = chartStart.plus(usualOffset.get());
+        Instant usual = dayStart.plus(usualOffset.get());
         Instant fireAt = usual.plus(RECORD_REMINDER_DELAY);
-        if (!fireAt.isAfter(now) || !fireAt.isBefore(chartEnd)) {
+        if (!fireAt.isAfter(now) || !fireAt.isBefore(dayEnd)) {
             return Optional.empty();
         }
         String body = "평소 %s쯤 첫 잔을 기록했어요. 마셨다면 잊지 말고 기록해 주세요."

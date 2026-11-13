@@ -317,7 +317,7 @@ class NotificationControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void 새벽2시_계획은_전날_섭취일_기준_DAILY_LIMIT_구간은_당일05시까지_오늘기록있어_리마인더없음() throws Exception {
+    void 새벽2시_계획은_전날_섭취일_기준_DAILY_LIMIT_구간은_당일05시까지_리마인더는_다가오는_섭취일() throws Exception {
         String accessToken = authToken("n@b.com", "알림");
         enableCafeNearbyAndReminder(accessToken);
         addHistory(accessToken, FIVE_DAYS);
@@ -327,7 +327,11 @@ class NotificationControllerIT extends AbstractIntegrationTest {
         // now 06-02 02:00 KST: 오늘 = 06-01 섭취일. 취침 06-02 23:00 잔량 ≈ 11mg < 50 → 사유는 400mg 초과
         plan(accessToken, "2026-06-02T02:00:00+09:00")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items").isEmpty())   // 오늘(06-01 섭취일) 기록 있음 → 리마인더 없음
+                // 06-01 섭취일은 기록 있음 → 없음. 다가오는 06-02 섭취일(새벽 기록은 06-01 소속이라 기록 없음):
+                // 첫 기록 오프셋 4h×5일·5h(06-01 10:00) → 중앙값 4h → 09:00 + 2h = 06-02 11:00 KST
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].type").value("RECORD_REMINDER"))
+                .andExpect(jsonPath("$.data.items[0].fireAt").value("2026-06-02T02:00:00Z"))
                 .andExpect(jsonPath("$.data.cafeNearbyWindows.length()").value(2))
                 .andExpect(jsonPath("$.data.cafeNearbyWindows[0].reason").value("DAILY_LIMIT_EXCEEDED"))
                 .andExpect(jsonPath("$.data.cafeNearbyWindows[0].activeFrom").value("2026-06-01T17:00:00Z"))
@@ -339,21 +343,46 @@ class NotificationControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void 리마인더_0459는_전날_섭취일이라_시각지나_없고_0500부터_당일_예약() throws Exception {
+    void 리마인더_새벽계획에도_다가오는_섭취일_리마인더가_있고_0500계획과_같다() throws Exception {
         String accessToken = authToken("n@b.com", "알림");
         putSettings(accessToken, 75, false, false, true);
         addHistory(accessToken, FIVE_DAYS);
 
-        // 06-01 04:59: 오늘 = 05-31 섭취일(05-31 09:00 기록 있음) → 리마인더 없음
-        plan(accessToken, "2026-06-01T04:59:00+09:00")
+        // 02:00·04:59:59 의 오늘은 05-31 섭취일(09:00 기록 있음 → 그날 리마인더 없음). 다가오는 06-01 섭취일은 기록이 없어
+        // 평소 09:00 + 2h = 06-01 11:00 KST. 05:00 에 만든 계획과 같다.
+        for (String now : new String[] {"2026-06-01T02:00:00+09:00", "2026-06-01T04:59:59+09:00", "2026-06-01T05:00:00+09:00"}) {
+            plan(accessToken, now)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.items.length()").value(1))
+                    .andExpect(jsonPath("$.data.items[0].type").value("RECORD_REMINDER"))
+                    .andExpect(jsonPath("$.data.items[0].fireAt").value("2026-06-01T02:00:00Z"))
+                    .andExpect(jsonPath("$.data.items[0].title").value("오늘 카페인 기록이 없어요"))
+                    .andExpect(jsonPath("$.data.items[0].body", containsString("09:00")));
+        }
+    }
+
+    @Test
+    void 리마인더_새벽계획도_기록일수_5일미만이면_없다() throws Exception {
+        String accessToken = authToken("n@b.com", "알림");
+        putSettings(accessToken, 75, false, false, true);
+        addHistory(accessToken, FOUR_DAYS);
+
+        for (String now : new String[] {"2026-06-01T02:00:00+09:00", "2026-06-01T05:00:00+09:00"}) {
+            plan(accessToken, now)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.items").isEmpty());
+        }
+    }
+
+    @Test
+    void 리마인더_새벽계획도_토글off면_없다() throws Exception {
+        String accessToken = authToken("n@b.com", "알림");
+        putSettings(accessToken, 75, false, false, false);
+        addHistory(accessToken, FIVE_DAYS);
+
+        plan(accessToken, "2026-06-01T02:00:00+09:00")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items").isEmpty());
-        // 06-01 05:00: 오늘 = 06-01 섭취일, 기록 없음 → 평소 09:00 + 2h = 11:00 KST
-        plan(accessToken, "2026-06-01T05:00:00+09:00")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items.length()").value(1))
-                .andExpect(jsonPath("$.data.items[0].type").value("RECORD_REMINDER"))
-                .andExpect(jsonPath("$.data.items[0].fireAt").value("2026-06-01T02:00:00Z"));
     }
 
     @Test
