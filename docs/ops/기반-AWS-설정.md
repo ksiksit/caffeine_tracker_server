@@ -200,10 +200,24 @@ EC2의 `.env`의 `DB_PASSWORD`를 고치고 앱 재기동.
 **쓰지 않을 때.** 멈추면 데이터와 설정이 남는다. 디스크·고정 IP·엔드포인트 요금은 멈춘 동안에도 나간다.
 RDS는 멈춘 지 7일이 지나면 AWS가 자동으로 다시 켠다. 오래 안 쓸 거면 아래 "되돌리기"로 전부 지우고 필요할 때 다시 만든다.
 
+`infra/scripts/power.sh`가 순서와 경보를 함께 처리한다. 자원을 이름(EC2 태그 `caffeine-app`, RDS `caffeine-db`, 알람 `caffeine-*`)으로 찾으므로
+Terraform state가 없는 체크아웃에서도 된다.
+
 ```bash
-aws ec2 stop-instances --instance-ids "$(terraform -chdir=infra/terraform output -raw ec2_instance_id)"   # 다시: start-instances
-aws rds stop-db-instance --db-instance-identifier caffeine-db                                             # 다시: start-db-instance
+bash infra/scripts/power.sh status   # EC2·RDS 상태, 알람별 알림 켜짐 여부
+bash infra/scripts/power.sh down     # 경보 알림 멈춤 → EC2 정지(기다림) → RDS 정지 요청
+bash infra/scripts/power.sh up       # RDS 시작·available 대기 → EC2 시작 → 8080 응답 확인(최대 5분) → 경보 알림 켬
 ```
+
+| 순서·처리 | 이유 |
+|---|---|
+| `down`은 경보 알림부터 멈춘다 | 하트비트 알람은 데이터가 없으면 경보로 본다. 그냥 멈추면 15분쯤 뒤 메일·Slack이 온다 |
+| `up`은 RDS를 먼저 켠다 | EC2가 먼저 뜨면 앱이 DB에 붙지 못해 재시작을 되풀이한다 |
+| 앱은 따로 올리지 않는다 | 부팅 때 Docker가 켜지고 컨테이너가 `restart: unless-stopped`로 다시 뜬다. 8080이 HTTP로 답하면(401 포함) 떴다고 본다 |
+| 앱이 5분 안에 답하지 않으면 경보 알림을 멈춘 채로 끝낸다 | 운영 가이드대로 SSH로 `docker ps`·`docker logs caffeine-app`를 본 뒤 고치고 `up`을 다시 실행한다 |
+
+`up` 뒤 꺼 둔 동안 '경보' 상태였던 하트비트 알람이 정상으로 돌아오며 '해제' 메일이 한 통 올 수 있다.
+RDS가 7일 뒤 저절로 켜지면 `down`을 다시 실행한다.
 
 경보 비용(엔드포인트)만 끄려면 `terraform.tfvars`에 `alerting_enabled = false`를 넣고 apply한다. 경보 자원만 지워진다.
 
