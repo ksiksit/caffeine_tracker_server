@@ -102,13 +102,20 @@ fi
 
 step "8. Lambda alert-relay 단위 테스트"
 if command -v node >/dev/null 2>&1; then
-    node --test monitoring/lambda/alert-relay/relay.test.mjs > /tmp/check-lambda.$$ 2>&1 || {
+    # 요약 줄('# tests' 등)을 아래에서 찾으므로 출력 형식을 TAP 으로 고정한다.
+    # 기본 형식은 Node 버전마다 달라서(예: 'ℹ tests') 러너의 Node 가 바뀌면 요약을 못 찾는다
+    node --test --test-reporter=tap monitoring/lambda/alert-relay/relay.test.mjs > /tmp/check-lambda.$$ 2>&1 || {
         cat /tmp/check-lambda.$$ >&2
         rm -f /tmp/check-lambda.$$
         echo "FAIL: Lambda 단위 테스트 실패" >&2
         exit 1
     }
-    grep -E '^# (tests|pass|fail)' /tmp/check-lambda.$$
+    grep -E '^# (tests|pass|fail)' /tmp/check-lambda.$$ || {
+        cat /tmp/check-lambda.$$ >&2
+        rm -f /tmp/check-lambda.$$
+        echo "FAIL: Lambda 단위 테스트 출력에서 요약 줄('# tests' 등)을 찾지 못했다 (node $(node --version) 의 출력 형식 확인)" >&2
+        exit 1
+    }
     rm -f /tmp/check-lambda.$$
 else
     echo "node 가 없어 건너뛰었다 (CI 는 돌린다)"
