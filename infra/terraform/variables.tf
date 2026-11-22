@@ -1,4 +1,4 @@
-# 값은 terraform.tfvars 에 적는다(terraform.tfvars.example 참고). 비밀(DB 비밀번호·Slack 웹훅)은 변수로 받지 않고
+# 값은 terraform.tfvars 에 적는다(terraform.tfvars.example 참고). 비밀(DB 비밀번호·Discord 웹훅)은 변수로 받지 않고
 # SSM 파라미터 스토어에 직접 넣어 둔다 — state 와 tfvars 에 비밀이 남지 않는다.
 
 variable "region" {

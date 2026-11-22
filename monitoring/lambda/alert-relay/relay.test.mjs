@@ -1,15 +1,14 @@
 // relay.mjs 단위 테스트. 실행: node --test monitoring/lambda/alert-relay/relay.test.mjs (monitoring/check.sh·CI 도 돌린다)
 // AWS SDK·네트워크 없이 돈다. Alertmanager 문장은 템플릿의 기대 렌더링 결과(monitoring/alertmanager/testdata)를 그대로 입력으로 쓴다 —
-// 템플릿을 바꾸면 이 테스트가 Slack 으로 나가는 모양까지 함께 확인한다.
+// 템플릿을 바꾸면 이 테스트가 Discord 로 나가는 모양까지 함께 확인한다.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it, mock } from "node:test";
 import {
     classify,
     createHandler,
-    escapeSlack,
+    DISCORD_LIMIT,
     kst,
-    SLACK_LIMIT,
     TRUNCATED_SUFFIX,
     truncate,
     WEBHOOK_CACHE_MS,
@@ -17,10 +16,10 @@ import {
 
 const ALERTS = "arn:aws:sns:ap-northeast-2:123456789012:caffeine-alerts";
 const HEARTBEAT = "arn:aws:sns:ap-northeast-2:123456789012:caffeine-heartbeat";
-const WEBHOOK = "https://hooks.slack.com/services/T000/B000/secret-token";
+const WEBHOOK = "https://discord.com/api/webhooks/1000/secret-token";
 const ENV = {
     HEARTBEAT_TOPIC_ARN: HEARTBEAT,
-    SLACK_WEBHOOK_PARAM: "/caffeine/alert-relay/slack-webhook",
+    DISCORD_WEBHOOK_PARAM: "/caffeine/alert-relay/discord-webhook",
     METRIC_NAMESPACE: "Caffeine/Monitoring",
 };
 
@@ -68,7 +67,7 @@ function setup({ status = 200, parameter = WEBHOOK, body } = {}) {
 const sentBody = (deps, call = 0) => JSON.parse(deps.fetch.mock.calls[call].arguments[1].body);
 
 describe("하트비트", () => {
-    it("heartbeat 토픽이면 메트릭만 올리고 Slack 으로 보내지 않는다", async () => {
+    it("heartbeat 토픽이면 메트릭만 올리고 Discord 로 보내지 않는다", async () => {
         const { deps, handler } = setup();
         await handler(snsEvent(HEARTBEAT, "heartbeat", "heartbeat"));
         assert.equal(deps.putHeartbeat.mock.callCount(), 1);
@@ -86,49 +85,40 @@ describe("Alertmanager 경보", () => {
         assert.equal(deps.fetch.mock.callCount(), 1);
         assert.equal(deps.fetch.mock.calls[0].arguments[0], WEBHOOK);
         const body = sentBody(deps);
-        assert.deepEqual(Object.keys(body), ["text"]);
-        assert.equal(body.text, `*[CRITICAL] High5xxRate*\n${escapeSlack(message.trim())}`);
-        assert.match(body.text, /🔴 서버 오류\(5xx\) 급증/);
-        assert.match(body.text, /시작 11-09 14:03 KST/);
+        assert.deepEqual(Object.keys(body), ["content", "allowed_mentions"]);
+        assert.equal(body.content, `**[CRITICAL] High5xxRate**\n${message.trim()}`);
+        assert.match(body.content, /🔴 서버 오류\(5xx\) 급증/);
+        assert.match(body.content, /시작 11-09 14:03 KST/);
     });
 
     it("해결 알림도 같은 방식으로 보낸다", async () => {
         const { subject, message } = renderedAlert("resolved");
         const { deps, handler } = setup();
         await handler(snsEvent(ALERTS, message, subject));
-        assert.equal(sentBody(deps).text, `*[RESOLVED] High5xxRate*\n${escapeSlack(message.trim())}`);
+        assert.equal(sentBody(deps).content, `**[RESOLVED] High5xxRate**\n${message.trim()}`);
     });
 
     it("제목이 없어도 본문을 보낸다", () => {
         const action = classify({ Sns: { TopicArn: ALERTS, Message: "본문만" } }, HEARTBEAT);
-        assert.deepEqual(action, { kind: "slack", label: "alertmanager", text: "본문만" });
+        assert.deepEqual(action, { kind: "discord", label: "alertmanager", content: "본문만" });
     });
 });
 
-describe("Slack 제어 문자", () => {
-    it("멘션·링크 문법(<!channel>·<@U1>·<주소|글자>)을 글자 그대로 보이게 바꿔 아무도 호출하지 않는다", () => {
-        const action = classify(
-            { Sns: { TopicArn: ALERTS, Message: "<!channel> <@U123> <https://evil.example|여기> a&b", Subject: "[WARNING] <!here>" } },
-            HEARTBEAT,
-        );
-        assert.equal(
-            action.text,
-            "*[WARNING] &lt;!here&gt;*\n&lt;!channel&gt; &lt;@U123&gt; &lt;https://evil.example|여기&gt; a&amp;b",
-        );
-        assert.ok(!/<[!@]/.test(action.text));
+describe("멘션", () => {
+    it("allowed_mentions 를 비워 @everyone·@here·사용자·역할 멘션이 섞여도 아무도 호출하지 않는다", async () => {
+        const { deps, handler } = setup();
+        await handler(snsEvent(ALERTS, "@everyone @here <@123> <@&456> 확인", "[WARNING] @here"));
+        const body = sentBody(deps);
+        assert.deepEqual(body.allowed_mentions, { parse: [] });
+        assert.equal(body.content, "**[WARNING] @here**\n@everyone @here <@123> <@&456> 확인"); // 글자는 그대로 보인다
     });
 
-    it("CloudWatch 알람의 이름·설명·사유도 바꾼다", () => {
-        const action = classify(
-            { Sns: { TopicArn: ALERTS, Message: cloudWatchAlarm("ALARM", { AlarmDescription: "<!everyone> 확인", NewStateReason: "x > 1" }) } },
-            HEARTBEAT,
-        );
-        assert.match(action.text, /내용: &lt;!everyone&gt; 확인/);
-        assert.match(action.text, /사유: x &gt; 1/);
-    });
-
-    it("& 를 먼저 바꿔 두 번 바뀌지 않는다", () => {
-        assert.equal(escapeSlack("&lt; <"), "&amp;lt; &lt;");
+    it("CloudWatch 알람도 같다", async () => {
+        const { deps, handler } = setup();
+        await handler(snsEvent(ALERTS, cloudWatchAlarm("ALARM", { AlarmDescription: "@everyone 확인" })));
+        const body = sentBody(deps);
+        assert.deepEqual(body.allowed_mentions, { parse: [] });
+        assert.match(body.content, /내용: @everyone 확인/);
     });
 });
 
@@ -140,11 +130,11 @@ describe("CloudWatch 알람", () => {
     ]) {
         it(`${state}: 이름·상태·내용·사유·KST 시각으로 문장을 만든다`, () => {
             const action = classify({ Sns: { TopicArn: ALERTS, Message: cloudWatchAlarm(state), Subject: `${state}: "caffeine-ec2-status-check"` } }, HEARTBEAT);
-            assert.equal(action.kind, "slack");
+            assert.equal(action.kind, "discord");
             assert.equal(
-                action.text,
+                action.content,
                 [
-                    `${icon} *[CloudWatch] caffeine-ec2-status-check* · ${label}`,
+                    `${icon} **[CloudWatch] caffeine-ec2-status-check** · ${label}`,
                     "내용: 운영 EC2 상태 검사 실패 2분.",
                     "사유: Threshold Crossed: 2 datapoints were greater than or equal to the threshold (1.0).",
                     "시각: 11-09 14:03 KST",
@@ -155,28 +145,31 @@ describe("CloudWatch 알람", () => {
 
     it("AlarmName 이 없는 JSON 은 CloudWatch 알람으로 보지 않는다", () => {
         const action = classify({ Sns: { TopicArn: ALERTS, Message: '{"foo":1}', Subject: "x" } }, HEARTBEAT);
-        assert.equal(action.text, '*x*\n{"foo":1}');
+        assert.equal(action.content, '**x**\n{"foo":1}');
     });
 });
 
 describe("길이 제한", () => {
-    it("4000자를 넘으면 잘라서 끝에 안내를 붙인다 (한글·이모지를 반쪽으로 자르지 않는다)", () => {
-        const long = "🔴가".repeat(3000); // 6000 코드 포인트
+    it("2000자를 넘으면 잘라서 끝에 안내를 붙인다 (한글·이모지를 반쪽으로 자르지 않는다)", () => {
+        const long = "🔴가".repeat(1500); // 3000 코드 포인트
         const cut = truncate(long);
-        assert.equal(Array.from(cut).length, SLACK_LIMIT);
+        assert.equal(Array.from(cut).length, DISCORD_LIMIT);
         assert.ok(cut.endsWith(TRUNCATED_SUFFIX));
         assert.ok(!cut.includes("�"));
     });
 
-    it("4000자 이하는 그대로 둔다", () => {
-        const exact = "가".repeat(SLACK_LIMIT);
+    it("2000자 이하는 그대로 둔다", () => {
+        const exact = "가".repeat(DISCORD_LIMIT);
         assert.equal(truncate(exact), exact);
     });
 
-    it("긴 Alertmanager 메시지도 Slack 으로 갈 때 4000자 이하다 (바꾼 뒤의 길이로 자른다)", async () => {
+    it("긴 Alertmanager 메시지도 Discord 로 갈 때 2000자 이하다 (제목을 붙인 뒤의 길이로 자른다)", async () => {
         const { deps, handler } = setup();
-        await handler(snsEvent(ALERTS, "<>&".repeat(2000), "[WARNING] ErrorLogBurst")); // 바꾸면 길이가 늘어난다
-        assert.ok(Array.from(sentBody(deps).text).length <= SLACK_LIMIT);
+        await handler(snsEvent(ALERTS, "가".repeat(DISCORD_LIMIT), "[WARNING] ErrorLogBurst")); // 본문만으로 2000자
+        const { content } = sentBody(deps);
+        assert.equal(Array.from(content).length, DISCORD_LIMIT);
+        assert.ok(content.startsWith("**[WARNING] ErrorLogBurst**\n"));
+        assert.ok(content.endsWith(TRUNCATED_SUFFIX));
     });
 });
 
@@ -186,7 +179,7 @@ describe("웹훅 URL", () => {
         await handler(snsEvent(ALERTS, "a", "[WARNING] A"));
         await handler(snsEvent(ALERTS, "b", "[WARNING] B"));
         assert.equal(deps.getParameter.mock.callCount(), 1);
-        assert.deepEqual(deps.getParameter.mock.calls[0].arguments, ["/caffeine/alert-relay/slack-webhook"]);
+        assert.deepEqual(deps.getParameter.mock.calls[0].arguments, ["/caffeine/alert-relay/discord-webhook"]);
         assert.equal(deps.fetch.mock.callCount(), 2);
     });
 
@@ -197,11 +190,11 @@ describe("웹훅 URL", () => {
         await handler(snsEvent(ALERTS, "b", "[WARNING] B"));
         assert.equal(deps.getParameter.mock.callCount(), 1); // 5분 직전까지는 캐시
 
-        deps.getParameter.mock.mockImplementation(async () => "https://hooks.slack.com/services/T9/B9/new-token");
+        deps.getParameter.mock.mockImplementation(async () => "https://discord.com/api/webhooks/999/new-token");
         deps.clock.ms += 1;
         await handler(snsEvent(ALERTS, "c", "[WARNING] C"));
         assert.equal(deps.getParameter.mock.callCount(), 2);
-        assert.equal(deps.fetch.mock.calls[2].arguments[0], "https://hooks.slack.com/services/T9/B9/new-token");
+        assert.equal(deps.fetch.mock.calls[2].arguments[0], "https://discord.com/api/webhooks/999/new-token");
     });
 
     it("SSM 읽기가 실패하면 캐시하지 않고 다음 호출이 다시 읽는다", async () => {
@@ -217,13 +210,15 @@ describe("웹훅 URL", () => {
 
     for (const [name, value] of [
         ["다른 주소", "https://evil.example.com/collect?token=abc"],
-        ["Discord 웹훅", "https://discord.com/api/webhooks/1/abc"],
-        ["http", "http://hooks.slack.com/services/T/B/abc"],
+        ["Slack 웹훅", "https://hooks.slack.com/services/T/B/abc"],
+        ["옛 도메인", "https://discordapp.com/api/webhooks/1/abc"],
+        ["비슷한 호스트", "https://discord.com.evil.example/api/webhooks/1/abc"],
+        ["http", "http://discord.com/api/webhooks/1/abc"],
     ]) {
-        it(`Slack 수신 웹훅이 아니면(${name}) 보내지 않고, 오류에 값을 남기지 않는다`, async () => {
+        it(`Discord 웹훅이 아니면(${name}) 보내지 않고, 오류에 값을 남기지 않는다`, async () => {
             const { deps, handler } = setup({ parameter: value });
             await assert.rejects(handler(snsEvent(ALERTS, "a", "[WARNING] A")), (error) => {
-                assert.match(error.message, /Slack 수신 웹훅 URL 형식이 아니다/);
+                assert.match(error.message, /Discord 웹훅 URL 형식이 아니다/);
                 assert.ok(!error.message.includes("abc"));
                 return true;
             });
@@ -238,29 +233,45 @@ describe("웹훅 URL", () => {
     });
 });
 
-describe("Slack 실패", () => {
-    for (const status of [400, 403, 404, 410, 429, 500]) {
+describe("Discord 실패", () => {
+    for (const status of [400, 401, 403, 404, 429, 500]) {
         it(`응답 ${status} 이면 예외를 던져 SNS 가 다시 호출하게 한다 (오류에 URL 이 없다)`, async () => {
             const { handler } = setup({ status });
             await assert.rejects(handler(snsEvent(ALERTS, "a", "[CRITICAL] AppDown")), (error) => {
-                assert.equal(error.message, `Slack 응답 ${status}`);
+                assert.equal(error.message, `Discord 응답 ${status}`);
                 assert.ok(!error.message.includes("secret-token"));
                 return true;
             });
         });
     }
 
-    it("Slack 이 준 사유 이름을 오류에 붙인다", async () => {
-        const { handler } = setup({ status: 500, body: "messages_tab_disabled\n" });
+    it("Discord 가 준 오류 번호와 사유를 오류에 붙인다", async () => {
+        const { handler } = setup({ status: 404, body: '{"message": "Unknown Webhook", "code": 10015}' });
         await assert.rejects(handler(snsEvent(ALERTS, "a", "[CRITICAL] AppDown")), {
-            message: "Slack 응답 500 messages_tab_disabled",
+            message: "Discord 응답 404 10015 Unknown Webhook",
         });
     });
 
-    for (const body of ["", "<html>Internal Server Error</html>", `see ${WEBHOOK}`, "x".repeat(61)]) {
-        it(`사유 이름 꼴이 아닌 본문(${JSON.stringify(body.slice(0, 20))})은 남기지 않는다`, async () => {
+    it("사유가 없으면 오류 번호만, 번호가 없으면 사유만 붙인다", async () => {
+        const first = setup({ status: 400, body: '{"code": 50006}' });
+        await assert.rejects(first.handler(snsEvent(ALERTS, "a", "[CRITICAL] AppDown")), { message: "Discord 응답 400 50006" });
+        const second = setup({ status: 429, body: '{"message": "You are being rate limited.", "retry_after": 0.5, "global": false}' });
+        await assert.rejects(second.handler(snsEvent(ALERTS, "a", "[CRITICAL] AppDown")), {
+            message: "Discord 응답 429 You are being rate limited.",
+        });
+    });
+
+    for (const body of [
+        "",
+        "<html>Internal Server Error</html>",
+        "null",
+        JSON.stringify({ message: `see ${WEBHOOK}`, code: "10015" }),
+        JSON.stringify({ message: "x".repeat(81) }),
+        JSON.stringify({ message: { nested: "Unknown Webhook" } }),
+    ]) {
+        it(`사유 꼴이 아닌 본문(${JSON.stringify(body.slice(0, 20))})은 남기지 않는다`, async () => {
             const { handler } = setup({ status: 500, body });
-            await assert.rejects(handler(snsEvent(ALERTS, "a", "[CRITICAL] AppDown")), { message: "Slack 응답 500" });
+            await assert.rejects(handler(snsEvent(ALERTS, "a", "[CRITICAL] AppDown")), { message: "Discord 응답 500" });
         });
     }
 });
