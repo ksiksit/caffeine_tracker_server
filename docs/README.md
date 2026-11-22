@@ -11,7 +11,7 @@
 | [`db/db-schema.md`](db/db-schema.md) | 스키마 설명·변경 절차·변경 이력(ALTER) | 사람 |
 | [`ops/운영-가이드.md`](ops/운영-가이드.md) | 수동 배포 절차·준비 상태 체크리스트 | 사람 |
 | [`ops/기반-AWS-설정.md`](ops/기반-AWS-설정.md) | Terraform(`infra/terraform/`)으로 VPC·EC2·RDS를 만드는 절차, 나가는 인터넷 닫기·열기, state 파일, 되돌리기 | `monitoring/check.sh` (Terraform 서식·문법만) |
-| [`ops/경보-AWS-설정.md`](ops/경보-AWS-설정.md) | 경보용 AWS 자원(SNS·CloudWatch 알람·EC2 → SNS 경로·Slack 전달 Lambda)의 준비와 단계별 확인·문제 해결 | `monitoring/check.sh` (Terraform 서식·문법만) |
+| [`ops/경보-AWS-설정.md`](ops/경보-AWS-설정.md) | 경보용 AWS 자원(SNS·CloudWatch 알람·EC2 → SNS 경로·Discord 전달 Lambda)의 준비와 단계별 확인·문제 해결 | `monitoring/check.sh` (Terraform 서식·문법만) |
 
 무엇을 바꿀 때 어떤 문서를 같이 고치는지는 `CLAUDE.md`의 "바꾸면 같이 바꿀 것" 절에 있다.
 스택·환경변수·로컬 실행은 루트 [`README.md`](../README.md).
