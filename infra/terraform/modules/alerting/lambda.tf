@@ -1,12 +1,12 @@
-# Lambda caffeine-alert-relay: SNS → Slack, 하트비트 → CloudWatch 메트릭 (docs/alerting-plan.md §5.2·§6). VPC 밖에 둔다.
+# Lambda caffeine-alert-relay: SNS → Discord, 하트비트 → CloudWatch 메트릭 (docs/alerting-plan.md §5.2·§6). VPC 밖에 둔다.
 # 코드(monitoring/lambda/alert-relay)를 고친 뒤 terraform apply 하면 새 코드로 배포된다.
 #
-# Slack 수신 웹훅 URL 은 Terraform 이 다루지 않는다 — state 에 남기지 않으려고 SSM SecureString 에 직접 넣는다
-# (docs/ops/경보-AWS-설정.md). 파라미터가 없으면 Slack 전달만 실패하고(오류 알람 → 이메일) 하트비트는 정상이다.
+# Discord 웹훅 URL 은 Terraform 이 다루지 않는다 — state 에 남기지 않으려고 SSM SecureString 에 직접 넣는다
+# (docs/ops/경보-AWS-설정.md). 파라미터가 없으면 Discord 전달만 실패하고(오류 알람 → 이메일) 하트비트는 정상이다.
 
 locals {
   function_name     = "caffeine-alert-relay"
-  webhook_parameter = "/caffeine/alert-relay/slack-webhook"
+  webhook_parameter = "/caffeine/alert-relay/discord-webhook"
   metric_namespace  = "Caffeine/Monitoring"
 }
 
@@ -28,7 +28,7 @@ data "archive_file" "relay" {
 
 resource "aws_iam_role" "relay" {
   name        = "caffeine-alert-relay"
-  description = "caffeine alert-relay Lambda - Slack relay and heartbeat metric"
+  description = "caffeine alert-relay Lambda - Discord relay and heartbeat metric"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -62,7 +62,7 @@ resource "aws_iam_role_policy" "relay" {
         Condition = { StringEquals = { "cloudwatch:namespace" = local.metric_namespace } }
       },
       {
-        Sid      = "SlackWebhookParameterOnly"
+        Sid      = "DiscordWebhookParameterOnly"
         Effect   = "Allow"
         Action   = "ssm:GetParameter"
         Resource = "arn:aws:ssm:${var.region}:${local.account_id}:parameter${local.webhook_parameter}"
@@ -78,7 +78,7 @@ resource "aws_cloudwatch_log_group" "relay" {
 
 resource "aws_lambda_function" "relay" {
   function_name = local.function_name
-  description   = "caffeine alerts: SNS to Slack, heartbeat to CloudWatch (docs/alerting-plan.md)"
+  description   = "caffeine alerts: SNS to Discord, heartbeat to CloudWatch (docs/alerting-plan.md)"
   role          = aws_iam_role.relay.arn
 
   runtime       = "nodejs22.x"
@@ -92,9 +92,9 @@ resource "aws_lambda_function" "relay" {
 
   environment {
     variables = {
-      HEARTBEAT_TOPIC_ARN = aws_sns_topic.heartbeat.arn
-      SLACK_WEBHOOK_PARAM = local.webhook_parameter
-      METRIC_NAMESPACE    = local.metric_namespace
+      HEARTBEAT_TOPIC_ARN   = aws_sns_topic.heartbeat.arn
+      DISCORD_WEBHOOK_PARAM = local.webhook_parameter
+      METRIC_NAMESPACE      = local.metric_namespace
     }
   }
 
@@ -125,7 +125,7 @@ resource "aws_sns_topic_subscription" "relay" {
 
 resource "aws_cloudwatch_metric_alarm" "relay_errors" {
   alarm_name          = "caffeine-alert-relay-errors"
-  alarm_description   = "경보 전달 Lambda 오류. Slack 으로 경보가 가지 않을 수 있다(이메일은 영향 없음). 경보-AWS-설정.md 문제 해결"
+  alarm_description   = "경보 전달 Lambda 오류. Discord 로 경보가 가지 않을 수 있다(이메일은 영향 없음). 경보-AWS-설정.md 문제 해결"
   namespace           = "AWS/Lambda"
   metric_name         = "Errors"
   dimensions          = { FunctionName = aws_lambda_function.relay.function_name }

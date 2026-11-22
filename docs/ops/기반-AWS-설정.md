@@ -29,7 +29,7 @@ EC2 ──✗──▶ 인터넷   (보안 그룹에 나가는 규칙이 없다)
 | **고정 IP** | EC2를 껐다 켜도 앱이 접속하는 주소가 바뀌지 않는다 |
 | Docker는 **첫 부팅 때** 설치 | 그때만 나가는 길을 연다(`ec2_egress_open=true`). 설치를 확인한 뒤 닫는다 |
 | MySQL **8.4** | RDS의 MySQL 8.0은 2026-07-31에 표준 지원이 끝나, 새로 만들면 연장 지원 요금(vCPU 시간당 과금)이 붙는다. 8.4는 2029-07-31까지 표준 지원이다. 연장 지원 대상 버전이면 생성이 실패하게 해 두었다 |
-| 비밀은 **SSM 파라미터 스토어**에 직접 | DB 비밀번호와 Slack 웹훅은 Terraform 변수로 받지 않는다. Terraform은 DB 비밀번호를 읽어 RDS로 보내기만 하고(쓰기 전용 인자) state에 남기지 않는다 |
+| 비밀은 **SSM 파라미터 스토어**에 직접 | DB 비밀번호와 Discord 웹훅은 Terraform 변수로 받지 않는다. Terraform은 DB 비밀번호를 읽어 RDS로 보내기만 하고(쓰기 전용 인자) state에 남기지 않는다 |
 | state는 **PC의 파일** | 운영자가 한 명이다. `infra/terraform/terraform.tfstate`, 레포에 올리지 않는다(아래 "state 파일") |
 
 ## 준비
@@ -64,7 +64,7 @@ cat ~/.ssh/caffeine-key.pub               # ssh_public_key 에 이 한 줄
 | `heartbeat_alarm_enabled` · `ec2_auto_recover` | `경보-AWS-설정.md` | `false` |
 | `db_password_version` · `db_final_snapshot` | 아래 "운영 중에"·"되돌리기" | `1` · `false` |
 
-경보를 Slack으로도 받으려면 apply 전에 웹훅을 SSM에 넣어 둔다(`경보-AWS-설정.md` "준비"). 나중에 넣어도 된다 — 그동안은 이메일만 온다.
+경보를 Discord로도 받으려면 apply 전에 웹훅을 SSM에 넣어 둔다(`경보-AWS-설정.md` "준비"). 나중에 넣어도 된다 — 그동안은 이메일만 온다.
 
 ## 생기는 것
 
@@ -83,7 +83,7 @@ cat ~/.ssh/caffeine-key.pub               # ssh_public_key 에 이 한 줄
 | RDS 서브넷 그룹·인스턴스 `caffeine-db` | MySQL 8.4, 20GB(gp3, 암호화), 비공개, 단일 영역(EC2와 같은 영역), 백업 1일, 초기 DB `caffeine_tracker`, 사용자 `caffeine` |
 | 경보용 자원 | `alerting_enabled`일 때. 목록은 `경보-AWS-설정.md` "생기는 것" |
 
-Terraform 밖에서 직접 만드는 것: SSM 파라미터 `/caffeine/db-password`, `/caffeine/alert-relay/slack-webhook`. `destroy`해도 남는다.
+Terraform 밖에서 직접 만드는 것: SSM 파라미터 `/caffeine/db-password`, `/caffeine/alert-relay/discord-webhook`. `destroy`해도 남는다.
 
 **비용.** 켜 두는 동안 계속 나가는 것은 EC2, RDS, 공인 IPv4 주소, 디스크, 경보의 SNS 엔드포인트다. 기본값으로 합쳐 월 50달러 안팎이다(추정 — 요금표로 확인).
 쓰지 않을 때 줄이는 방법은 아래 "쓰지 않을 때".
@@ -211,7 +211,7 @@ bash infra/scripts/power.sh up       # RDS 시작·available 대기 → EC2 시�
 
 | 순서·처리 | 이유 |
 |---|---|
-| `down`은 경보 알림부터 멈춘다 | 하트비트 알람은 데이터가 없으면 경보로 본다. 그냥 멈추면 15분쯤 뒤 메일·Slack이 온다 |
+| `down`은 경보 알림부터 멈춘다 | 하트비트 알람은 데이터가 없으면 경보로 본다. 그냥 멈추면 15분쯤 뒤 메일·Discord가 온다 |
 | `up`은 RDS를 먼저 켠다 | EC2가 먼저 뜨면 앱이 DB에 붙지 못해 재시작을 되풀이한다 |
 | 앱은 따로 올리지 않는다 | 부팅 때 Docker가 켜지고 컨테이너가 `restart: unless-stopped`로 다시 뜬다. 8080이 HTTP로 답하면(401 포함) 떴다고 본다 |
 | 앱이 5분 안에 답하지 않으면 경보 알림을 멈춘 채로 끝낸다 | 운영 가이드대로 SSH로 `docker ps`·`docker logs caffeine-app`를 본 뒤 고치고 `up`을 다시 실행한다 |
@@ -236,7 +236,7 @@ terraform -chdir=infra/terraform destroy
 
 # Terraform 밖에서 만든 것 — destroy 가 끝난 뒤에 지운다 (destroy 도 DB 비밀번호 파라미터를 읽는다)
 aws ssm delete-parameter --region ap-northeast-2 --name /caffeine/db-password
-aws ssm delete-parameter --region ap-northeast-2 --name /caffeine/alert-relay/slack-webhook   # 넣었을 때만
+aws ssm delete-parameter --region ap-northeast-2 --name /caffeine/alert-relay/discord-webhook   # 넣었을 때만
 ```
 
 다시 만들 때는 "준비" 2번(비밀번호)부터 한다. SSH 키와 `terraform.tfvars`는 그대로 쓴다.
@@ -253,7 +253,7 @@ aws ssm delete-parameter --region ap-northeast-2 --name /caffeine/alert-relay/sl
 - `ssh_cidr`만 바꿔 apply → "1 to change"(SSH 규칙만).
 - SSH 터널로 스키마 적용(RDS MySQL 8.4, 테이블 5개), 앱 기동(`ddl-auto: validate` 통과, 헬스 `UP`), 인터넷에서 8080으로 가입·로그인.
 - 경보 1~4단계 확인(`경보-AWS-설정.md`): 테스트 알람 메일, EC2 컨테이너 → SNS 엔드포인트 발행, Alertmanager의 `Watchdog`, 하트비트 메트릭 뒤
-  `heartbeat_alarm_enabled = true` apply → "1 to add", Slack 수신.
+  `heartbeat_alarm_enabled = true` apply → "1 to add", Slack 수신(당시의 전달 채널. 2026-11-22에 Discord로 바꿨다).
 
 **아직 실행하지 않은 것**: `destroy`, `alerting_enabled = false`, DB 비밀번호 교체(`db_password_version`), `-replace=aws_instance.app`, MySQL 8.0 거부 동작.
 

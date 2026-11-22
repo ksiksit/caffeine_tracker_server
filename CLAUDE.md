@@ -47,7 +47,7 @@ iOS 앱은 thin-client, 계산·저장은 서버가 한다. 사람용 온보딩(
   route·inhibit_rules는 같아야 한다(스크립트가 대조). 메시지 템플릿을 바꾸면 `monitoring/alertmanager/testdata/*.expected.txt`도 갱신.
 - AWS 자원(`infra/terraform/`, 경보는 `modules/alerting/`) → `docs/ops/기반-AWS-설정.md`·`docs/ops/경보-AWS-설정.md`의 "생기는 것" 표와 변수 표.
   실행은 PC에서 직접 한다(CI는 `fmt`·`validate`만 — plan·apply를 CI에 넣지 않는다). 테스트는 문법만 본다 — 동작은 실제 계정이나 moto로 확인.
-  비밀(DB 비밀번호·Slack 웹훅)은 변수·state에 넣지 않고 SSM 파라미터에 둔다. EC2에서 나가는 인터넷은 닫힌 상태가 기본(`ec2_egress_open` 기본값 false 유지).
+  비밀(DB 비밀번호·Discord 웹훅)은 변수·state에 넣지 않고 SSM 파라미터에 둔다. EC2에서 나가는 인터넷은 닫힌 상태가 기본(`ec2_egress_open` 기본값 false 유지).
 - 경보 Lambda(`monitoring/lambda/alert-relay/`) → `relay.test.mjs`(check.sh가 실행). 로직은 `relay.mjs`에 의존성 주입으로 두고
   `index.mjs`는 AWS 클라이언트 연결만. 외부 의존성 없이 유지(런타임 내장 SDK v3). 배포는 `terraform apply`(zip을 Terraform이 묶는다).
 - 새 엔드포인트 → `README.md` API 표에도 한 줄. **경로와 `features.md`의 기능 이름만** 적고 동작 세부는 옮기지 않는다.

@@ -3,6 +3,7 @@
 > 작성: 2026-11-09 · 상태: **구현·운영 반영 완료** (레포 작업 2026-11-09, 운영에서 Alertmanager를 켠 것은 2026-11-10).
 > AWS 1·2·4단계는 **Terraform으로 구현, 2026-11-10 실제 계정에 적용해 단계별 확인을 마쳤다** (`infra/terraform/modules/alerting/`, `ops/경보-AWS-설정.md`, 2026-11-09).
 > Lambda `caffeine-alert-relay`도 같은 날 배포해 Slack 수신과 하트비트 메트릭을 확인했다.
+> **2026-11-22: 메신저를 Slack에서 Discord로 바꿨다**(§10 미결 6). 레포(Lambda·Terraform·문서)는 Discord 기준이고, 운영 반영(SSM 파라미터 → `terraform apply` → 수신 확인)은 그 뒤에 한다.
 > 대상: `monitoring/` 경보 규칙·Alertmanager 추가 + AWS SNS·Lambda·CloudWatch 알람
 >
 > 구현된 부분의 원본은 `monitoring/`·`docker-compose.*.yml`·`ops/운영-가이드.md` "경보" 절이다. 이 문서의 예시와 다르면 그쪽이 맞다.
@@ -12,13 +13,13 @@
 
 ## 1. 목적과 전제
 
-지금은 장애를 **사람이 Grafana를 열어 봐야** 안다. `ops/운영-가이드.md`도 "EC2는 외부 인터넷이 없으므로 Alertmanager를 둬도
-메일·Slack 경보를 보낼 수 없다 — 지금은 대시보드를 보는 데까지다"라고 적고 있다. 이 설계는 장애가 나면 **운영자의 이메일과
-메신저(Slack)로 먼저 알려 주는 것**이 목표다.
+이 설계 전에는 장애를 **사람이 Grafana를 열어 봐야** 알았다. `ops/운영-가이드.md`도 "EC2는 외부 인터넷이 없으므로 Alertmanager를 둬도
+메일·메신저 경보를 보낼 수 없다 — 지금은 대시보드를 보는 데까지다"라는 뜻으로 적고 있었다. 이 설계는 장애가 나면 **운영자의 이메일과
+메신저(Discord)로 먼저 알려 주는 것**이 목표다.
 
 ### 1.1 전제: 외부 인터넷 차단은 유지한다
 
-EC2의 외부 인터넷 차단을 풀지 않는다(2026-11-09 결정). NAT를 붙이면 Alertmanager가 Slack으로 직접 보낼 수 있지만,
+EC2의 외부 인터넷 차단을 풀지 않는다(2026-11-09 결정). NAT를 붙이면 Alertmanager가 Discord로 직접 보낼 수 있지만,
 서버가 침해됐을 때 데이터 유출·원격 조종 경로를 막는 이점을 포기하게 된다. 그래서 **AWS SNS까지만 VPC 엔드포인트로 열고,
 인터넷으로 나가는 일은 VPC 밖 Lambda에 맡긴다.** `push-bridge-plan.md`와 같은 방식이다.
 
@@ -53,7 +54,7 @@ flowchart LR
     TH[SNS 토픽<br/>caffeine-heartbeat]
     MAIL[운영자 이메일]
     L["Lambda: alert-relay<br/>(VPC 밖)"]
-    DC[Slack 웹훅]
+    DC[Discord 웹훅]
     CW["CloudWatch<br/>Heartbeat 메트릭·알람"]
     CWA["CloudWatch 알람<br/>EC2 상태 검사·RDS"]
 
@@ -75,7 +76,7 @@ flowchart LR
 
 1. Prometheus가 15초마다 앱 메트릭을 수집하고, `alerts.yml` 규칙을 평가해 조건을 만족하면 Alertmanager로 넘긴다.
 2. Alertmanager가 같은 경보를 묶고, 원인 경보가 있으면 결과 경보를 억제한 뒤, SNS 엔드포인트를 거쳐 `caffeine-alerts`에 발행한다.
-3. SNS가 이메일 구독자에게 바로 보내고, 같은 메시지로 Lambda `alert-relay`도 호출한다. Lambda는 Slack 웹훅으로 전달한다.
+3. SNS가 이메일 구독자에게 바로 보내고, 같은 메시지로 Lambda `alert-relay`도 호출한다. Lambda는 Discord 웹훅으로 전달한다.
 4. 늘 켜져 있는 `Watchdog` 경보가 5분마다 `caffeine-heartbeat`로 발행된다. Lambda가 이 신호를 받을 때마다 CloudWatch 메트릭을 1 올린다.
 5. 하트비트가 15분 동안 오지 않거나 EC2·RDS 알람이 울리면, CloudWatch가 `caffeine-alerts`로 직접 발행한다. 이 경로는 EC2와 무관하다.
 
@@ -85,9 +86,9 @@ flowchart LR
 |---|---|
 | 규칙은 **Prometheus 규칙 파일 + Alertmanager** | 규칙이 레포의 YAML로 남고 `promtool test rules`로 **단위 테스트**할 수 있다. 화면에서 고친 내용이 저장되지 않는 Grafana 대시보드와 같은 원칙이다 |
 | 출구는 **SNS 하나** | Alertmanager가 `sns_configs`를 기본 지원하고, CloudWatch 알람도 SNS로 보낸다. 서버 안쪽 경보와 바깥쪽 경보가 같은 토픽·같은 채널로 모인다 |
-| **이메일은 SNS 직접 구독** | Lambda·Slack이 고장 나도 이메일은 온다. 채널 하나는 우리 코드에 의존하지 않게 둔다 |
-| Lambda는 **VPC 밖** | VPC 안에 두면 Slack으로 나가는 데 NAT가 필요하다. DB 접근도 필요 없다 |
-| Lambda는 **전달만** | 문구는 Alertmanager 템플릿(레포)에서 만든다. 이메일과 Slack이 같은 문장을 받고, Lambda는 형식 변환과 길이 제한만 맡는다 |
+| **이메일은 SNS 직접 구독** | Lambda·Discord가 고장 나도 이메일은 온다. 채널 하나는 우리 코드에 의존하지 않게 둔다 |
+| Lambda는 **VPC 밖** | VPC 안에 두면 Discord로 나가는 데 NAT가 필요하다. DB 접근도 필요 없다 |
+| Lambda는 **전달만** | 문구는 Alertmanager 템플릿(레포)에서 만든다. 이메일과 Discord가 같은 문장을 받고, Lambda는 형식 변환과 길이 제한만 맡는다 |
 | 인증은 **EC2 인스턴스 역할** | 키를 `.env`나 레포에 두지 않는다. Alertmanager의 SigV4가 AWS 기본 자격 증명 체인으로 인스턴스 역할을 읽는다 |
 | 토픽은 **둘** (`alerts`·`heartbeat`) | 하트비트가 이메일로 가지 않게 하는 가장 단순한 방법이다. 구독 필터 정책보다 IAM과 동작이 명확하다 |
 | Lambda는 **하나**(`alert-relay`) | 두 토픽을 같은 함수가 구독하고 `TopicArn`으로 분기한다. 수동 배포 단위가 하나로 준다 |
@@ -102,7 +103,7 @@ flowchart LR
 | C. CloudWatch 에이전트만 사용 | EC2에 에이전트를 깔아 앱 메트릭을 CloudWatch로 보내고 거기서 알람 | 제외. `monitoring`·`logs` 엔드포인트가 더 필요하고, 규칙이 콘솔에 있어 레포로 관리되지 않는다. EC2·RDS 수준 알람에만 CloudWatch를 쓴다 |
 | D. 외부 업타임 서비스(Route 53 헬스체크 등) | 바깥에서 공개 주소로 주기적으로 접속 | **HTTPS 적용 후 추가.** "사용자 입장에서 접속되는가"를 보는 유일한 방법이지만 지금은 공개 HTTPS 주소가 없다 |
 | E. SQS 엔드포인트 공유 | 푸시 브리지의 SQS 엔드포인트로 경보도 보냄 | 제외. Alertmanager는 SQS를 지원하지 않아 변환기 컨테이너를 따로 만들어야 한다. 비용 통합은 §10 미결 5 |
-| F. NAT 추가 | Alertmanager → Slack 직접 | 제외. §1.1 결정 |
+| F. NAT 추가 | Alertmanager → Discord 직접 | 제외. §1.1 결정 |
 
 ---
 
@@ -245,7 +246,7 @@ Terraform(`infra/terraform/modules/alerting/alarms.tf`·`lambda.tf`)으로 만�
 | `rds-free-storage` | `FreeStorageSpace` < 2 GiB, 5분 주기 3회 | `caffeine-alerts` |
 | `rds-cpu` | `CPUUtilization` > 80%, 5분 주기 3회 | `caffeine-alerts` |
 | `ec2-cpu-credit` (버스트형 인스턴스일 때만) | `CPUCreditBalance` < 20 | `caffeine-alerts` |
-| `caffeine-alert-relay-errors` | Lambda `Errors` ≥ 1, 5분 | `caffeine-alerts`. Slack 전달이 깨진 것을 이메일로 알린다 |
+| `caffeine-alert-relay-errors` | Lambda `Errors` ≥ 1, 5분 | `caffeine-alerts`. Discord 전달이 깨진 것을 이메일로 알린다 |
 
 EC2 상태 검사 지표는 1분 단위로 무료 제공된다. 인스턴스 안에 아무것도 설치하지 않는다.
 
@@ -264,16 +265,16 @@ Prometheus·Alertmanager·SNS 엔드포인트·IAM·Lambda 중 **어느 하나�
 
 ## 6. Lambda `alert-relay`
 
-함수 이름은 `caffeine-alert-relay`다. 구현했고(2026-11-09) 배포는 `terraform apply`(`modules/alerting/lambda.tf`), 확인은 `ops/경보-AWS-설정.md` "4단계 확인"이다.
+함수 이름은 `caffeine-alert-relay`다. 구현했고(2026-11-09, 전송부는 2026-11-22에 Discord로 교체) 배포는 `terraform apply`(`modules/alerting/lambda.tf`), 확인은 `ops/경보-AWS-설정.md` "4단계 확인"이다.
 
 | 항목 | 값 |
 |---|---|
-| 런타임 | **nodejs22.x**, arm64, 128MB, **외부 의존성 없음**. 내장 `fetch`로 Slack을 호출하고, AWS SDK v3는 런타임에 포함돼 파일 두 개만 zip으로 올린다(`push-bridge-plan.md`와 같다) |
+| 런타임 | **nodejs22.x**, arm64, 128MB, **외부 의존성 없음**. 내장 `fetch`로 Discord를 호출하고, AWS SDK v3는 런타임에 포함돼 파일 두 개만 zip으로 올린다(`push-bridge-plan.md`와 같다) |
 | VPC | 없음 |
 | 제한 시간 | 10초 |
 | 트리거 | SNS 구독 2개 (`caffeine-alerts`, `caffeine-heartbeat`) |
 | 재시도 | SNS → Lambda 비동기 호출의 기본 재시도(2회). 실패가 계속되면 `caffeine-alert-relay-errors` 알람 |
-| 환경변수 | `HEARTBEAT_TOPIC_ARN`, `SLACK_WEBHOOK_PARAM`(SSM 파라미터 이름, `/caffeine/alert-relay/slack-webhook`), `METRIC_NAMESPACE` |
+| 환경변수 | `HEARTBEAT_TOPIC_ARN`, `DISCORD_WEBHOOK_PARAM`(SSM 파라미터 이름, `/caffeine/alert-relay/discord-webhook`), `METRIC_NAMESPACE` |
 | 코드 위치 | `monitoring/lambda/alert-relay/relay.mjs`(로직, 의존성 주입) · `index.mjs`(실제 AWS 클라이언트 연결) · `relay.test.mjs`(`node:test`, `check.sh`·CI) |
 
 ### 6.1 처리
@@ -283,17 +284,22 @@ Prometheus·Alertmanager·SNS 엔드포인트·IAM·Lambda 중 **어느 하나�
   TopicArn == HEARTBEAT_TOPIC_ARN  → PutMetricData(Heartbeat=1) 후 끝
   Message 가 JSON 이고 AlarmName 이 있음 → CloudWatch 알람 형식. 이름·새 상태·사유로 문장 구성
   그 외                              → Alertmanager가 만든 문장을 그대로 사용
-  Slack 수신 웹훅 POST { text }      ← & < > 를 바꾼 뒤 4000자를 넘으면 자르고 "…(이메일에서 전체 확인)"을 붙인다
-  2xx가 아니면 예외 → SNS가 재시도
+  Discord 웹훅 POST { content, allowed_mentions: { parse: [] } }
+                                     ← 2000자를 넘으면 자르고 "…(이메일에서 전체 확인)"을 붙인다
+  2xx가 아니면 예외(상태 번호 + Discord가 준 오류 번호·사유) → SNS가 재시도
 ```
 
 - 웹훅 URL은 아는 사람이 누구나 글을 쓸 수 있으므로 비밀로 다룬다. **SSM SecureString**에 두고 실행 환경에 5분 캐시한다.
-- 로그·오류 메시지에 웹훅 URL을 남기지 않는다. 값이 Slack 수신 웹훅 주소(`https://hooks.slack.com/services/…`)가 아니면 보내지 않는다.
-- 바깥에서 온 글자의 `&`·`<`·`>`를 `&amp;`·`&lt;`·`&gt;`로 바꾼다. Slack은 `<!channel>`·`<@U123>`·`<주소|글자>`처럼 꺾쇠로
-  멘션과 링크를 만들므로, 문구에 이런 글자가 섞여도 아무도 호출되지 않고 글자 그대로 보인다. 굵은 제목(`*…*`)만 Lambda가 붙인다.
+- 로그·오류 메시지에 웹훅 URL을 남기지 않는다. 값이 Discord 웹훅 주소(`https://discord.com/api/webhooks/…`)가 아니면 보내지 않는다.
+- 오류에는 상태 번호와 Discord가 본문 JSON으로 준 오류 번호·사유만 남긴다(예: `Discord 응답 404 10015 Unknown Webhook`).
+  사유가 짧은 영문 문장 꼴이 아니면 버린다 — 예상 밖의 긴 글이나 주소가 로그에 남지 않게.
+- `allowed_mentions`를 비워 보낸다. 문구에 `@everyone`·`@here`·`<@사용자>`·`<@&역할>`이 섞여도 아무도 호출되지 않고 글자 그대로 보인다.
+  글자를 바꾸지는 않는다. 굵은 제목(`**…**`)만 Lambda가 붙인다.
+- 길이 제한은 Discord `content`의 최대인 2,000자다(코드 포인트 기준으로 잘라 한글·이모지가 반쪽이 되지 않는다).
 - CloudWatch 알람 시각은 KST로 바꿔 쓴다. Alertmanager 문장은 템플릿이 이미 KST다.
-- 텔레그램 등 다른 메신저는 같은 함수에 전송부만 추가하면 된다. 첫 구현은 Slack 하나다(§10 미결 6). 처음에는 Discord로
-  만들었다가 Slack으로 바꿨다(2026-11-09) — 바뀐 곳은 주소 검사·요청 본문·길이 제한·제어 문자 처리뿐이었다.
+- 텔레그램 등 다른 메신저는 같은 함수에 전송부만 바꾸면 된다. 메신저는 한 번에 하나다(§10 미결 6). 처음에는 Discord로
+  만들었다가 Slack으로 바꿨고(2026-11-09), 다시 Discord로 돌아왔다(2026-11-22) — 두 번 모두 바뀐 곳은 주소 검사·요청 본문·길이 제한·
+  멘션(제어 문자) 처리·오류 사유 읽기뿐이었다.
 
 ---
 
@@ -343,7 +349,7 @@ docker exec caffeine-alertmanager amtool silence add 'alertname=~"AppDown|AppRes
 | EC2 전체 멈춤 | `ec2-status-check` (약 2분), `HeartbeatMissing` (15분) | EC2 안의 경보는 당연히 안 온다 |
 | Prometheus·Alertmanager 종료 | `HeartbeatMissing` | |
 | SNS 엔드포인트·IAM·IMDS 문제 | `HeartbeatMissing` | Alertmanager 로그에 SNS 발행 오류 |
-| Lambda·Slack 장애 | Slack은 안 오고 **이메일은 온다**: `caffeine-alert-relay-errors`, `caffeine-heartbeat-missing` | 이메일을 직접 구독으로 둔 이유 |
+| Lambda·Discord 장애 | Discord는 안 오고 **이메일은 온다**: `caffeine-alert-relay-errors`, `caffeine-heartbeat-missing` | 이메일을 직접 구독으로 둔 이유 |
 | 디스크 부족 | `DiskLow` warning → critical | 오래된 배포 tar를 지운다 |
 | 로그인 공격 | `SuspiciousLogin` | 서버의 시도 제한(429)은 이미 동작 중. 경보는 사람이 알게 하는 용도 |
 | 배포 | 사일런스로 없음 | 잊으면 경보 2건 후 해결 알림 |
@@ -358,11 +364,11 @@ docker exec caffeine-alertmanager amtool silence add 'alertname=~"AppDown|AppRes
 | 규칙 단위 | `promtool test rules`로 각 경보의 경계값을 테스트한다. 예: 5xx 비율 5% 초과지만 2건이면 미발생, 3건이면 발생. `for` 직전·직후 | Prometheus 이미지만. AWS 불필요 |
 | 설정 검사 | `promtool check rules`, `amtool check-config` | 같음 |
 | 로컬 통합 | `docker-compose.monitoring.yml`에 Alertmanager를 추가한다. 앱을 내리면 `AppDown`이, 5xx를 유발하면 `High5xxRate`가 Alertmanager UI에 뜨는지 본다 | Docker |
-| 경로 통합 | PC의 Alertmanager에서 **개발용 SNS 토픽**으로 발행 → 이메일·Slack 수신 확인. PC는 인터넷이 되므로 엔드포인트 없이 Lambda와 템플릿을 검증할 수 있다 | AWS 개발 토픽, 개발용 Slack 채널 |
-| Lambda 단위 | 세 가지 입력(하트비트·CloudWatch 알람 JSON·Alertmanager 문장), 제어 문자 바꾸기, 4000자 자르기, Slack 오류 시 예외 | Node.js만 |
-| 운영 종단 | EC2에서 하트비트가 CloudWatch에 쌓이는지 확인, `aws cloudwatch set-alarm-state`로 알람을 강제로 울려 이메일·Slack 수신 | 운영 계정 |
+| 경로 통합 | PC의 Alertmanager에서 **개발용 SNS 토픽**으로 발행 → 이메일·Discord 수신 확인. PC는 인터넷이 되므로 엔드포인트 없이 Lambda와 템플릿을 검증할 수 있다 | AWS 개발 토픽, 개발용 Discord 채널 |
+| Lambda 단위 | 세 가지 입력(하트비트·CloudWatch 알람 JSON·Alertmanager 문장), 멘션 차단(`allowed_mentions`), 2000자 자르기, 웹훅 주소 검사, Discord 오류 시 예외 | Node.js만 |
+| 운영 종단 | EC2에서 하트비트가 CloudWatch에 쌓이는지 확인, `aws cloudwatch set-alarm-state`로 알람을 강제로 울려 이메일·Discord 수신 | 운영 계정 |
 
-**수행 기록 (2026-11-09)**
+**수행 기록 (2026-11-09 — 메신저가 Slack이던 때의 기록이다. Discord 전환 뒤의 기록은 맨 아래)**
 
 - 규칙 단위·설정 검사: `monitoring/check.sh` 통과. CI `build-and-push` 잡이 빌드 전에 같은 스크립트를 돌린다(CD가 아니라 검사다).
   규칙 임계값·문구·라우팅·템플릿을 일부러 바꿔 보면 검사가 실패하는 것도 확인했다.
@@ -382,6 +388,9 @@ docker exec caffeine-alertmanager amtool silence add 'alertname=~"AppDown|AppRes
   SNS 엔드포인트 발행(메일 수신), Alertmanager의 `Watchdog`, CloudWatch `Heartbeat` 메트릭, `sns publish` 시험 메시지의 이메일·Slack 수신.
   Slack은 처음에 `messages_tab_disabled`(500)로 거부됐다 — 웹훅 목적지가 채널이 아니었다. Lambda가 상태 번호만 남겨 원인을 찾는 데 `curl`이 한 번 더 필요했고,
   그래서 Slack이 준 사유 이름을 오류에 함께 남기게 고쳤다. `AppDown`을 실제로 울려 보는 확인과 하트비트 끊김 확인은 하지 않았다.
+- Discord 전환(2026-11-22): `relay.test.mjs` 39개 통과 — 세 가지 입력, `allowed_mentions` 비움, 2000자 자르기, 웹훅 캐시·주소 검사(Slack 주소·
+  `discordapp.com`·비슷한 호스트·http 거부), Discord 오류 번호·사유 기록. `monitoring/check.sh`와 `terraform validate`도 통과했다.
+  운영 계정의 Discord 수신(시험 메시지, `AppDown`과 해결 알림, `HeartbeatMissing`)은 아직 확인하지 않았다.
 
 ---
 
@@ -400,7 +409,8 @@ docker exec caffeine-alertmanager amtool silence add 'alertname=~"AppDown|AppRes
    확인한 뒤, 다르면 node-exporter 추가(컨테이너 하나 더, 이미지 `docker load`).
 5. **푸시 브리지와 엔드포인트 비용**: 둘 다 만들면 SQS·SNS 엔드포인트 두 개다. 푸시 발행을 SNS → SQS 팬아웃으로 바꾸면 SNS 엔드포인트
    하나로 합칠 수 있다. 푸시 브리지 착수 때 판단한다.
-6. ~~메신저~~ → **Slack으로 결정**(2026-11-09, 처음 정한 Discord에서 변경).
+6. ~~메신저~~ → Slack으로 결정(2026-11-09, 처음 정한 Discord에서 변경) → **2026-11-22 Discord로 재결정.** 운영자 혼자 보는 채널을 Discord로
+   받으려는 것이다. Lambda의 전송 대상을 **대체**하고 두 곳에 함께 보내지 않는다. 이메일 직접 구독·경보 규칙·Alertmanager·SNS·네트워크는 그대로다.
 7. ~~promtool을 CI에 넣을지~~ → **넣었다**(2026-11-09). 규칙 문법 오류가 운영 Prometheus 기동 실패로 이어지기 때문이다.
 
 **비용(추정, 착수 전 현재 요금표로 확인).** SNS 인터페이스 엔드포인트가 대부분이며 AZ 하나에 월 약 7~10달러다. SNS 이메일·Lambda·
@@ -416,7 +426,7 @@ CloudWatch 알람 10개 이내·`PutMetricData`는 이 규모면 프리 티어 �
 | 1 | SNS 토픽 두 개 + 이메일 구독 + §5.1 인프라 알람 (`modules/alerting/sns.tf`·`alarms.tf`) | `set-alarm-state`로 울린 테스트 알람이 이메일로 온다. **EC2 전체 장애를 먼저 잡는다**. 2026-11-10 확인 |
 | 2 | 엔드포인트 + EC2 역할 + 홉 제한 (`modules/alerting/endpoint.tf`, 역할·홉 제한은 `ec2.tf`) → EC2에서 수동 발행 | EC2의 컨테이너(aws-cli 이미지를 `docker load`)에서 `sns publish`한 메시지가 이메일로 온다. **가장 위험한 네트워크·권한 경로를 Alertmanager를 켜기 전에 검증한다**. 2026-11-10 확인 |
 | 3 | 경보 규칙 + promtool 테스트 + Alertmanager (로컬 → 운영) | 로컬에서 §9 규칙·통합 검증 통과, 운영에서 앱을 잠깐 내리면 `AppDown`과 해결 알림이 이메일로 온다. **레포 작업은 2026-11-09 구현, 운영에서는 2026-11-10 Alertmanager를 켜고 `Watchdog` 전달을 확인했다**(앱을 내려 `AppDown`을 울려 보는 확인은 하지 않았다) |
-| 4 | Lambda `caffeine-alert-relay` + Slack + 하트비트 알람 + Lambda 오류 알람 (`modules/alerting/lambda.tf`) | Slack 수신, Alertmanager를 15분 내리면 `HeartbeatMissing`이 온다. 2026-11-10 Slack 수신·하트비트 알람 생성 확인(Alertmanager를 15분 내려 보는 확인은 하지 않았다) |
+| 4 | Lambda `caffeine-alert-relay` + Discord + 하트비트 알람 + Lambda 오류 알람 (`modules/alerting/lambda.tf`) | Discord 수신, Alertmanager를 15분 내리면 `HeartbeatMissing`이 온다. 2026-11-10 당시 채널이던 Slack으로 수신·하트비트 알람 생성 확인(Alertmanager를 15분 내려 보는 확인은 하지 않았다). Discord 수신 확인은 2026-11-22 전환을 운영에 반영한 뒤에 한다 |
 | 5 | 문서 동기화 (§12) | 운영 가이드에 절차·사일런스·알람 설정값 기록 |
 
 ---
@@ -428,7 +438,7 @@ CloudWatch 알람 10개 이내·`PutMetricData`는 이 규모면 프리 티어 �
 | `ops/운영-가이드.md` | "경보" 절: 규칙 보는 법, Alertmanager 켜기, `.env`의 ARN 변수 3개, 배포 사일런스, 로컬 확인 | 2026-11-09 반영 |
 | `ops/경보-AWS-설정.md` | 생기는 것, 단계별 확인·문제 해결, 끄기 (자원 생성은 Terraform — `ops/기반-AWS-설정.md`) | 2026-11-09 반영 |
 | `ops/운영-가이드.md` | 하트비트 알람이 울렸을 때 점검 순서(§8) | 2026-11-09 반영 |
-| `ops/경보-AWS-설정.md` | 4단계(Slack 웹훅·SSM·확인·문제 해결) | 2026-11-09 반영 |
+| `ops/경보-AWS-설정.md` | 4단계(Discord 웹훅·SSM·확인·문제 해결) | 2026-11-09 반영(Slack 기준), 2026-11-22 Discord 기준으로 갱신 |
 | `CLAUDE.md` "바꾸면 같이 바꿀 것" | 메트릭 이름을 바꾸면 경보 규칙도 같이 바꾼다(`AlertRuleMetricsIT`가 대조), 경보 설정을 바꾸면 테스트·`check.sh` | 2026-11-09 반영 |
 | `docker-compose.prod.yml`, `docker-compose.monitoring.yml` | Alertmanager 서비스(운영은 `alerting` 프로필). 이미지 태그는 두 파일과 `check.sh`가 같게 | 2026-11-09 반영 |
 | `monitoring/prometheus/prometheus.yml` | `rule_files`, `alerting.alertmanagers` | 2026-11-09 반영 |

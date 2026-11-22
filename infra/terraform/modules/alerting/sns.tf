@@ -52,7 +52,7 @@ resource "aws_sns_topic_policy" "alerts" {
   })
 }
 
-# 이메일은 SNS 가 직접 보낸다 — Lambda·Slack 이 고장 나도 온다. 메일의 Confirm subscription 을 눌러야 받기 시작한다
+# 이메일은 SNS 가 직접 보낸다 — Lambda·Discord 가 고장 나도 온다. 메일의 Confirm subscription 을 눌러야 받기 시작한다
 resource "aws_sns_topic_subscription" "email" {
   topic_arn = aws_sns_topic.alerts.arn
   protocol  = "email"
