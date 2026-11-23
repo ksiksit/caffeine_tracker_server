@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# 운영 EC2·RDS 를 쓰지 않을 때 멈추고, 필요할 때 다시 켠다. 절차·비용은 docs/ops/기반-AWS-설정.md "쓰지 않을 때".
+# 운영 EC2·RDS 를 쓰지 않을 때 멈추고, 필요할 때 다시 켠다. 절차·비용은 docs/ops/운영-가이드.md "쓸 때만 켜기".
 #
-#   bash infra/scripts/power.sh status   # 지금 상태
+#   bash infra/scripts/power.sh status   # 지금 상태와 판정(켜짐·꺼짐·주의). 아무것도 바꾸지 않는다
 #   bash infra/scripts/power.sh down     # 경보 알림 멈춤 → EC2 정지 → RDS 정지
 #   bash infra/scripts/power.sh up       # RDS 시작·대기 → EC2 시작·대기 → 8080 응답 확인 → 경보 알림 켬
 #
@@ -26,6 +26,8 @@ ec2_state() { aws_ ec2 describe-instances --instance-ids "$1" --query 'Reservati
 ec2_ip()    { aws_ ec2 describe-instances --instance-ids "$1" --query 'Reservations[0].Instances[0].PublicIpAddress'; }
 db_state()  { aws_ rds describe-db-instances --db-instance-identifier "$DB_ID" --query 'DBInstances[0].DBInstanceStatus'; }
 alarms()    { aws_ cloudwatch describe-alarms --alarm-name-prefix "$ALARM_PREFIX" --query 'MetricAlarms[].AlarmName'; }
+# 멈춘 RDS 를 AWS 가 다시 켜는 시각(UTC). 멈춰 있지 않으면 None
+db_auto_restart() { aws_ rds describe-db-instances --db-instance-identifier "$DB_ID" --query 'DBInstances[0].AutomaticRestartTime'; }
 
 require_ec2() {
   local id
@@ -48,18 +50,57 @@ set_alarm_actions() { # enable | disable
   echo "- 경보 알림 $([ "$1" = enable ] && echo 켬 || echo 멈춤): $(echo $names | wc -w | tr -d ' ')개"
 }
 
+# EC2·RDS·알림이 서로 맞는지 본다. down 뒤 7일이 지나 RDS 만 다시 켜진 경우와,
+# terraform apply 가 멈춰 둔 알림을 다시 켠 경우(Terraform 은 actions_enabled 를 true 로 되돌린다)를 여기서 잡는다
+verdict() { # EC2상태 RDS상태 알람수 알림켜진수
+  local ec2="$1" db="$2" total="$3" on="$4" ok=1
+  case "$ec2" in
+    running)
+      if [ "$db" != "available" ]; then
+        echo "주의: EC2 는 켜져 있는데 RDS 가 '$db' 다. 앱이 DB 에 붙지 못한다 — up 을 실행한다"; ok=0
+      fi
+      if [ "$on" -lt "$total" ]; then
+        echo "주의: 켜져 있는데 알림이 멈춘 알람이 $((total - on))개다. 장애가 나도 알림이 오지 않는다 — up 을 실행한다(up 이 도는 중이면 끝날 때까지 기다린다)"; ok=0
+      fi
+      if [ "$ok" = 1 ]; then echo "판정: 켜짐 — EC2·RDS 가동, 경보 알림 $([ "$total" -gt 0 ] && echo 켜짐 || echo "없음(알람 0개)")"; fi ;;
+    stopped)
+      case "$db" in
+        stopped|stopping) ;;
+        available)
+          echo "주의: EC2 는 멈췄는데 RDS 가 켜져 있다(요금이 나간다). 멈춘 지 7일이 지나 AWS 가 다시 켠 것일 수 있다 — 계속 꺼 둘 거면 down 을 다시 실행한다"; ok=0 ;;
+        *)
+          echo "주의: EC2 는 멈췄는데 RDS 가 '$db' 다. up 이 도는 중이 아니면 잠시 뒤 다시 보고, available 이 되면 down 을 다시 실행한다"; ok=0 ;;
+      esac
+      if [ "$on" -gt 0 ]; then
+        echo "주의: 꺼 둔 상태인데 알림이 켜진 알람이 ${on}개다(terraform apply 를 하면 다시 켜진다) — down 을 다시 실행한다"; ok=0
+      fi
+      if [ "$ok" = 1 ]; then echo "판정: 꺼짐 — EC2·RDS 정지, 경보 알림 멈춤"; fi ;;
+    *) echo "판정: 전환 중 (EC2 '$ec2', RDS '$db') — 잠시 뒤 다시 본다" ;;
+  esac
+}
+
 cmd_status() {
-  local id
+  local id ec2 db restart rows total=0 on=0
   id="$(require_ec2)"
-  echo "EC2 $id: $(ec2_state "$id")"
-  echo "RDS $DB_ID: $(db_state)"
-  local names
-  names="$(alarms)"
-  if [ -n "$names" ] && [ "$names" != "None" ]; then
-    echo "경보 알람 (이름 / 알림 켜짐 / 상태):"
-    aws_ cloudwatch describe-alarms --alarm-name-prefix "$ALARM_PREFIX" \
-      --query 'MetricAlarms[].[AlarmName,ActionsEnabled,StateValue]' | sed 's/^/  /'
+  ec2="$(ec2_state "$id")"
+  db="$(db_state)"
+  echo "EC2 $id: $ec2"
+  echo "RDS $DB_ID: $db"
+  restart="$(db_auto_restart)"
+  if [ -n "$restart" ] && [ "$restart" != "None" ]; then
+    echo "  AWS 가 RDS 를 다시 켜는 시각: $restart (UTC) — 그 뒤에도 안 쓰면 down 을 다시 실행한다"
   fi
+  rows="$(aws_ cloudwatch describe-alarms --alarm-name-prefix "$ALARM_PREFIX" \
+    --query 'MetricAlarms[].[AlarmName,ActionsEnabled,StateValue]')"
+  if [ -n "$rows" ] && [ "$rows" != "None" ]; then
+    echo "경보 알람 (이름 / 알림 켜짐 / 상태):"
+    printf '%s\n' "$rows" | sed 's/^/  /'
+    total="$(printf '%s\n' "$rows" | awk 'NF { n++ } END { print n + 0 }')"
+    on="$(printf '%s\n' "$rows" | awk '$2 == "True" { n++ } END { print n + 0 }')"
+  else
+    echo "경보 알람 없음 (alerting_enabled=false)"
+  fi
+  verdict "$ec2" "$db" "$total" "$on"
 }
 
 cmd_down() {
@@ -88,6 +129,7 @@ cmd_down() {
   esac
 
   echo "완료. RDS 는 멈춘 지 7일이 지나면 AWS 가 자동으로 다시 켠다 — 그 뒤에도 안 쓰면 down 을 다시 실행한다."
+  echo "몇 분 뒤 status 로 '판정: 꺼짐' 과 다시 켜지는 시각을 확인한다."
 }
 
 cmd_up() {
@@ -134,6 +176,7 @@ cmd_up() {
 
   set_alarm_actions enable
   echo "완료. 꺼 둔 동안 '경보' 상태였던 하트비트 알람이 정상으로 돌아오며 '해제' 메일이 한 통 올 수 있다."
+  echo "15분쯤 뒤 status 로 caffeine-heartbeat-missing 이 OK 인지 확인한다 — 알림은 상태가 바뀔 때만 가므로 ALARM 인 채로 남으면 아무것도 오지 않는다."
 }
 
 case "${1:-}" in
