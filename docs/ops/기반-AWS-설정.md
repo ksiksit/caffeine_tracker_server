@@ -3,7 +3,7 @@
 > 대상: 앱이 올라갈 EC2와 DB(RDS), 그 둘을 담는 네트워크. AWS 계정에 아무것도 없는 상태에서 시작한다.
 > 같은 Terraform이 경보용 자원(SNS·엔드포인트·Lambda·알람)도 함께 만든다 — 그쪽의 준비·확인은 `경보-AWS-설정.md`.
 > 순서: **이 문서** → 앱 배포(`운영-가이드.md`) → 경보 확인(`경보-AWS-설정.md`).
-> 마지막 갱신: 2026-11-09
+> 마지막 갱신: 2026-11-23
 
 원본은 `infra/terraform/`이다. **PC에서** 관리자 권한 자격 증명으로 실행한다. Terraform이 하는 일은 AWS 자원을 만들고 지우는 것까지다.
 스키마 적용, `.env`, 이미지 옮기기, 앱 배포는 그대로 직접 한다(CD가 아니다).
@@ -86,7 +86,7 @@ cat ~/.ssh/caffeine-key.pub               # ssh_public_key 에 이 한 줄
 Terraform 밖에서 직접 만드는 것: SSM 파라미터 `/caffeine/db-password`, `/caffeine/alert-relay/discord-webhook`. `destroy`해도 남는다.
 
 **비용.** 켜 두는 동안 계속 나가는 것은 EC2, RDS, 공인 IPv4 주소, 디스크, 경보의 SNS 엔드포인트다. 기본값으로 합쳐 월 50달러 안팎이다(추정 — 요금표로 확인).
-쓰지 않을 때 줄이는 방법은 아래 "쓰지 않을 때".
+쓰지 않을 때 줄이는 방법은 `운영-가이드.md` "쓸 때만 켜기 (EC2·RDS)".
 
 ## 실행
 
@@ -197,27 +197,9 @@ terraform -chdir=infra/terraform apply                              # 닫는다
 **DB 비밀번호 바꾸기.** SSM 값을 `--overwrite`로 바꾸고 → `terraform.tfvars`에 `db_password_version = 2`(바꿀 때마다 1씩) → apply →
 EC2의 `.env`의 `DB_PASSWORD`를 고치고 앱 재기동.
 
-**쓰지 않을 때.** 멈추면 데이터와 설정이 남는다. 디스크·고정 IP·엔드포인트 요금은 멈춘 동안에도 나간다.
-RDS는 멈춘 지 7일이 지나면 AWS가 자동으로 다시 켠다. 오래 안 쓸 거면 아래 "되돌리기"로 전부 지우고 필요할 때 다시 만든다.
-
-`infra/scripts/power.sh`가 순서와 경보를 함께 처리한다. 자원을 이름(EC2 태그 `caffeine-app`, RDS `caffeine-db`, 알람 `caffeine-*`)으로 찾으므로
-Terraform state가 없는 체크아웃에서도 된다.
-
-```bash
-bash infra/scripts/power.sh status   # EC2·RDS 상태, 알람별 알림 켜짐 여부
-bash infra/scripts/power.sh down     # 경보 알림 멈춤 → EC2 정지(기다림) → RDS 정지 요청
-bash infra/scripts/power.sh up       # RDS 시작·available 대기 → EC2 시작 → 8080 응답 확인(최대 5분) → 경보 알림 켬
-```
-
-| 순서·처리 | 이유 |
-|---|---|
-| `down`은 경보 알림부터 멈춘다 | 하트비트 알람은 데이터가 없으면 경보로 본다. 그냥 멈추면 15분쯤 뒤 메일·Discord가 온다 |
-| `up`은 RDS를 먼저 켠다 | EC2가 먼저 뜨면 앱이 DB에 붙지 못해 재시작을 되풀이한다 |
-| 앱은 따로 올리지 않는다 | 부팅 때 Docker가 켜지고 컨테이너가 `restart: unless-stopped`로 다시 뜬다. 8080이 HTTP로 답하면(401 포함) 떴다고 본다 |
-| 앱이 5분 안에 답하지 않으면 경보 알림을 멈춘 채로 끝낸다 | 운영 가이드대로 SSH로 `docker ps`·`docker logs caffeine-app`를 본 뒤 고치고 `up`을 다시 실행한다 |
-
-`up` 뒤 꺼 둔 동안 '경보' 상태였던 하트비트 알람이 정상으로 돌아오며 '해제' 메일이 한 통 올 수 있다.
-RDS가 7일 뒤 저절로 켜지면 `down`을 다시 실행한다.
+**쓰지 않을 때.** `infra/scripts/power.sh`로 EC2·RDS를 멈추고 필요할 때 다시 켠다. 멈추면 데이터와 설정이 남는다.
+언제 켜고 끄는지, 켠 뒤·끄기 전 확인, 멈춘 동안의 비용, RDS가 7일 뒤 저절로 켜지는 문제, 멈춘 동안 `terraform apply`를 했을 때의 처리는
+`운영-가이드.md` "쓸 때만 켜기 (EC2·RDS)"에 있다. 오래 안 쓸 거면 아래 "되돌리기"로 전부 지우고 필요할 때 다시 만든다.
 
 경보 비용(엔드포인트)만 끄려면 `terraform.tfvars`에 `alerting_enabled = false`를 넣고 apply한다. 경보 자원만 지워진다.
 
