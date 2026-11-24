@@ -3,7 +3,8 @@
 > 작성: 2026-11-09 · 상태: **구현·운영 반영 완료** (레포 작업 2026-11-09, 운영에서 Alertmanager를 켠 것은 2026-11-10).
 > AWS 1·2·4단계는 **Terraform으로 구현, 2026-11-10 실제 계정에 적용해 단계별 확인을 마쳤다** (`infra/terraform/modules/alerting/`, `ops/경보-AWS-설정.md`, 2026-11-09).
 > Lambda `caffeine-alert-relay`도 같은 날 배포해 Slack 수신과 하트비트 메트릭을 확인했다.
-> **2026-11-22: 메신저를 Slack에서 Discord로 바꿨다**(§10 미결 6). 레포(Lambda·Terraform·문서)는 Discord 기준이고, 운영 반영(SSM 파라미터 → `terraform apply` → 수신 확인)은 그 뒤에 한다.
+> **2026-11-22: 메신저를 Slack에서 Discord로 바꿨다**(§10 미결 6). 레포(Lambda·Terraform·문서)는 Discord 기준이고, 운영 반영(SSM 파라미터 → `terraform apply` → 수신 확인)은 2026-11-23에 했다.
+> **2026-11-23~24: `AppDown`과 `HeartbeatMissing`을 운영에서 실제로 울려 Discord·이메일로 받았다**(§9 "경보 실습"). 하트비트 알람은 약 22분 뒤에 울렸다(§5.2).
 > 대상: `monitoring/` 경보 규칙·Alertmanager 추가 + AWS SNS·Lambda·CloudWatch 알람
 >
 > 구현된 부분의 원본은 `monitoring/`·`docker-compose.*.yml`·`ops/운영-가이드.md` "경보" 절이다. 이 문서의 예시와 다르면 그쪽이 맞다.
@@ -78,7 +79,7 @@ flowchart LR
 2. Alertmanager가 같은 경보를 묶고, 원인 경보가 있으면 결과 경보를 억제한 뒤, SNS 엔드포인트를 거쳐 `caffeine-alerts`에 발행한다.
 3. SNS가 이메일 구독자에게 바로 보내고, 같은 메시지로 Lambda `alert-relay`도 호출한다. Lambda는 Discord 웹훅으로 전달한다.
 4. 늘 켜져 있는 `Watchdog` 경보가 5분마다 `caffeine-heartbeat`로 발행된다. Lambda가 이 신호를 받을 때마다 CloudWatch 메트릭을 1 올린다.
-5. 하트비트가 15분 동안 오지 않거나 EC2·RDS 알람이 울리면, CloudWatch가 `caffeine-alerts`로 직접 발행한다. 이 경로는 EC2와 무관하다.
+5. 하트비트가 끊기거나(알람 설정은 15분, 실제로 울리기까지는 20~30분 — §5.2) EC2·RDS 알람이 울리면, CloudWatch가 `caffeine-alerts`로 직접 발행한다. 이 경로는 EC2와 무관하다.
 
 ### 2.2 설계 결정
 
@@ -258,8 +259,18 @@ EC2 상태 검사 지표는 1분 단위로 무료 제공된다. 인스턴스 안
 | 알람 | 합계 < 1, 5분 주기 **3회 연속**, **누락 데이터는 위반으로 처리** |
 | 동작 | `caffeine-alerts` (제목 `[CRITICAL] HeartbeatMissing`) |
 
-Prometheus·Alertmanager·SNS 엔드포인트·IAM·Lambda 중 **어느 하나라도** 끊기면 15분 안에 울린다. EC2 전체가 멈춘 경우도 잡는다.
+Prometheus·Alertmanager·SNS 엔드포인트·IAM·Lambda 중 **어느 하나라도** 끊기면 울린다. EC2 전체가 멈춘 경우도 잡는다.
 그래서 이 경보 문구는 "서버 다운"이 아니라 **"경보 경로 점검 필요"**로 쓴다. 원인은 §8 표로 좁힌다.
+
+**울리기까지 15분이 아니라 20~30분 걸린다.** 2026-11-23 실습에서 Alertmanager를 내린 지 21분 56초, 마지막 하트비트로부터 26분 23초 뒤에 울렸다.
+
+| 더해지는 시간 | 이유 |
+|---|---|
+| 하트비트 간격 6분 | `repeat_interval` 5분에 `group_interval` 1분이 더해진다(실측 20:40:04 → 20:46:03 → 20:52:03). 끊긴 시점은 마지막 하트비트보다 0~6분 뒤다 |
+| 알람 조건 15분 | 5분 주기 3회가 모두 비어야 한다 |
+| 빈 주기 2개쯤 더 | CloudWatch는 데이터가 빠진 알람을 평가할 때 3주기보다 넓은 범위를 읽고, 그 안에 실제 값이 하나라도 남아 있으면 그 값으로 판정한다. 마지막 하트비트가 그 범위 밖으로 밀려난 뒤에야 "3주기 모두 없음"이 된다. 실습에서는 마지막 하트비트 뒤 빈 주기가 5개 지난 다음 울렸다(알람 이력의 평가 데이터가 21:03·21:08·21:13 세 주기) |
+
+읽는 범위의 정확한 크기는 AWS가 정하는 값이라 여기 적은 20~30분은 한 번의 실측에서 나온 어림이다. 더 빨리 알아야 하면 알람 주기나 하트비트 간격을 줄여야 한다(이번에는 바꾸지 않았다).
 
 ---
 
@@ -343,11 +354,11 @@ docker exec caffeine-alertmanager amtool silence add 'alertname=~"AppDown|AppRes
 
 | 상황 | 오는 알림 | 비고 |
 |---|---|---|
-| 앱 컨테이너 종료·멈춤 | `AppDown` (2분+) | |
+| 앱 컨테이너 종료·멈춤 | `AppDown` (2분+, 실측 2분 38초) | 다시 올리면 `AppRestarted`, 5분 안에 `AppDown` 해결 알림 |
 | 앱 OOM 후 자동 재시작 | `AppRestarted`, 직전에 `HeapHigh`가 왔을 수 있음 | |
 | RDS 장애·느린 쿼리 | `DbConnectionPending`/`Timeout` | 5xx·에러 로그·지연 경보는 억제 |
-| EC2 전체 멈춤 | `ec2-status-check` (약 2분), `HeartbeatMissing` (15분) | EC2 안의 경보는 당연히 안 온다 |
-| Prometheus·Alertmanager 종료 | `HeartbeatMissing` | |
+| EC2 전체 멈춤 | `ec2-status-check` (약 2분), `HeartbeatMissing` (20~30분, §5.2) | EC2 안의 경보는 당연히 안 온다 |
+| Prometheus·Alertmanager 종료 | `HeartbeatMissing` (실측 21분 56초) | 직접 멈춘(`docker compose stop`) 컨테이너는 EC2를 재부팅해도 다시 뜨지 않는다 — §9 "알게 된 것" |
 | SNS 엔드포인트·IAM·IMDS 문제 | `HeartbeatMissing` | Alertmanager 로그에 SNS 발행 오류 |
 | Lambda·Discord 장애 | Discord는 안 오고 **이메일은 온다**: `caffeine-alert-relay-errors`, `caffeine-heartbeat-missing` | 이메일을 직접 구독으로 둔 이유 |
 | 디스크 부족 | `DiskLow` warning → critical | 오래된 배포 tar를 지운다 |
@@ -390,7 +401,60 @@ docker exec caffeine-alertmanager amtool silence add 'alertname=~"AppDown|AppRes
   그래서 Slack이 준 사유 이름을 오류에 함께 남기게 고쳤다. `AppDown`을 실제로 울려 보는 확인과 하트비트 끊김 확인은 하지 않았다.
 - Discord 전환(2026-11-22): `relay.test.mjs` 39개 통과 — 세 가지 입력, `allowed_mentions` 비움, 2000자 자르기, 웹훅 캐시·주소 검사(Slack 주소·
   `discordapp.com`·비슷한 호스트·http 거부), Discord 오류 번호·사유 기록. `monitoring/check.sh`와 `terraform validate`도 통과했다.
-  운영 계정의 Discord 수신(시험 메시지, `AppDown`과 해결 알림, `HeartbeatMissing`)은 아직 확인하지 않았다.
+  운영 계정의 Discord 수신은 2026-11-23에 확인했다 — 아래 "경보 실습".
+
+**경보 실습 (2026-11-23~24, KAN-12) — `AppDown`과 `HeartbeatMissing`을 운영에서 실제로 울렸다**
+
+시각은 모두 KST다. 전달 시각은 Lambda `caffeine-alert-relay` 로그의 전송 기록이고, 알람 시각은 CloudWatch 알람 이력이다.
+이메일은 SNS가 같은 발행을 직접 보낸다. Discord와 이메일 **양쪽에서 받은 것은 운영자가 눈으로 확인했다**(아래 표의 "수신" 칸).
+
+Discord 전환의 운영 반영도 같은 날 먼저 끝냈다: 시험 메시지(`[TEST] alert-relay`, 20:28:37 전달)와 `set-alarm-state`로 강제한
+`caffeine-ec2-status-check` ALARM(20:30:00 전달)을 Discord·이메일에서 받았다.
+
+서버는 꺼 둔 상태(EC2·RDS 정지, 알람 알림 꺼짐)에서 시작했다.
+
+| 단계 | 시각 | 걸린 시간 | 수신 |
+|---|---|---|---|
+| `power.sh up` 시작 → 끝 (RDS available 20:38:29, EC2 running 20:38:46, 8080 응답 401, 알림 6개 켬) | 11-23 20:34:56 → 20:39:07 | **4분 11초** | |
+| 서버 안 확인: 컨테이너 4개 Up, `actuator/health` `UP`, 사일런스 없음, Alertmanager에 `Watchdog` | 20:39:27~20:40:07 | | |
+| 첫 하트비트 → `caffeine-heartbeat-missing` ALARM → OK | 20:40:04 → 20:41:26 (전달 20:41:28) | 켠 뒤 2분 19초 | 확인 |
+| **실습 1.** 사일런스 없이 앱 컨테이너 정지 (`docker compose -f docker-compose.prod.yml stop app`) | 20:41:40 | | |
+| `AppDown` 발화(Prometheus, `for: 2m`) → `[CRITICAL] AppDown` 전달 | 20:43:45 → 20:44:18 | **내린 지 2분 38초** | 확인 |
+| 앱 다시 시작 (`start app`) → `actuator/health` `UP`, 8080 응답 401 | 20:44:44 → 20:45:00 | 16초 | |
+| `[WARNING] AppRestarted` 전달 | 20:45:33 | 올린 지 49초 | 확인 |
+| `[RESOLVED] AppDown` 전달 | 20:49:18 | 올린 지 4분 34초 (`group_interval` 5분) | 확인 |
+| `[RESOLVED] AppRestarted` 전달 | 20:55:33 | 규칙의 10분 창이 지난 뒤 | 확인 |
+| **실습 2.** Alertmanager 정지 (`docker compose -f docker-compose.prod.yml --profile alerting stop alertmanager`). 마지막 하트비트 20:52:03 | 20:56:30 | | |
+| `caffeine-heartbeat-missing` OK → ALARM (전달 21:18:29) | 21:18:26 | **내린 지 21분 56초** (마지막 하트비트로부터 26분 23초) | 확인 |
+| Alertmanager를 다시 올리려 했으나 SSH 접속 불가 → 실습 중단 | 21:19~21:23 | | |
+| `power.sh down` — **Alertmanager가 멈춘 채로** 서버를 껐다 (김개발 조회) | 21:32:15~21:32:51 | 36초 | |
+| 서버 다시 켬 (EC2 시작 19:22:56). 앱·Prometheus·Grafana는 떴고 **Alertmanager만 `Exited (0)` 그대로**, 하트비트 없음, 알람은 ALARM 유지 (컨테이너 상태는 김개발 조회 19:24) | 11-24 19:22경 | | 알림 없음 |
+| 운영자가 서버에서 직접 `docker compose -f docker-compose.prod.yml --profile alerting start alertmanager` (운영자 확인) | 19:26경 | | |
+| 하트비트 재개 → `caffeine-heartbeat-missing` ALARM → OK (전달 19:28:11) | 19:27:02 → 19:28:09 | 올린 지 약 2분 | 확인 |
+
+- **`AppDown`**: 발생과 해결 모두 한 번에 확인했다. Lambda 오류는 없었다(`Errors` 합계 0).
+- **`HeartbeatMissing`**: 발생은 실습 중에 확인했다. **해결은 실습 직후에 확인하지 못했다.** Alertmanager를 다시 올리기 전에 SSH가 막혔고,
+  그 상태로 서버를 껐다가 다음 날 켠 뒤 운영자가 Alertmanager를 손으로 올려서야 OK와 해결 메시지를 받았다. ALARM이던 시간은
+  22시간 10분이고 그중 대부분은 서버가 꺼져 있던 시간이다.
+- **끄고 켜기**: 켜기(`up`)와 끄기(`down`)는 각각 동작했다. 다만 다시 켠 뒤 경보 경로가 저절로 정상으로 돌아오지는 않았다(아래 1번).
+  평소처럼 Alertmanager가 떠 있는 채로 끄고 켰을 때 저절로 돌아오는지는 11-23의 첫 `up`에서만 확인했다.
+
+**알게 된 것** (고치는 일은 이 기록의 범위 밖이다)
+
+1. **직접 멈춘 Alertmanager는 재부팅 뒤 올라오지 않는다.** compose의 `restart: unless-stopped`는 `docker compose stop`으로 멈춘 컨테이너를
+   부팅 때 다시 띄우지 않는다. `power.sh up`은 8080 응답만 보므로 이를 알아채지 못하고 알림을 켠 뒤 "완료"로 끝난다. 하트비트 알람은
+   ALARM인 채 상태가 바뀌지 않으므로 **아무 알림도 오지 않고**, 그동안 `AppDown` 같은 서버 안 경보도 전달되지 않는다. → Jira KAN-16.
+   그때까지는 켠 뒤 15분쯤 뒤에 `power.sh status`로 `caffeine-heartbeat-missing`이 OK인지 본다.
+2. **오래 꺼 둔 뒤 켜면 `caffeine-ec2-cpu-credit`이 울린다.** 알람 기준은 `CPUCreditBalance` 20 미만, 5분 주기 3회다. 11-23에는 잔량이
+   0에서 시작해 5분에 약 1.9씩 올랐고(20:40 0.0 → 20:55 5.0 → 21:30 18.2), 20:51:50에 ALARM이 됐다(전달 20:51:50, 평균 CPU 사용률은 1.6%).
+   CPU를 많이 써서가 아니라 잔량이 20에 닿는 데 한 시간쯤 걸려서다. OK로 돌아오기 전에 서버를 껐다. 11-24에는 전날 쌓인 잔량(19.3)에서
+   시작해 울리지 않았다. 켠 직후의 이 알림은 무시해도 되지만, 한 시간이 지나도 ALARM이면 실제 문제다.
+3. **SSH 허용 주소가 하나(/32)라 PC의 네트워크가 바뀌면 서버 안 작업이 막힌다.** 실습 중 PC의 공인 IP가 보안 그룹 22번 허용 주소와
+   달라져 Alertmanager를 다시 올리지 못했다(8080과 인스턴스 상태 검사는 정상, 보안 그룹 변경 이력 없음). 보안 그룹은 바꾸지 않았고
+   다음 날 원래 주소로 돌아와 접속됐다. 컨테이너를 내리는 작업은 다시 올릴 길(같은 네트워크)이 확보된 상태에서 한다.
+4. **하트비트 알람은 15분이 아니라 약 22분 뒤에 울렸다.** 이유와 어림은 §5.2.
+5. **`power.sh up`은 4분 11초 걸렸다.** RDS 시작이 3분 32초로 대부분이다. 스크립트 안내문의 "보통 5~10분"보다 짧았다(한 번의 실측).
+6. **`AppRestarted`의 해결 알림까지 약 11분 걸린다.** 다시 올린 뒤 10분 창이 지나야 풀린다. 그 전에 Alertmanager를 내리면 해결 알림이 가지 않는다.
 
 ---
 
@@ -425,8 +489,8 @@ CloudWatch 알람 10개 이내·`PutMetricData`는 이 규모면 프리 티어 �
 | 0 | §10의 1·2 확인 | 진행 가능 여부 결정 |
 | 1 | SNS 토픽 두 개 + 이메일 구독 + §5.1 인프라 알람 (`modules/alerting/sns.tf`·`alarms.tf`) | `set-alarm-state`로 울린 테스트 알람이 이메일로 온다. **EC2 전체 장애를 먼저 잡는다**. 2026-11-10 확인 |
 | 2 | 엔드포인트 + EC2 역할 + 홉 제한 (`modules/alerting/endpoint.tf`, 역할·홉 제한은 `ec2.tf`) → EC2에서 수동 발행 | EC2의 컨테이너(aws-cli 이미지를 `docker load`)에서 `sns publish`한 메시지가 이메일로 온다. **가장 위험한 네트워크·권한 경로를 Alertmanager를 켜기 전에 검증한다**. 2026-11-10 확인 |
-| 3 | 경보 규칙 + promtool 테스트 + Alertmanager (로컬 → 운영) | 로컬에서 §9 규칙·통합 검증 통과, 운영에서 앱을 잠깐 내리면 `AppDown`과 해결 알림이 이메일로 온다. **레포 작업은 2026-11-09 구현, 운영에서는 2026-11-10 Alertmanager를 켜고 `Watchdog` 전달을 확인했다**(앱을 내려 `AppDown`을 울려 보는 확인은 하지 않았다) |
-| 4 | Lambda `caffeine-alert-relay` + Discord + 하트비트 알람 + Lambda 오류 알람 (`modules/alerting/lambda.tf`) | Discord 수신, Alertmanager를 15분 내리면 `HeartbeatMissing`이 온다. 2026-11-10 당시 채널이던 Slack으로 수신·하트비트 알람 생성 확인(Alertmanager를 15분 내려 보는 확인은 하지 않았다). Discord 수신 확인은 2026-11-22 전환을 운영에 반영한 뒤에 한다 |
+| 3 | 경보 규칙 + promtool 테스트 + Alertmanager (로컬 → 운영) | 로컬에서 §9 규칙·통합 검증 통과, 운영에서 앱을 잠깐 내리면 `AppDown`과 해결 알림이 이메일로 온다. **레포 작업은 2026-11-09 구현, 운영에서는 2026-11-10 Alertmanager를 켜고 `Watchdog` 전달을 확인했다.** 앱을 내려 `AppDown`을 울려 보는 확인은 2026-11-23에 했다 — 내린 지 2분 38초 뒤 `AppDown`, 다시 올린 뒤 `AppRestarted`와 두 해결 알림을 Discord·이메일로 받았다(§9 "경보 실습") |
+| 4 | Lambda `caffeine-alert-relay` + Discord + 하트비트 알람 + Lambda 오류 알람 (`modules/alerting/lambda.tf`) | Discord 수신, Alertmanager를 내려 두면 `HeartbeatMissing`이 온다. 2026-11-10 당시 채널이던 Slack으로 수신·하트비트 알람 생성 확인. Discord 수신은 2026-11-23 전환을 운영에 반영하며 확인했다. Alertmanager를 내려 보는 확인은 2026-11-23에 했다 — 21분 56초 뒤 `HeartbeatMissing`을 Discord·이메일로 받았다(15분이 아닌 이유는 §5.2). 해결은 다음 날(2026-11-24) 서버를 다시 켜고 Alertmanager를 손으로 올린 뒤에 확인했다(§9 "경보 실습") |
 | 5 | 문서 동기화 (§12) | 운영 가이드에 절차·사일런스·알람 설정값 기록 |
 
 ---

@@ -3,7 +3,7 @@
 > 대상: `../alerting-plan.md` §11의 **1·2·4단계**. 자원은 기반과 같은 Terraform(`infra/terraform/`, 경보 부분은 `modules/alerting/`)이 한 번에 만든다.
 > 이 문서는 Terraform이 못 하는 준비(Discord 웹훅)와, 만든 뒤 **단계별로 확인하는 순서**다. Terraform 사용법은 `기반-AWS-설정.md`.
 > 순서: 준비 → apply(`기반-AWS-설정.md` "실행") → 1단계 확인 → 2단계 확인 → 3단계(Alertmanager 켜기, `운영-가이드.md` "경보" 절) → 4단계 확인.
-> 마지막 갱신: 2026-11-22 (전달 채널을 Slack에서 Discord로 바꿨다 — `../alerting-plan.md` §10 미결 6)
+> 마지막 갱신: 2026-11-24 (하트비트 알람이 울리기까지의 실측 시간 — `../alerting-plan.md` §5.2·§9 "경보 실습")
 
 `terraform.tfvars`의 `alerting_enabled`(기본 `true`)가 이 문서의 자원 전체를 켜고 끈다. `alert_email`에 경보를 받을 이메일을 넣는다.
 콘솔에서 같은 이름으로 직접 만들지 않는다 — Terraform이 만들려다 이름이 겹쳐 실패한다.
@@ -60,7 +60,7 @@ curl -s -w '\n상태: %{http_code}\n' -X POST -H 'Content-Type: application/json
 | 4 | Lambda `caffeine-alert-relay` | `monitoring/lambda/alert-relay`, nodejs22.x, arm64, 128MB, 10초, VPC 없음 |
 | 4 | 구독 두 개 + 호출 권한 | `caffeine-alerts`·`caffeine-heartbeat` → Lambda |
 | 4 | 알람 `caffeine-alert-relay-errors` | Lambda 오류 1건 이상. Discord 전달이 깨지면 이메일로 알린다 |
-| 4 | 알람 `caffeine-heartbeat-missing` | 하트비트 15분 없음(데이터 없음도 위반). `heartbeat_alarm_enabled = true`일 때만 |
+| 4 | 알람 `caffeine-heartbeat-missing` | 하트비트 15분 없음(데이터 없음도 위반). 실제로 울리기까지는 20~30분 걸린다(2026-11-23 실측 약 22분, 이유는 설계 §5.2). `heartbeat_alarm_enabled = true`일 때만 |
 
 직접 만드는 것: SSM 파라미터 `/caffeine/alert-relay/discord-webhook`(SecureString).
 알람은 울릴 때와 풀릴 때 모두 `caffeine-alerts`로 알린다. 비용은 엔드포인트가 대부분이다(설계 §10 비용 추정, AZ 하나에 월 약 7~10달러).
@@ -123,6 +123,7 @@ aws cloudwatch list-metrics --region ap-northeast-2 --namespace Caffeine/Monitor
 
 Heartbeat 메트릭이 보이면 `terraform.tfvars`에 **`heartbeat_alarm_enabled = true`**를 넣고 apply한다. 그때 `caffeine-heartbeat-missing` 알람이 만들어진다.
 처음부터 만들지 않는 이유는, 하트비트가 오기 전에 만들면 15분 뒤 바로 울리기 때문이다. Alertmanager를 오래 내려 둘 때는 다시 `false`로 돌린다.
+Alertmanager를 `docker compose stop`으로 멈췄으면 EC2를 재부팅해도 저절로 뜨지 않는다 — 같은 명령의 `start alertmanager`로 직접 올린다(설계 §9 "알게 된 것" 1).
 
 ```bash
 terraform -chdir=infra/terraform apply    # "1 to add" 가 하트비트 알람이다
